@@ -1,0 +1,56 @@
+# recipe_gbrt.yml
+---
+documentation:
+
+  description: |
+    Performing GBRT (Gradient Boosting Regression Trees) for climate
+    predictions.
+
+  authors:
+    - schl_ma
+
+  references:
+    null
+
+  projects:
+    - crescendo
+
+
+datasets:
+  - {dataset: CanESM2}
+  - {dataset: MPI-ESM-LR}
+
+
+preprocessors:
+
+  time_average:
+    time_average: null
+
+
+diagnostics:
+
+  diag_gbrt:
+    description: Simple GBRT diagnostic.
+    variables:
+      ta: &variable_settings
+        project: CMIP5
+        mip: Amon
+        field: T3M
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 1979
+        end_year: 2005
+        preprocessor: time_average
+        label: T
+        var_type: feature
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+      ua:
+        <<: *variable_settings
+        label: UA
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+    scripts:
+      main_gbrt:
+        script: gbrt/main.py
