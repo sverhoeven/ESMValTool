@@ -53,4 +53,4 @@ diagnostics:
           - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
     scripts:
       main_gbrt:
-        script: gbrt/main.py
+        script: gbrt/intra_model.py
