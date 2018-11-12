@@ -3,8 +3,7 @@
 documentation:
 
   description: |
-    Performing GBRT (Gradient Boosting Regression Trees) for climate
-    predictions.
+    Performs GBRT (Gradient Boosted Regression Trees) for climate predictions.
 
   authors:
     - schl_ma
@@ -55,3 +54,7 @@ diagnostics:
     scripts:
       main_gbrt:
         script: gbrt/intra_model.py
+        use_coords_as_feature:
+          air_pressure: 0
+          latitude: 1
+          longitude: 2

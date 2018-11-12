@@ -6,9 +6,9 @@
 
 Description
 -----------
-This diagnostic performs the machine learning algorithm "Gradient Boosting
-Regression Trees" for climate predictions for every individual climate model
-given in the recipe.
+This diagnostic performs the machine learning technique "Gradient Boosted
+Regression Trees" (GBRT) for climate predictions for every individual climate
+model given in the recipe.
 
 Notes
 -----
@@ -29,8 +29,13 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-test : str
-    This is a test option.
+allow_broadcasting : bool, optional
+    Allow broadcasting for feature arrays (e.g. expance T2Ms field to T3M,
+    default: False).
+use_coord givefeature : dict, optional
+    Use coordinates (e.g. 'air_pressure' or 'latitude') as features, coordinate
+    names are given by the dictionary keys, the associated index by the
+    dictionary values.
 
 """
 
@@ -41,7 +46,6 @@ from pprint import pprint
 
 import iris
 import numpy as np
-import sklearn as sk
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import GradientBoostingRegressor
 import xgboost as xgb
@@ -57,6 +61,77 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger(os.path.basename(__file__))
 
 
+def extract_x_data(input_data, var_type, cfg, required_features=None):
+    """Extract x data from input files."""
+    allowed_types = ('feature', 'prediction_input')
+    if var_type not in allowed_types:
+        raise ValueError("Excepted one of '{}' for 'var_type', got "
+                         "'{}'".format(allowed_types, var_type))
+    input_data = select_metadata(input_data, var_type=var_type)
+    x_data = []
+    names = []
+    coords = None
+    cube = None
+
+    # Iterate over input data
+    for data in input_data:
+        cube = iris.load_cube(data['filename'])
+        name = data.get('label', data['short_name'])
+        if coords is None:
+            coords = cube.coords()
+        else:
+            if cube.coords() != coords:
+                raise ValueError("Expected x fields with identical "
+                                 "coordinates, but '{}' for dataset '{}' is "
+                                 "differing".format(name, data['dataset']))
+        x_data.append(cube.data.ravel())
+        names.append(name)
+
+    # Add coordinate variables if desired
+    for (coord, coord_idx) in cfg.get('use_coords_as_feature', []).items():
+        coord_array = cube.coord(coord).points
+        try:
+            new_axis_pos = np.delete(np.arange(len(cube.shape)), coord_idx)
+        except IndexError:
+            raise ValueError("Coordinate index '{}' out of bounds for "
+                             "coordinate '{}'".format(coord_idx, coord))
+        for idx in new_axis_pos:
+            coord_array = np.expand_dims(coord_array, idx)
+        coord_array = np.broadcast_to(coord_array, cube.shape)
+        x_data.append(coord_array.ravel())
+        names.append(coord)
+
+    # Check if all required features are available (necessary for prediction)
+    if required_features is not None:
+        if len(names) > len(set(names)):
+            raise ValueError("Expected exactly one dataset for every feature "
+                             "for '{}', got duplicates".format(var_type))
+        if set(required_features) != set(names):
+            raise ValueError("Expected features '{}' for '{}' got "
+                             "'{}'".format(required_features, var_type, names))
+
+    # Return data, labels and last cube
+    x_data = np.array(x_data)
+    if x_data.ndim > 1:
+        x_data = np.swapaxes(x_data, 0, 1)
+    names = np.array(names)
+    return (x_data, names, cube)
+
+
+def extract_y_data(input_data, dataset_name):
+    """Extract y data from input files."""
+    input_data = select_metadata(input_data, var_type='label',
+                                 dataset=dataset_name)
+    if len(input_data) == 1:
+        input_data = input_data[0]
+    else:
+        raise ValueError("Expected exactly one dataset with var_type "
+                         "'label' for dataset '{}', got "
+                         "{}".format(dataset_name, len(input_data)))
+    label_cube = iris.load_cube(input_data['filename'])
+    return (label_cube.data.ravel(), label_cube)
+
+
 def main(cfg):
     """Run the diagnostic."""
     input_data = cfg['input_data'].values()
@@ -64,8 +139,6 @@ def main(cfg):
     # Extract datasets and variables
     all_features = select_metadata(input_data, var_type='feature')
     all_labels = select_metadata(input_data, var_type='label')
-    all_prediction_input = select_metadata(input_data,
-                                           var_type='prediction_input')
 
     # GBRT for every dataset (climate model)
     for (model_name, features) in group_metadata(
@@ -73,25 +146,10 @@ def main(cfg):
         logger.info("Processing %s", model_name)
 
         # Extract features
-        x_data = []
-        feature_names = []
-        for feature in features:
-            feature_cube = iris.load_cube(feature['filename'])
-            x_data.append(feature_cube.data.ravel())
-            feature_names.append(feature.get('label', feature['short_name']))
-        x_data = np.array(x_data)
-        x_data = np.swapaxes(x_data, 0, 1)
-        feature_names = np.array(feature_names)
+        (x_data, feature_names, _) = extract_x_data(features, 'feature', cfg)
 
         # Extract labels
-        label = select_metadata(all_labels, dataset=model_name)
-        if len(label) == 1:
-            label = label[0]
-        else:
-            raise ImportError("Expected exactly one dataset with var_type "
-                              "'label' for model %s in recipe", model_name)
-        label_cube = iris.load_cube(label['filename'])
-        y_data = label_cube.data.ravel()
+        (y_data, label_cube) = extract_y_data(input_data, model_name)
 
         # Separate training and test data
         (x_train, x_test, y_train, y_test) = train_test_split(x_data, y_data)
@@ -104,7 +162,7 @@ def main(cfg):
 
         # Plot training deviance
         if cfg['write_plots']:
-            (fig, axes) = plt.subplots()
+            (_, axes) = plt.subplots()
 
             # Compute test set deviance
             test_score = np.zeros((params['n_estimators'],), dtype=np.float64)
@@ -123,13 +181,13 @@ def main(cfg):
             new_path = os.path.join(cfg['plot_dir'],
                                     '{}_prediction_error.{}'.format(
                                         model_name, cfg['output_file_type']))
-            plt.savefig(new_path)
+            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
             logger.info("Wrote %s", new_path)
             plt.close()
 
         # Plot feature importance
         if cfg['write_plots']:
-            (fig, axes) = plt.subplots()
+            (_, axes) = plt.subplots()
             feature_importance = clf.feature_importances_
             sorted_idx = np.argsort(feature_importance)
             pos = np.arange(sorted_idx.shape[0]) + 0.5
@@ -141,29 +199,19 @@ def main(cfg):
             new_path = os.path.join(cfg['plot_dir'],
                                     '{}_relative_importance.{}'.format(
                                         model_name, cfg['output_file_type']))
-            plt.savefig(new_path)
+            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
             logger.info("Wrote %s", new_path)
             plt.close()
 
         # Prediction
-        x_pred = []
-        for feature_name in feature_names:
-            data = select_metadata(all_prediction_input,
-                                   label=feature_name)
-            if len(data) == 1:
-                data = data[0]
-            else:
-                raise ImportError("Expected exactly one dataset with "
-                                  "var_type 'prediction_input' for "
-                                  "feature %s", feature_name)
-            cube = iris.load_cube(data['filename'])
-            original_shape = cube.shape
-            x_pred.append(cube.data.ravel())
-        x_pred = np.array(x_pred)
-        x_pred = np.swapaxes(x_pred, 0, 1)
+        (x_pred, _, cube) = extract_x_data(input_data, 'prediction_input', cfg,
+                                           required_features=feature_names)
         prediction = clf.predict(x_pred)
-        cube.data = prediction.reshape(original_shape)
+        cube.data = prediction.reshape(cube.shape)
         cube.attributes.update(params)
+        cube.var_name = label_cube.var_name
+        cube.standard_name = label_cube.standard_name
+        cube.long_name = label_cube.long_name
         logger.info("Prediction successful:")
         logger.info(cube)
 
