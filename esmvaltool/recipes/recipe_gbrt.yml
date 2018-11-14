@@ -15,9 +15,9 @@ documentation:
     - crescendo
 
 
-datasets:
-  - {dataset: CanESM2}
-  - {dataset: MPI-ESM-LR}
+# datasets:
+#   - {dataset: CanESM2}
+#   - {dataset: MPI-ESM-LR}
 
 
 preprocessors:
@@ -44,15 +44,17 @@ diagnostics:
         var_type: feature
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          - {dataset: CanESM2}
+          - {dataset: MPI-ESM-LR}
       ua:
         <<: *variable_settings
         label: UA
         additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          # - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
           - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
           - {dataset: MPI-ESM-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
     scripts:
-      main_gbrt:
+      intra_model_gbrt:
         script: gbrt/intra_model.py
         use_coords_as_feature:
           air_pressure: 0

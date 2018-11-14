@@ -46,8 +46,9 @@ from pprint import pprint
 
 import iris
 import numpy as np
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble.partial_dependence import plot_partial_dependence
+from sklearn.model_selection import train_test_split
 import xgboost as xgb
 
 from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
@@ -155,7 +156,7 @@ def main(cfg):
         (x_train, x_test, y_train, y_test) = train_test_split(x_data, y_data)
 
         # Create regression model
-        params = {'n_estimators': 500, 'max_depth': 4, 'min_samples_split': 2,
+        params = {'n_estimators': 1000, 'max_depth': 4, 'min_samples_split': 2,
                   'learning_rate': 0.01, 'loss': 'ls'}
         clf = GradientBoostingRegressor(**params)
         clf.fit(x_train, y_train)
@@ -202,6 +203,22 @@ def main(cfg):
             plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
             logger.info("Wrote %s", new_path)
             plt.close()
+
+        # Plot partial dependence
+        if cfg['write_plots']:
+            for (idx, feature_name) in enumerate(feature_names):
+                (_, [axes]) = plot_partial_dependence(clf, x_train, [idx])
+                axes.set_title('Partial dependence')
+                axes.set_xlabel(feature_name)
+                axes.set_ylabel('Eastward wind')
+                new_path = os.path.join(cfg['plot_dir'],
+                                        '{}_partial_dependence_of_{}.'
+                                        '{}'.format(model_name, feature_name,
+                                                    cfg['output_file_type']))
+                plt.savefig(new_path, orientation='landscape',
+                            bbox_inches='tight')
+                logger.info("Wrote %s", new_path)
+                plt.close()
 
         # Prediction
         (x_pred, _, cube) = extract_x_data(input_data, 'prediction_input', cfg,
