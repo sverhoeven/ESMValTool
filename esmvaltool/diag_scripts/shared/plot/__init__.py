@@ -10,6 +10,7 @@ from ._plot import (
     multi_dataset_scatterplot,
     scatterplot,
 )
+from . import gbrt
 
 __all__ = [
     'get_path_to_mpl_style',
@@ -17,4 +18,5 @@ __all__ = [
     'quickplot',
     'multi_dataset_scatterplot',
     'scatterplot',
+    'gbrt',
 ]

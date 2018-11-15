@@ -60,3 +60,4 @@ diagnostics:
           air_pressure: 0
           latitude: 1
           longitude: 2
+        use_only_coords_as_features: True

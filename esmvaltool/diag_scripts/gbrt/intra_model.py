@@ -17,7 +17,8 @@ Possible values are 'feature' (independent variables used for
 training/testing), 'label' (dependent variables, y-axis) or 'prediction_input'
 (independent variables used for prediction of dependent variables, usually
 observational data). All 'feature' and 'label' datasets must have the same
-shape, also all 'prediction_input' datasets, but these two might be different.
+shape, except the attribute 'allow_broadcasting' is set to True (must be done
+for each feature/label). This also applies to the 'prediction_input' data sets.
 
 Author
 ------
@@ -29,35 +30,28 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-allow_broadcasting : bool, optional
-    Allow broadcasting for feature arrays (e.g. expance T2Ms field to T3M,
-    default: False).
-use_coord givefeature : dict, optional
+use_coords_as_feature : dict, optional
     Use coordinates (e.g. 'air_pressure' or 'latitude') as features, coordinate
     names are given by the dictionary keys, the associated index by the
     dictionary values.
+use_only_coords_as_features : bool, optional
+    Use only the specified coordinates as features (default: False).
 
 """
 
 
 import logging
 import os
-from pprint import pprint
 
 import iris
 import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.ensemble.partial_dependence import plot_partial_dependence
 from sklearn.model_selection import train_test_split
-import xgboost as xgb
 
+import esmvaltool.diag_scripts.shared.plot.gbrt as plot
 from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
                                             select_metadata)
 from esmvaltool.preprocessor._derive.uajet import DerivedVariable as Uajet
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -85,22 +79,32 @@ def extract_x_data(input_data, var_type, cfg, required_features=None):
                 raise ValueError("Expected x fields with identical "
                                  "coordinates, but '{}' for dataset '{}' is "
                                  "differing".format(name, data['dataset']))
-        x_data.append(cube.data.ravel())
-        names.append(name)
+
+        # Append data
+        if not cfg.get('use_only_coords_as_features'):
+            x_data.append(cube.data.ravel())
+            names.append(name)
 
     # Add coordinate variables if desired
-    for (coord, coord_idx) in cfg.get('use_coords_as_feature', []).items():
+    for (coord, coord_idx) in cfg.get('use_coords_as_feature', {}).items():
         coord_array = cube.coord(coord).points
         try:
             new_axis_pos = np.delete(np.arange(len(cube.shape)), coord_idx)
         except IndexError:
-            raise ValueError("Coordinate index '{}' out of bounds for "
+            raise ValueError("Coordinate index '{}' is out of bounds for "
                              "coordinate '{}'".format(coord_idx, coord))
         for idx in new_axis_pos:
             coord_array = np.expand_dims(coord_array, idx)
         coord_array = np.broadcast_to(coord_array, cube.shape)
         x_data.append(coord_array.ravel())
         names.append(coord)
+
+    # Check if data was found
+    if not x_data:
+        raise ValueError("No '{}' data found - maybe you used "
+                         "'use_only_coords_as_features' but did not specify "
+                         "any coordinates in 'use_only_coords_as_features'"
+                         "?".format(var_type))
 
     # Check if all required features are available (necessary for prediction)
     if required_features is not None:
@@ -161,64 +165,21 @@ def main(cfg):
         clf = GradientBoostingRegressor(**params)
         clf.fit(x_train, y_train)
 
-        # Plot training deviance
-        if cfg['write_plots']:
-            (_, axes) = plt.subplots()
+        # Compute test set deviance
+        test_score = np.zeros((params['n_estimators'],), dtype=np.float64)
+        for (idx, y_pred) in enumerate(clf.staged_predict(x_test)):
+            test_score[idx] = clf.loss_(y_test, y_pred)
 
-            # Compute test set deviance
-            test_score = np.zeros((params['n_estimators'],), dtype=np.float64)
-            for (idx, y_pred) in enumerate(clf.staged_predict(x_test)):
-                test_score[idx] = clf.loss_(y_test, y_pred)
-
-            # Plot
-            axes.plot(np.arange(params['n_estimators']) + 1, clf.train_score_,
-                      'b-', label='Training Set Deviance')
-            axes.plot(np.arange(params['n_estimators']) + 1, test_score, 'r-',
-                      label='Test Set Deviance')
-            axes.legend(loc='upper right')
-            axes.set_title('Deviance')
-            axes.set_xlabel('Boosting Iterations')
-            axes.set_ylabel('Deviance')
-            new_path = os.path.join(cfg['plot_dir'],
-                                    '{}_prediction_error.{}'.format(
-                                        model_name, cfg['output_file_type']))
-            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-            logger.info("Wrote %s", new_path)
-            plt.close()
-
-        # Plot feature importance
-        if cfg['write_plots']:
-            (_, axes) = plt.subplots()
-            feature_importance = clf.feature_importances_
-            sorted_idx = np.argsort(feature_importance)
-            pos = np.arange(sorted_idx.shape[0]) + 0.5
-            axes.barh(pos, feature_importance[sorted_idx], align='center')
-            axes.set_title('Variable Importance')
-            axes.set_yticks(pos)
-            axes.set_yticklabels(feature_names[sorted_idx])
-            axes.set_xlabel('Relative Importance')
-            new_path = os.path.join(cfg['plot_dir'],
-                                    '{}_relative_importance.{}'.format(
-                                        model_name, cfg['output_file_type']))
-            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-            logger.info("Wrote %s", new_path)
-            plt.close()
-
-        # Plot partial dependence
-        if cfg['write_plots']:
-            for (idx, feature_name) in enumerate(feature_names):
-                (_, [axes]) = plot_partial_dependence(clf, x_train, [idx])
-                axes.set_title('Partial dependence')
-                axes.set_xlabel(feature_name)
-                axes.set_ylabel('Eastward wind')
-                new_path = os.path.join(cfg['plot_dir'],
-                                        '{}_partial_dependence_of_{}.'
-                                        '{}'.format(model_name, feature_name,
-                                                    cfg['output_file_type']))
-                plt.savefig(new_path, orientation='landscape',
-                            bbox_inches='tight')
-                logger.info("Wrote %s", new_path)
-                plt.close()
+        # Plots
+        plot.plot_prediction_error(clf, test_score, cfg,
+                                   filename='{}_prediction_error'.format(
+                                       model_name))
+        plot.plot_feature_importance(clf, feature_names, cfg,
+                                     filename='{}_feature_importance'.format(
+                                         model_name))
+        plot.plot_partial_dependence(clf, x_train, feature_names, cfg,
+                                     filename='{}_partial_dependence'.format(
+                                         model_name))
 
         # Prediction
         (x_pred, _, cube) = extract_x_data(input_data, 'prediction_input', cfg,
