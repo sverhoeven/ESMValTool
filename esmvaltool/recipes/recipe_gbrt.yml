@@ -15,9 +15,9 @@ documentation:
     - crescendo
 
 
-# datasets:
-#   - {dataset: CanESM2}
-#   - {dataset: MPI-ESM-LR}
+datasets:
+  - {dataset: CanESM2}
+  - {dataset: MPI-ESM-LR}
 
 
 preprocessors:
@@ -44,13 +44,22 @@ diagnostics:
         var_type: feature
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-          - {dataset: CanESM2}
-          - {dataset: MPI-ESM-LR}
+          # - {dataset: CanESM2}
+          # - {dataset: MPI-ESM-LR}
+      tas:
+        <<: *variable_settings
+        label: TAS
+        field: T2Ms
+        allow_broadcasting: [1, 2]
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          # - {dataset: CanESM2}
+          # - {dataset: MPI-ESM-LR}
       ua:
         <<: *variable_settings
         label: UA
         additional_datasets:
-          # - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
           - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
           - {dataset: MPI-ESM-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
     scripts:
@@ -60,4 +69,3 @@ diagnostics:
           air_pressure: 0
           latitude: 1
           longitude: 2
-        use_only_coords_as_features: True

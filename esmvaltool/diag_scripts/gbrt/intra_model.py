@@ -17,8 +17,9 @@ Possible values are 'feature' (independent variables used for
 training/testing), 'label' (dependent variables, y-axis) or 'prediction_input'
 (independent variables used for prediction of dependent variables, usually
 observational data). All 'feature' and 'label' datasets must have the same
-shape, except the attribute 'allow_broadcasting' is set to True (must be done
-for each feature/label). This also applies to the 'prediction_input' data sets.
+shape, except the attribute 'allow_broadcasting' is set to the list of suitable
+coordinate indices (must be done for each feature/label). This also applies to
+the 'prediction_input' data sets.
 
 Author
 ------
@@ -56,55 +57,116 @@ from esmvaltool.preprocessor._derive.uajet import DerivedVariable as Uajet
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def extract_x_data(input_data, var_type, cfg, required_features=None):
-    """Extract x data from input files."""
-    allowed_types = ('feature', 'prediction_input')
-    if var_type not in allowed_types:
-        raise ValueError("Excepted one of '{}' for 'var_type', got "
-                         "'{}'".format(allowed_types, var_type))
+def _extract_data(input_data, var_type, cfg):
+    """Extract required var_type data from input_data."""
     input_data = select_metadata(input_data, var_type=var_type)
-    x_data = []
+    new_data = []
     names = []
     coords = None
     cube = None
+    skipped_data = []
 
-    # Iterate over input data
+    # Iterate over data
     for data in input_data:
+        if 'allow_broadcasting' in data:
+            skipped_data.append(data)
+            continue
         cube = iris.load_cube(data['filename'])
         name = data.get('label', data['short_name'])
         if coords is None:
             coords = cube.coords()
         else:
             if cube.coords() != coords:
-                raise ValueError("Expected x fields with identical "
-                                 "coordinates, but '{}' for dataset '{}' is "
-                                 "differing".format(name, data['dataset']))
-
-        # Append data
+                raise ValueError("Expected fields with identical coordinates, "
+                                 "but '{}' for dataset '{}' ('{}') is "
+                                 "differing - consider regridding or the "
+                                 "option 'allow_broadcasting'".format(
+                                     name, var_type, data['dataset']))
         if not cfg.get('use_only_coords_as_features'):
-            x_data.append(cube.data.ravel())
+            new_data.append(cube.data.ravel())
             names.append(name)
 
-    # Add coordinate variables if desired
+    # Process skipped data (which needs broadcasting)
+    broadcast_data = _add_broadcasted_data(skipped_data, cube, var_type, cfg)
+    new_data.extend(broadcast_data[0])
+    names.extend(broadcast_data[1])
+
+    return (new_data, names, cube)
+
+
+def _add_broadcasted_data(input_data, cube, var_type, cfg):
+    """Add data with the attribute 'allow_broadcasting'."""
+    new_data = []
+    names = []
+    if input_data and cube is None:
+        raise ValueError("Expected at least one '{}' dataset without the "
+                         "option 'allow_broadcasting'".format(var_type))
+    for data in input_data:
+        cube_to_broadcast = iris.load_cube(data['filename'])
+        data_to_broadcast = cube_to_broadcast.data
+        name = data.get('label', data['short_name'])
+        try:
+            new_axis_pos = np.delete(np.arange(len(cube.shape)),
+                                     data['allow_broadcasting'])
+        except IndexError:
+            raise ValueError("Broadcasting failed for '{}', index out of "
+                             "bounds".format(name))
+        for idx in new_axis_pos:
+            data_to_broadcast = np.expand_dims(data_to_broadcast, idx)
+
+        print(data_to_broadcast.shape)
+
+        data_to_broadcast = np.broadcast_to(data_to_broadcast, cube.shape)
+        print(data_to_broadcast.shape)
+        if not cfg.get('use_only_coords_as_features'):
+            new_data.append(data_to_broadcast.ravel())
+            names.append(name)
+    return (new_data, names)
+
+
+def _add_coordinates(cube, cfg):
+    """Add coordinate variables to x data."""
+    x_data = []
+    names = []
+    if cube is None:
+        return (x_data, names)
     for (coord, coord_idx) in cfg.get('use_coords_as_feature', {}).items():
         coord_array = cube.coord(coord).points
         try:
             new_axis_pos = np.delete(np.arange(len(cube.shape)), coord_idx)
         except IndexError:
-            raise ValueError("Coordinate index '{}' is out of bounds for "
-                             "coordinate '{}'".format(coord_idx, coord))
+            raise ValueError("'use_coords_as_feature' failed, index '{}' is "
+                             "out of bounds for coordinate "
+                             "'{}'".format(coord_idx, coord))
         for idx in new_axis_pos:
             coord_array = np.expand_dims(coord_array, idx)
         coord_array = np.broadcast_to(coord_array, cube.shape)
         x_data.append(coord_array.ravel())
         names.append(coord)
+    return (x_data, names)
+
+
+def extract_x_data(input_data, var_type, cfg, required_features=None):
+    """Extract x data from input files."""
+    allowed_types = ('feature', 'prediction_input')
+    if var_type not in allowed_types:
+        raise ValueError("Excepted one of '{}' for 'var_type', got "
+                         "'{}'".format(allowed_types, var_type))
+
+    # Extract regular data
+    (x_data, names, cube) = _extract_data(input_data, var_type, cfg)
+
+    # Add coordinate variables if desired
+    coord_data = _add_coordinates(cube, cfg)
+    x_data.extend(coord_data[0])
+    names.extend(coord_data[1])
 
     # Check if data was found
     if not x_data:
         raise ValueError("No '{}' data found - maybe you used "
                          "'use_only_coords_as_features' but did not specify "
-                         "any coordinates in 'use_only_coords_as_features'"
-                         "?".format(var_type))
+                         "any coordinates in "
+                         "'use_coords_as_feature'".format(var_type))
 
     # Check if all required features are available (necessary for prediction)
     if required_features is not None:
