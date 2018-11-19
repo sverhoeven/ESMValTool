@@ -1,5 +1,5 @@
 """Code that is shared between multiple diagnostic scripts."""
-from . import names, plot
+from . import gbrt, names, plot
 from ._base import (get_cfg, group_metadata, run_diagnostic, select_metadata,
                     sorted_group_metadata, sorted_metadata, extract_variables,
                     variables_available, save_iris_cube)
@@ -7,6 +7,7 @@ from ._validation import (get_control_exper_obs, apply_supermeans)
 from ._diag import Datasets, Variable, Variables
 
 __all__ = [
+    'gbrt',
     'names',
     'get_cfg',
     'plot',

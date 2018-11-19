@@ -17,7 +17,7 @@ Possible values are 'feature' (independent variables used for
 training/testing), 'label' (dependent variables, y-axis) or 'prediction_input'
 (independent variables used for prediction of dependent variables, usually
 observational data). All 'feature' and 'label' datasets must have the same
-shape, except the attribute 'allow_broadcasting' is set to the list of suitable
+shape, except the attribute 'broadcast_from' is set to a list of suitable
 coordinate indices (must be done for each feature/label). This also applies to
 the 'prediction_input' data sets.
 
@@ -31,6 +31,9 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
+parameters : dict, optional
+    Paramter used in the classifier, more information is available here:
+    https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting.
 use_coords_as_feature : dict, optional
     Use coordinates (e.g. 'air_pressure' or 'latitude') as features, coordinate
     names are given by the dictionary keys, the associated index by the
@@ -51,8 +54,8 @@ from sklearn.model_selection import train_test_split
 
 import esmvaltool.diag_scripts.shared.plot.gbrt as plot
 from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
-                                            select_metadata)
-from esmvaltool.preprocessor._derive.uajet import DerivedVariable as Uajet
+                                            select_metadata, gbrt,
+                                            save_iris_cube)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -68,7 +71,7 @@ def _extract_data(input_data, var_type, cfg):
 
     # Iterate over data
     for data in input_data:
-        if 'allow_broadcasting' in data:
+        if 'broadcast_from' in data:
             skipped_data.append(data)
             continue
         cube = iris.load_cube(data['filename'])
@@ -77,11 +80,11 @@ def _extract_data(input_data, var_type, cfg):
             coords = cube.coords()
         else:
             if cube.coords() != coords:
-                raise ValueError("Expected fields with identical coordinates, "
+                raise ValueError("Expected fields with identical coordinates "
                                  "but '{}' for dataset '{}' ('{}') is "
-                                 "differing - consider regridding or the "
-                                 "option 'allow_broadcasting'".format(
-                                     name, var_type, data['dataset']))
+                                 "differing, consider regridding or the "
+                                 "option 'broadcast_from'".format(
+                                     name, data['dataset'], var_type))
         if not cfg.get('use_only_coords_as_features'):
             new_data.append(cube.data.ravel())
             names.append(name)
@@ -95,29 +98,27 @@ def _extract_data(input_data, var_type, cfg):
 
 
 def _add_broadcasted_data(input_data, cube, var_type, cfg):
-    """Add data with the attribute 'allow_broadcasting'."""
+    """Add data with the attribute 'broadcast_from'."""
     new_data = []
     names = []
     if input_data and cube is None:
         raise ValueError("Expected at least one '{}' dataset without the "
-                         "option 'allow_broadcasting'".format(var_type))
+                         "option 'broadcast_from'".format(var_type))
     for data in input_data:
         cube_to_broadcast = iris.load_cube(data['filename'])
         data_to_broadcast = cube_to_broadcast.data
         name = data.get('label', data['short_name'])
         try:
             new_axis_pos = np.delete(np.arange(len(cube.shape)),
-                                     data['allow_broadcasting'])
+                                     data['broadcast_from'])
         except IndexError:
             raise ValueError("Broadcasting failed for '{}', index out of "
                              "bounds".format(name))
+        logger.info("Broadcasting %s '%s' from %s to %s", var_type, name,
+                    data_to_broadcast.shape, cube.shape)
         for idx in new_axis_pos:
             data_to_broadcast = np.expand_dims(data_to_broadcast, idx)
-
-        print(data_to_broadcast.shape)
-
         data_to_broadcast = np.broadcast_to(data_to_broadcast, cube.shape)
-        print(data_to_broadcast.shape)
         if not cfg.get('use_only_coords_as_features'):
             new_data.append(data_to_broadcast.ravel())
             names.append(name)
@@ -163,7 +164,7 @@ def extract_x_data(input_data, var_type, cfg, required_features=None):
 
     # Check if data was found
     if not x_data:
-        raise ValueError("No '{}' data found - maybe you used "
+        raise ValueError("No '{}' data found, maybe you used "
                          "'use_only_coords_as_features' but did not specify "
                          "any coordinates in "
                          "'use_coords_as_feature'".format(var_type))
@@ -201,7 +202,8 @@ def extract_y_data(input_data, dataset_name):
 
 def main(cfg):
     """Run the diagnostic."""
-    input_data = cfg['input_data'].values()
+    input_data = list(cfg['input_data'].values())
+    input_data.extend(gbrt.get_ancestor_data(cfg))
 
     # Extract datasets and variables
     all_features = select_metadata(input_data, var_type='feature')
@@ -221,9 +223,11 @@ def main(cfg):
         # Separate training and test data
         (x_train, x_test, y_train, y_test) = train_test_split(x_data, y_data)
 
-        # Create regression model
+        # Create regression model with desired parameters
         params = {'n_estimators': 1000, 'max_depth': 4, 'min_samples_split': 2,
                   'learning_rate': 0.01, 'loss': 'ls'}
+        params.update(cfg.get('parameters', {}))
+        logger.info("Use parameters %s for GBRT model", params)
         clf = GradientBoostingRegressor(**params)
         clf.fit(x_train, y_train)
 
@@ -255,22 +259,25 @@ def main(cfg):
         logger.info("Prediction successful:")
         logger.info(cube)
 
-        # Save cube if desired
+        # Save cubes if desired
         if cfg['write_netcdf']:
+            description = 'Prediction from GBRT model of {}'.format(
+                model_name)
+            cube.attributes['description'] = description
             new_path = os.path.join(cfg['work_dir'],
-                                    '{}_prediction.nc'.format(model_name))
-            iris.save(cube, new_path)
-            logger.info("Wrote %s", new_path)
+                                    '{}_gbrt_prediction.nc'.format(model_name))
+            save_iris_cube(cube, new_path, cfg)
 
-        # Calculate jet positions
-        uajet = Uajet('ua')
-        cubes = iris.cube.CubeList([cube])
-        predicted_uajet = uajet.calculate(cubes)
-        label = select_metadata(all_labels, dataset=model_name)[0]
-        cubes = iris.cube.CubeList([iris.load_cube(label['filename'])])
-        label_uajet = uajet.calculate(cubes)
-        logger.info("Predicted jet position: %f", predicted_uajet.data)
-        logger.info("Model projected jet position: %f", label_uajet.data)
+            # Corresponding 'label' cube
+            label_data = select_metadata(all_labels, dataset=model_name)[0]
+            label_cube = iris.load_cube(label_data['filename'])
+            exp = label_data.get('exp', '')
+            description = '{} projection of {}'.format(exp, model_name)
+            label_cube.attributes['description'] = description
+            new_path = os.path.join(cfg['work_dir'],
+                                    '{}_{}_projection.nc'.format(model_name,
+                                                                 exp))
+            save_iris_cube(cube, new_path, cfg)
 
 
 # Run main function when this script is called
