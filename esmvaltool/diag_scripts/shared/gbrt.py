@@ -99,10 +99,10 @@ class GBRTBase():
         """
         # Private members
         self._clf = {}
-        self._data = {}
         self._cubes = {}
-        self._cfg = cfg
+        self._data = {}
         self._datasets = {}
+        self._cfg = cfg
 
         # Public members
         self.classes = {}
@@ -312,7 +312,7 @@ class GBRTBase():
 
         # Check if all required features are available
         if check_features:
-            if set(required_features) != set(self.classes['features']):
+            if required_features != self.classes['features']:
                 raise ValueError("Expected features '{}', got '{}'".format(
                     required_features, self.classes['features']))
 
@@ -347,7 +347,7 @@ class GBRTBase():
 
         # Check if all required features are available
         if check_features:
-            if set(required_features) != set(self.classes['features']):
+            if required_features != self.classes['features']:
                 raise ValueError("Expected features '{}' for prediction, got "
                                  "'{}'".format(required_features,
                                                self.classes['features']))

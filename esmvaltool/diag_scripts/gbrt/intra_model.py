@@ -47,7 +47,8 @@ import iris
 import numpy as np
 
 from esmvaltool.diag_scripts.shared.gbrt import GBRTBase
-from esmvaltool.diag_scripts.shared import group_metadata, run_diagnostic
+from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
+                                            sorted_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -57,6 +58,7 @@ class IntraModelGBRT(GBRTBase):
 
     def _collect_x_data(self, datasets, var_type):
         """Collect x data from `datasets`."""
+        datasets = sorted_metadata(datasets, 'label')
         x_data = []
         names = []
         skipped_datasets = []
@@ -69,7 +71,7 @@ class IntraModelGBRT(GBRTBase):
                 skipped_datasets.append(dataset)
                 continue
             cube = iris.load_cube(dataset['filename'])
-            name = dataset.get('label', dataset['short_name'])
+            name = dataset['label']
             if coords is None:
                 coords = cube.coords()
             else:
@@ -118,7 +120,7 @@ class IntraModelGBRT(GBRTBase):
             raise ValueError("Expected exactly one dataset with var_type "
                              "'label', got {}".format(len(datasets)))
         cube = iris.load_cube(dataset['filename'])
-        name = dataset.get('label', dataset['short_name'])
+        name = dataset['label']
         return (cube.data.ravel(), name, cube)
 
     def _get_broadcasted_data(self, datasets, target_shape):
@@ -131,7 +133,7 @@ class IntraModelGBRT(GBRTBase):
         for dataset in datasets:
             cube_to_broadcast = iris.load_cube(dataset['filename'])
             data_to_broadcast = cube_to_broadcast.data
-            name = dataset.get('label', dataset['short_name'])
+            name = dataset['label']
             try:
                 new_axis_pos = np.delete(
                     np.arange(len(target_shape)), dataset['broadcast_from'])
