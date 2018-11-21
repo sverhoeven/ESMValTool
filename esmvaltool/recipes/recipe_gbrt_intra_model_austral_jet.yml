@@ -1,9 +1,10 @@
-# recipe_gbrt.yml
+# recipe_gbrt_intra_model_austral_jet.yml
 ---
 documentation:
 
   description: |
-    Performs GBRT (Gradient Boosted Regression Trees) for climate predictions.
+    Use intra-model GBRT (Gradient Boosted Regression Trees) models to predict
+    future climate.
 
   authors:
     - schl_ma
@@ -28,7 +29,7 @@ preprocessors:
 
 diagnostics:
 
-  diag_dummy:
+  diag_save_preproc:
     variables:
       tas:
         project: CMIP5
@@ -45,8 +46,8 @@ diagnostics:
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
     scripts:
-      dummy:
-        script: gbrt/dummy.py
+      save_preproc:
+        script: gbrt/save_preproc.py
 
   diag_gbrt:
     description: Perform GBRT on input data.
@@ -85,7 +86,7 @@ diagnostics:
     scripts:
       intra_model_gbrt:
         script: gbrt/intra_model.py
-        ancestors: ['ta', 'tas', 'ua', 'diag_dummy/dummy']
+        ancestors: ['ta', 'tas', 'ua', 'diag_save_preproc/save_preproc']
         use_coords_as_feature:
           air_pressure: 0
           latitude: 1

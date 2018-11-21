@@ -1,4 +1,4 @@
-"""Convenience functions for GBRT diagnostics."""
+"""Convenience functions and base class for GBRT diagnostics."""
 
 import logging
 import os
@@ -29,6 +29,18 @@ NECESSARY_KEYS = VAR_KEYS + [
     'short_name',
     'var_type',
 ]
+
+
+def datasets_have_gbrt_attributes(datasets, log_level='debug'):
+    """Check if necessary dataset attributes are given."""
+    for dataset in datasets:
+        for key in NECESSARY_KEYS:
+            if key not in dataset:
+                getattr(logger, log_level)("Dataset '%s' does not have "
+                                           "necessary attribute '%s'", dataset,
+                                           key)
+                return False
+    return True
 
 
 def write_cube(cube, attributes, path, cfg):
@@ -69,24 +81,12 @@ class GBRTBase():
     """
 
     _DEFAULT_PARAMETERS = {
-        'n_estimators': 50,
+        'n_estimators': 1000,
         'max_depth': 4,
         'min_samples_split': 2,
         'learning_rate': 0.01,
         'loss': 'ls',
     }
-    _VAR_KEYS = [
-        'long_name',
-        'standard_name',
-        'units',
-    ]
-    _NECESSARY_KEYS = _VAR_KEYS + [
-        'dataset',
-        'filename',
-        'label',
-        'short_name',
-        'var_type',
-    ]
 
     def __init__(self, cfg):
         """Initialize class members.
@@ -110,11 +110,11 @@ class GBRTBase():
 
         # Load input datasets
         (training_datasets, prediction_datasets) = self._get_input_datasets()
-        if not self._datasets_have_attributes(training_datasets,
-                                              log_level='error'):
+        if not datasets_have_gbrt_attributes(
+                training_datasets, log_level='error'):
             raise ValueError()
-        if not self._datasets_have_attributes(prediction_datasets,
-                                              log_level='error'):
+        if not datasets_have_gbrt_attributes(
+                prediction_datasets, log_level='error'):
             raise ValueError()
         self._datasets['training'] = self._group_training_datasets(
             training_datasets)
@@ -135,16 +135,11 @@ class GBRTBase():
             self_cubes = self._cubes[model_name]
 
             # Extract features and labels
-            (self_data['x_data'],
-             self_cubes['feature'],
-             self_data['x_data'],
-             self_cubes['label']) = self._extract_features_and_labels(
-                 datasets)
+            (self_data['x_data'], self_cubes['feature'], self_data['x_data'],
+             self_cubes['label']) = self._extract_features_and_labels(datasets)
 
             # Separate training and test data
-            (self_data['x_train'],
-             self_data['x_test'],
-             self_data['y_train'],
+            (self_data['x_train'], self_data['x_test'], self_data['y_train'],
              self_data['y_test']) = self._train_test_split()
 
             # Create GBRT model with desired parameters and fit it
@@ -152,11 +147,15 @@ class GBRTBase():
                 **self.parameters)
             self._clf[model_name].fit(self_data['x_train'],
                                       self_data['y_train'])
-            logger.debug("Successfully fitted GBRT model%s",
-                         self._get_logger_suffix(model_name))
+            logger.info("Successfully fitted GBRT model%s",
+                        self._get_logger_suffix(model_name))
 
     def plot_feature_importance(self, filename=None):
         """Plot feature importance."""
+        if not self._is_fitted():
+            logger.error("Plotting not possible because the model is not "
+                         "fitted yet, call fit() first")
+            return
         if not self._cfg['write_plots']:
             return
         if filename is None:
@@ -184,6 +183,10 @@ class GBRTBase():
 
     def plot_partial_dependence(self, filename=None):
         """Plot partial dependence."""
+        if not self._is_fitted():
+            logger.error("Plotting not possible because the model is not "
+                         "fitted yet, call fit() first")
+            return
         if not self._cfg['write_plots']:
             return
         if filename is None:
@@ -193,23 +196,26 @@ class GBRTBase():
         for model_name in self._datasets['training']:
             for (idx, feature_name) in enumerate(self.classes['features']):
                 (_, [axes]) = plot_partial_dependence(
-                    self._clf[model_name],
-                    self._data[model_name]['x_train'],
+                    self._clf[model_name], self._data[model_name]['x_train'],
                     [idx])
                 axes.set_title('Partial dependence')
                 axes.set_xlabel(feature_name)
                 axes.set_ylabel('Eastward wind')
-                new_filename = (filename.format(feature=feature_name,
-                                                model=model_name) + '.' +
-                                self._cfg['output_file_type'])
+                new_filename = (
+                    filename.format(feature=feature_name, model=model_name) +
+                    '.' + self._cfg['output_file_type'])
                 new_path = os.path.join(self._cfg['plot_dir'], new_filename)
-                plt.savefig(new_path, orientation='landscape',
-                            bbox_inches='tight')
+                plt.savefig(
+                    new_path, orientation='landscape', bbox_inches='tight')
                 logger.info("Wrote %s", new_path)
                 plt.close()
 
     def plot_prediction_error(self, filename=None):
         """Plot prediction error for training and test data."""
+        if not self._is_fitted():
+            logger.error("Plotting not possible because the model is not "
+                         "fitted yet, call fit() first")
+            return
         if not self._cfg['write_plots']:
             return
         if filename is None:
@@ -220,14 +226,20 @@ class GBRTBase():
         for model_name in self._datasets['training']:
             clf = self._clf[model_name]
             data = self._data[model_name]
-            test_score = np.zeros((self.parameters['n_estimators'],),
+            test_score = np.zeros((self.parameters['n_estimators'], ),
                                   dtype=np.float64)
             for (idx, y_pred) in enumerate(clf.staged_predict(data['x_test'])):
                 test_score[idx] = clf.loss_(data['y_test'], y_pred)
-            axes.plot(np.arange(len(clf.train_score_)) + 1, clf.train_score_,
-                      'b-', label='Training Set Deviance')
-            axes.plot(np.arange(len(test_score)) + 1, test_score, 'r-',
-                      label='Test Set Deviance')
+            axes.plot(
+                np.arange(len(clf.train_score_)) + 1,
+                clf.train_score_,
+                'b-',
+                label='Training Set Deviance')
+            axes.plot(
+                np.arange(len(test_score)) + 1,
+                test_score,
+                'r-',
+                label='Test Set Deviance')
             axes.legend(loc='upper right')
             axes.set_title('Deviance')
             axes.set_xlabel('Boosting Iterations')
@@ -250,8 +262,8 @@ class GBRTBase():
         for model_name in self._datasets['training']:
             predictions[model_name] = {}
             logger.info("Predicting%s", self._get_logger_suffix(model_name))
-            for (prediction_name, datasets) in (
-                    self._datasets['prediction'].items()):
+            for (prediction_name,
+                 datasets) in self._datasets['prediction'].items():
                 logger.info("Prediction name: %s", prediction_name)
 
                 # Predict
@@ -269,12 +281,15 @@ class GBRTBase():
                 cube.attributes.update({
                     'description': description,
                     'model_name': str(model_name),
-                    'prediction_name': str(prediction_name)})
+                    'prediction_name': str(prediction_name)
+                })
                 cube.attributes.update(self.parameters)
-                filename = 'prediction_{}_for_{}.nc'.format(prediction_name,
-                                                            model_name)
+                filename = 'prediction_{}_for_{}.nc'.format(
+                    prediction_name, model_name)
                 new_path = os.path.join(self._cfg['work_dir'], filename)
                 save_iris_cube(cube, new_path, self._cfg)
+            logger.info("Successfully predcited with GBRT model%s",
+                        self._get_logger_suffix(model_name))
 
         return predictions
 
@@ -287,17 +302,6 @@ class GBRTBase():
         """Collect y data, must be implemented in child class."""
         raise NotImplementedError("This method must be implemented in the "
                                   "child class")
-
-    def _datasets_have_attributes(self, datasets, log_level='debug'):
-        """Check if necessary dataset attributes are given."""
-        for dataset in datasets:
-            for key in self._NECESSARY_KEYS:
-                if key not in dataset:
-                    getattr(logger, log_level)("Dataset '%s' does not have "
-                                               "necessary attribute '%s'",
-                                               dataset, key)
-                    return False
-        return True
 
     def _extract_features_and_labels(self, datasets, check_features=False):
         """Extract features and labels from `datasets`."""
@@ -316,12 +320,15 @@ class GBRTBase():
         if len(x_data) != len(y_data):
             raise ValueError("Size of features and labels does not match, got "
                              "{} observations for the features and {} "
-                             "observations for the label".format(len(x_data),
-                                                                 len(y_data)))
+                             "observations for the label".format(
+                                 len(x_data), len(y_data)))
 
         # Check for duplicate features
-        duplicates = {f for f in self.classes['features'] if
-                      self.classes['features'].count(f) > 1}
+        duplicates = {
+            f
+            for f in self.classes['features']
+            if self.classes['features'].count(f) > 1
+        }
         if duplicates:
             raise ValueError("Duplicate features in x_data: "
                              "{}".format(duplicates))
@@ -346,8 +353,11 @@ class GBRTBase():
                                                self.classes['features']))
 
         # Check for duplicate features
-        duplicates = {f for f in self.classes['features'] if
-                      self.classes['features'].count(f) > 1}
+        duplicates = {
+            f
+            for f in self.classes['features']
+            if self.classes['features'].count(f) > 1
+        }
         if duplicates:
             raise ValueError("Duplicate prediction input in x_data: "
                              "{}".format(duplicates))
@@ -401,12 +411,12 @@ class GBRTBase():
                     path = os.path.join(root, filename)
                     cube = iris.load_cube(path)
                     dataset_info = dict(cube.attributes)
-                    for var_key in self._VAR_KEYS:
+                    for var_key in VAR_KEYS:
                         dataset_info[var_key] = getattr(cube, var_key)
                     dataset_info['short_name'] = getattr(cube, 'var_name')
 
                     # Check if necessary keys are available
-                    if self._datasets_have_attributes([dataset_info]):
+                    if datasets_have_gbrt_attributes([dataset_info]):
                         datasets.append(dataset_info)
                     else:
                         logger.debug("Skipping %s", path)
@@ -418,8 +428,8 @@ class GBRTBase():
         input_datasets.extend(self._get_ancestor_datasets())
         feature_datasets = select_metadata(input_datasets, var_type='feature')
         label_datasets = select_metadata(input_datasets, var_type='label')
-        prediction_datasets = select_metadata(input_datasets,
-                                              var_type='prediction_input')
+        prediction_datasets = select_metadata(
+            input_datasets, var_type='prediction_input')
         training_datasets = feature_datasets + label_datasets
         return (training_datasets, prediction_datasets)
 

@@ -1,4 +1,4 @@
-"""Dummy diagnostic."""
+"""Save preproc files in work to use them for GBRT models."""
 
 import logging
 import os
@@ -12,7 +12,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 def main(cfg):
     """Run the diagnostic."""
-    logger.info("Running dummy diagnostic." "")
+    logger.info("Running save_preproc.py diagnostic.")
 
     # Save preproc files in work directory
     if cfg['write_netcdf']:
