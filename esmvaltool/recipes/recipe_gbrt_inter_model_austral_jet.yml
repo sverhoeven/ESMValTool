@@ -1,0 +1,231 @@
+# recipe_gbrt_intra_model_austral_jet.yml
+---
+documentation:
+
+  description: |
+    Use inter-model GBRT (Gradient Boosted Regression Trees) model to predict
+    future climate.
+
+  authors:
+    - schl_ma
+
+  references:
+    null
+
+  projects:
+    - crescendo
+
+
+datasets:
+  - {dataset: ACCESS1-0,      ensemble: r1i1p1}
+  - {dataset: ACCESS1-3,      ensemble: r1i1p1}
+  # - {dataset: bcc-csm1-1,     ensemble: r1i1p1}
+  # - {dataset: bcc-csm1-1-m,   ensemble: r1i1p1}
+  # - {dataset: BNU-ESM,        ensemble: r1i1p1}
+  # - {dataset: CanESM2,        ensemble: r1i1p1}
+  # - {dataset: CanESM2,        ensemble: r2i1p1}
+  # - {dataset: CanESM2,        ensemble: r3i1p1}
+  # - {dataset: CanESM2,        ensemble: r4i1p1}
+  # - {dataset: CanESM2,        ensemble: r5i1p1}
+  # - {dataset: CCSM4,          ensemble: r1i1p1}
+  # - {dataset: CCSM4,          ensemble: r2i1p1}
+  # - {dataset: CCSM4,          ensemble: r3i1p1}
+  # - {dataset: CCSM4,          ensemble: r4i1p1}
+  # - {dataset: CCSM4,          ensemble: r5i1p1}
+  # - {dataset: CCSM4,          ensemble: r6i1p1}
+  # - {dataset: CESM1-BGC,      ensemble: r1i1p1}
+  # - {dataset: CESM1-CAM5,     ensemble: r1i1p1}
+  # - {dataset: CESM1-CAM5,     ensemble: r2i1p1}
+  # - {dataset: CESM1-CAM5,     ensemble: r3i1p1}
+  # - {dataset: CMCC-CMS,       ensemble: r1i1p1}
+  # - {dataset: CNRM-CM5,       ensemble: r1i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r1i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r2i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r3i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r4i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r5i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r6i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r7i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r8i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r9i1p1}
+  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r10i1p1}
+  # - {dataset: GFDL-CM3,       ensemble: r1i1p1}
+  # - {dataset: GFDL-ESM2G,     ensemble: r1i1p1}
+  # - {dataset: GFDL-ESM2M,     ensemble: r1i1p1}
+  # - {dataset: HadGEM2-AO,     ensemble: r1i1p1}
+  # - {dataset: inmcm4,         ensemble: r1i1p1}
+  # - {dataset: IPSL-CM5A-LR,   ensemble: r1i1p1}
+  # - {dataset: IPSL-CM5A-LR,   ensemble: r2i1p1}
+  # - {dataset: IPSL-CM5A-LR,   ensemble: r3i1p1}
+  # - {dataset: IPSL-CM5A-LR,   ensemble: r4i1p1}
+  # - {dataset: IPSL-CM5A-MR,   ensemble: r1i1p1}
+  # - {dataset: IPSL-CM5B-LR,   ensemble: r1i1p1}
+  # - {dataset: MIROC5,         ensemble: r1i1p1}
+  # - {dataset: MIROC5,         ensemble: r2i1p1}
+  # - {dataset: MIROC-ESM,      ensemble: r1i1p1}
+  # - {dataset: MIROC-ESM-CHEM, ensemble: r1i1p1}
+  # - {dataset: MPI-ESM-LR,     ensemble: r1i1p1}
+  # - {dataset: MPI-ESM-LR,     ensemble: r2i1p1}
+  # - {dataset: MPI-ESM-LR,     ensemble: r3i1p1}
+  # - {dataset: MPI-ESM-MR,     ensemble: r1i1p1}
+  # - {dataset: MPI-ESM-MR,     ensemble: r2i1p1}
+  # - {dataset: MPI-ESM-MR,     ensemble: r3i1p1}
+  # - {dataset: MRI-CGCM3,      ensemble: r1i1p1}
+  # - {dataset: NorESM1-M,      ensemble: r1i1p1}
+
+
+preprocessors:
+
+  sp50: &sp50
+    extract_levels:
+      levels: 5000
+      scheme: linear
+    extract_region:
+      start_latitude: -90
+      end_latitude: -60
+      start_longitude: 0
+      end_longitude: 360
+    average_region:
+      coord1: latitude
+      coord2: longitude
+
+  sp100: &sp100
+    extract_levels:
+      levels: 10000
+      scheme: linear
+    extract_region:
+      start_latitude: -90
+      end_latitude: -60
+      start_longitude: 0
+      end_longitude: 360
+    average_region:
+      coord1: latitude
+      coord2: longitude
+
+  ng50: &ng50
+    extract_levels:
+      levels: 5000
+      scheme: linear
+    extract_region:
+      start_latitude: -82.5
+      end_latitude: 82.5
+      start_longitude: 0
+      end_longitude: 360
+    average_region:
+      coord1: latitude
+      coord2: longitude
+
+  ng100: &ng100
+    extract_levels:
+      levels: 10000
+      scheme: linear
+    extract_region:
+      start_latitude: -90
+      end_latitude: 90
+      start_longitude: 0
+      end_longitude: 360
+    average_region:
+      coord1: latitude
+      coord2: longitude
+
+  trop250: &trop250
+    extract_levels:
+      levels: 25000
+      scheme: linear
+    extract_region:
+      start_latitude: -30
+      end_latitude: 30
+      start_longitude: 0
+      end_longitude: 360
+    average_region:
+      coord1: latitude
+      coord2: longitude
+
+  mean_sp50:
+    <<: *sp50
+    time_average: null
+
+  mean_sp100:
+    <<: *sp100
+    time_average: null
+
+  mean_ng50:
+    <<: *ng50
+    time_average: null
+
+  mean_ng100:
+    <<: *ng100
+    time_average: null
+
+  mean_trop250:
+    <<: *trop250
+    time_average: null
+
+
+diagnostics:
+
+  diag_save_preproc:
+    variables:
+      tas:
+        project: CMIP5
+        mip: Amon
+        field: T2Ms
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 2000
+        end_year: 2000
+        preprocessor: time_average
+        label: DUMMY_TAS
+        var_type: feature
+        broadcast_from: [1, 2]
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+    scripts:
+      save_preproc:
+        script: gbrt/save_preproc.py
+
+  diag_gbrt:
+    description: Perform GBRT on input data.
+    variables:
+      ta: &variable_settings
+        project: CMIP5
+        mip: Amon
+        field: T3M
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 1979
+        end_year: 2005
+        preprocessor: time_average
+        label: T
+        var_type: feature
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          # - {dataset: CanESM2}
+          # - {dataset: MPI-ESM-LR}
+      tas:
+        <<: *variable_settings
+        label: TAS
+        field: T2Ms
+        broadcast_from: [1, 2]
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          # - {dataset: CanESM2}
+          # - {dataset: MPI-ESM-LR}
+      ua:
+        <<: *variable_settings
+        label: UA
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+          - {dataset: MPI-ESM-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+    scripts:
+      intra_model_gbrt:
+        script: gbrt/intra_model.py
+        ancestors: ['ta', 'tas', 'ua', 'diag_save_preproc/save_preproc']
+
+  diag_austral_jet_position:
+    description: Calculate Austral Jet position.
+    scripts:
+      austral_jet_position:
+        script: austral_jet/jet_position.py
+        ancestors: ['diag_gbrt/intra_model_gbrt']
