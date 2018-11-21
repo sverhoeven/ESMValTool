@@ -4,10 +4,16 @@ import logging
 import os
 
 import iris
+import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble.partial_dependence import plot_partial_dependence
 from sklearn.model_selection import train_test_split
 
-from ._base import group_metadata, select_metadata, save_iris_cube
+from ._base import group_metadata, select_metadata, save_iris_cube  # noqa
+
+import matplotlib  # noqa
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt  # noqa
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -149,17 +155,90 @@ class GBRTBase():
             logger.debug("Successfully fitted GBRT model%s",
                          self._get_logger_suffix(model_name))
 
-    def plot_prediction_error(self, filename):
-        """Plot prediction error for training and test data."""
-        pass
-
-    def plot_feature_importance(self, filename):
+    def plot_feature_importance(self, filename=None):
         """Plot feature importance."""
-        pass
+        if not self._cfg['write_plots']:
+            return
+        if filename is None:
+            filename = 'feature_importance_{model}'
+        (_, axes) = plt.subplots()
 
-    def plot_partial_dependence(self, filename):
+        # Plot for every GBRT model
+        for model_name in self._datasets['training']:
+            feature_importance = self._clf[model_name].feature_importances_
+            sorted_idx = np.argsort(feature_importance)
+            pos = np.arange(sorted_idx.shape[0]) + 0.5
+            axes.barh(pos, feature_importance[sorted_idx], align='center')
+            axes.set_title('Variable Importance')
+            axes.set_xlabel('Relative Importance')
+            axes.set_yticks(pos)
+            axes.set_yticklabels(
+                np.array(self.classes['features'])[sorted_idx])
+            new_filename = (filename.format(model=model_name) + '.' +
+                            self._cfg['output_file_type'])
+            new_path = os.path.join(self._cfg['plot_dir'], new_filename)
+            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+            logger.info("Wrote %s", new_path)
+            axes.clear()
+        plt.close()
+
+    def plot_partial_dependence(self, filename=None):
         """Plot partial dependence."""
-        pass
+        if not self._cfg['write_plots']:
+            return
+        if filename is None:
+            filename = 'partial_dependece_of_{feature}_{model}'
+
+        # Plot for every GBRT model
+        for model_name in self._datasets['training']:
+            for (idx, feature_name) in enumerate(self.classes['features']):
+                (_, [axes]) = plot_partial_dependence(
+                    self._clf[model_name],
+                    self._data[model_name]['x_train'],
+                    [idx])
+                axes.set_title('Partial dependence')
+                axes.set_xlabel(feature_name)
+                axes.set_ylabel('Eastward wind')
+                new_filename = (filename.format(feature=feature_name,
+                                                model=model_name) + '.' +
+                                self._cfg['output_file_type'])
+                new_path = os.path.join(self._cfg['plot_dir'], new_filename)
+                plt.savefig(new_path, orientation='landscape',
+                            bbox_inches='tight')
+                logger.info("Wrote %s", new_path)
+                plt.close()
+
+    def plot_prediction_error(self, filename=None):
+        """Plot prediction error for training and test data."""
+        if not self._cfg['write_plots']:
+            return
+        if filename is None:
+            filename = 'prediction_error_{model}'
+        (_, axes) = plt.subplots()
+
+        # Plot for every GBRT model
+        for model_name in self._datasets['training']:
+            clf = self._clf[model_name]
+            data = self._data[model_name]
+            test_score = np.zeros((self.parameters['n_estimators'],),
+                                  dtype=np.float64)
+            for (idx, y_pred) in enumerate(clf.staged_predict(data['x_test'])):
+                test_score[idx] = clf.loss_(data['y_test'], y_pred)
+            axes.plot(np.arange(len(clf.train_score_)) + 1, clf.train_score_,
+                      'b-', label='Training Set Deviance')
+            axes.plot(np.arange(len(test_score)) + 1, test_score, 'r-',
+                      label='Test Set Deviance')
+            axes.legend(loc='upper right')
+            axes.set_title('Deviance')
+            axes.set_xlabel('Boosting Iterations')
+            axes.set_ylabel('Deviance')
+            new_filename = (filename.format(model=model_name) + '.' +
+                            self._cfg['output_file_type'])
+            new_path = os.path.join(self._cfg['plot_dir'], new_filename)
+            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+            logger.info("Wrote %s", new_path)
+            axes.clear()
+        plt.close()
 
     def predict(self):
         """Perform prediction using the GBRT model(s) and write netcdf."""
@@ -344,7 +423,7 @@ class GBRTBase():
         training_datasets = feature_datasets + label_datasets
         return (training_datasets, prediction_datasets)
 
-    def _get_logger_suffix(self, model_name): # noqa
+    def _get_logger_suffix(self, model_name):  # noqa
         """Get message suffix for logger based on `model_name`."""
         msg = '' if model_name is None else ' for model {}'.format(model_name)
         return msg
@@ -354,7 +433,7 @@ class GBRTBase():
         raise NotImplementedError("This method must be implemented in the "
                                   "child class")
 
-    def _group_prediction_datasets(self, datasets): # noqa
+    def _group_prediction_datasets(self, datasets):  # noqa
         """Group prediction datasets (use `prediction_name` key)."""
         return group_metadata(datasets, 'prediction_name')
 

@@ -199,6 +199,11 @@ def main(cfg):
     pred = gbrt.predict()
     logger.info("Prediction: %s", pred)
 
+    # Plots
+    gbrt.plot_feature_importance()
+    gbrt.plot_partial_dependence()
+    gbrt.plot_prediction_error()
+
 
 # def _extract_data(input_data, var_type, cfg):
 #     """Extract required var_type data from input_data."""
