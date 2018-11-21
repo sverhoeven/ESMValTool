@@ -66,9 +66,9 @@ class IntraModelGBRT(GBRTBase):
         """Collect x data from `datasets`."""
         x_data = []
         names = []
+        skipped_datasets = []
         coords = None
         cube = None
-        skipped_datasets = []
 
         # Iterate over data
         for dataset in datasets:
@@ -185,7 +185,7 @@ class IntraModelGBRT(GBRTBase):
         return (new_data, names)
 
 
-    def _group_input_datasets(self, datasets):
+    def _group_training_datasets(self, datasets):
         """Group input datasets (one GBRT model for every climate model)."""
         return group_metadata(datasets, 'dataset')
 
@@ -194,8 +194,10 @@ def main(cfg):
     """Run the diagnostic."""
     gbrt = IntraModelGBRT(cfg)
     logger.info("Initialized GBRT model with parameters %s",
-               gbrt.parameters)
+                gbrt.parameters)
     gbrt.fit()
+    pred = gbrt.predict()
+    logger.info("Prediction: %s", pred)
 
 
 # def _extract_data(input_data, var_type, cfg):
