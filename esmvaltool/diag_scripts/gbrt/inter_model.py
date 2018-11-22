@@ -44,11 +44,15 @@ from esmvaltool.diag_scripts.shared.gbrt import GBRTBase
 from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
                                             sorted_metadata)
 
+import matplotlib  # noqa
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt  # noqa
+
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-class IntraModelGBRT(GBRTBase):
-    """Intra-model GBRT diagnostic."""
+class InterModelGBRT(GBRTBase):
+    """Inter-model GBRT diagnostic."""
 
     def __init__(self, cfg):
         """Initialize class members.
@@ -62,10 +66,44 @@ class IntraModelGBRT(GBRTBase):
         super().__init__(cfg)
         self.classes['climate_models'] = None
 
+    def plot_scatterplot(self, filename=None):
+        """Plot scatterplot label vs. feature for every feature."""
+        if not self._is_ready_for_plotting():
+            return
+        if filename is None:
+            filename = 'scatterplot_{feature}'
+        (_, axes) = plt.subplots()
+
+        # Plot scatterplot for every feature
+        for (f_idx, feature) in enumerate(self.classes['features']):
+            for (m_idx, model) in enumerate(self.classes['climate_models']):
+                x_data = self._data[None]['x_data'][m_idx, f_idx]
+                y_data = self._data[None]['y_data'][m_idx]
+                axes.scatter(x_data, y_data, label=model)
+            axes.set_title(feature)
+            axes.set_xlabel(feature)
+            axes.set_ylabel(self.classes['label'])
+            new_filename = (filename.format(feature=feature) + '.' +
+                            self._cfg['output_file_type'])
+            new_path = os.path.join(self._cfg['plot_dir'], new_filename)
+            legend = axes.legend(
+                loc='center left',
+                ncol=2,
+                bbox_to_anchor=[1.05, 0.5],
+                borderaxespad=0.0)
+            plt.savefig(
+                new_path,
+                orientation='landscape',
+                bbox_inches='tight',
+                additional_artists=[legend])
+            axes.clear()
+        plt.close()
+
     def _append_ensemble_to_name(self, datasets):  # noqa
         """Append ensemble to dataset name."""
         for dataset in datasets:
-            dataset['dataset'] += '_{}'.format(dataset['ensemble'])
+            if 'ensemble' in dataset:
+                dataset['dataset'] += '_{}'.format(dataset['ensemble'])
         return datasets
 
     def _check_climate_models(self, climate_models):
@@ -81,10 +119,11 @@ class IntraModelGBRT(GBRTBase):
 
     def _check_cube_shape(self, cube, climate_model):  # noqa
         """Check shape of a given cube."""
-        if cube.shape != (1, ):
-            raise ValueError("Expected only cubes with shape (1,), got {} "
+        allowed_shape = ()
+        if cube.shape != allowed_shape:
+            raise ValueError("Expected only cubes with shape {}, got {} "
                              "from climate model {}".format(
-                                 cube.shape, climate_model))
+                                 allowed_shape, cube.shape, climate_model))
 
     def _collect_x_data(self, datasets, var_type):
         """Collect x data from `datasets`."""
@@ -96,13 +135,17 @@ class IntraModelGBRT(GBRTBase):
 
         # Iterate over all climate models:
         for (climate_model, model_datasets) in group_metadata(
-                datasets, 'dataset', sort=True).values():
+                datasets, 'dataset', sort=True).items():
             climate_models.append(climate_model)
             model_datasets = sorted_metadata(model_datasets, 'label')
             model_data = []
             names = []
             for dataset in model_datasets:
                 cube = iris.load_cube(dataset['filename'])
+
+                # FIXME
+                cube = cube.collapsed('time', iris.analysis.MEAN)
+
                 self._check_cube_shape(cube, climate_model)
                 model_data.append(cube.data)
                 names.append(dataset['label'])
@@ -122,6 +165,10 @@ class IntraModelGBRT(GBRTBase):
         # Check if data was found
         if cube is None:
             raise ValueError("No '{}' datasets found".format(var_type))
+
+        # Check climate models
+        if var_type == 'feature':
+            self._check_climate_models(climate_models)
 
         # Convert data to numpy array with correct shape
         x_data = np.array(x_data)
@@ -146,6 +193,10 @@ class IntraModelGBRT(GBRTBase):
 
             # Save data
             cube = iris.load_cube(dataset['filename'])
+
+            # FIXME
+            cube = cube.collapsed('time', iris.analysis.MEAN)
+
             self._check_cube_shape(cube, climate_model)
             y_data.append(cube.data)
 
@@ -176,7 +227,7 @@ class IntraModelGBRT(GBRTBase):
 
 def main(cfg):
     """Run the diagnostic."""
-    gbrt = IntraModelGBRT(cfg)
+    gbrt = InterModelGBRT(cfg)
     logger.info("Initialized GBRT model with parameters %s", gbrt.parameters)
 
     # Fit and predict
@@ -184,6 +235,7 @@ def main(cfg):
     gbrt.predict()
 
     # Plots
+    gbrt.plot_scatterplot()
     gbrt.plot_feature_importance()
     gbrt.plot_partial_dependence()
     gbrt.plot_prediction_error()

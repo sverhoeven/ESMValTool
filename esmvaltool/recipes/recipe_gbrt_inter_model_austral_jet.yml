@@ -20,61 +20,66 @@ datasets:
   - {dataset: ACCESS1-0,      ensemble: r1i1p1}
   - {dataset: ACCESS1-3,      ensemble: r1i1p1}
   # - {dataset: bcc-csm1-1,     ensemble: r1i1p1}
-  # - {dataset: bcc-csm1-1-m,   ensemble: r1i1p1}
-  # - {dataset: BNU-ESM,        ensemble: r1i1p1}
-  # - {dataset: CanESM2,        ensemble: r1i1p1}
-  # - {dataset: CanESM2,        ensemble: r2i1p1}
-  # - {dataset: CanESM2,        ensemble: r3i1p1}
-  # - {dataset: CanESM2,        ensemble: r4i1p1}
-  # - {dataset: CanESM2,        ensemble: r5i1p1}
+  - {dataset: BNU-ESM,        ensemble: r1i1p1}
+  - {dataset: CanESM2,        ensemble: r1i1p1}
+  - {dataset: CanESM2,        ensemble: r2i1p1}
+  - {dataset: CanESM2,        ensemble: r3i1p1}
+  - {dataset: CanESM2,        ensemble: r4i1p1}
+  - {dataset: CanESM2,        ensemble: r5i1p1}
   # - {dataset: CCSM4,          ensemble: r1i1p1}
   # - {dataset: CCSM4,          ensemble: r2i1p1}
   # - {dataset: CCSM4,          ensemble: r3i1p1}
   # - {dataset: CCSM4,          ensemble: r4i1p1}
   # - {dataset: CCSM4,          ensemble: r5i1p1}
   # - {dataset: CCSM4,          ensemble: r6i1p1}
-  # - {dataset: CESM1-BGC,      ensemble: r1i1p1}
-  # - {dataset: CESM1-CAM5,     ensemble: r1i1p1}
-  # - {dataset: CESM1-CAM5,     ensemble: r2i1p1}
-  # - {dataset: CESM1-CAM5,     ensemble: r3i1p1}
-  # - {dataset: CMCC-CMS,       ensemble: r1i1p1}
-  # - {dataset: CNRM-CM5,       ensemble: r1i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r1i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r2i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r3i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r4i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r5i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r6i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r7i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r8i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r9i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r10i1p1}
-  # - {dataset: GFDL-CM3,       ensemble: r1i1p1}
-  # - {dataset: GFDL-ESM2G,     ensemble: r1i1p1}
-  # - {dataset: GFDL-ESM2M,     ensemble: r1i1p1}
-  # - {dataset: HadGEM2-AO,     ensemble: r1i1p1}
-  # - {dataset: inmcm4,         ensemble: r1i1p1}
-  # - {dataset: IPSL-CM5A-LR,   ensemble: r1i1p1}
-  # - {dataset: IPSL-CM5A-LR,   ensemble: r2i1p1}
-  # - {dataset: IPSL-CM5A-LR,   ensemble: r3i1p1}
-  # - {dataset: IPSL-CM5A-LR,   ensemble: r4i1p1}
-  # - {dataset: IPSL-CM5A-MR,   ensemble: r1i1p1}
-  # - {dataset: IPSL-CM5B-LR,   ensemble: r1i1p1}
-  # - {dataset: MIROC5,         ensemble: r1i1p1}
-  # - {dataset: MIROC5,         ensemble: r2i1p1}
-  # - {dataset: MIROC-ESM,      ensemble: r1i1p1}
-  # - {dataset: MIROC-ESM-CHEM, ensemble: r1i1p1}
-  # - {dataset: MPI-ESM-LR,     ensemble: r1i1p1}
-  # - {dataset: MPI-ESM-LR,     ensemble: r2i1p1}
-  # - {dataset: MPI-ESM-LR,     ensemble: r3i1p1}
-  # - {dataset: MPI-ESM-MR,     ensemble: r1i1p1}
-  # - {dataset: MPI-ESM-MR,     ensemble: r2i1p1}
-  # - {dataset: MPI-ESM-MR,     ensemble: r3i1p1}
-  # - {dataset: MRI-CGCM3,      ensemble: r1i1p1}
-  # - {dataset: NorESM1-M,      ensemble: r1i1p1}
+  - {dataset: CESM1-BGC,      ensemble: r1i1p1}
+  - {dataset: CESM1-CAM5,     ensemble: r1i1p1}
+  - {dataset: CESM1-CAM5,     ensemble: r2i1p1}
+  - {dataset: CESM1-CAM5,     ensemble: r3i1p1}
+  - {dataset: CMCC-CMS,       ensemble: r1i1p1}
+  - {dataset: CNRM-CM5,       ensemble: r1i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r1i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r2i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r3i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r4i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r5i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r6i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r7i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r8i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r9i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r10i1p1}
+  - {dataset: GFDL-CM3,       ensemble: r1i1p1}
+  - {dataset: GFDL-ESM2G,     ensemble: r1i1p1}
+  - {dataset: GFDL-ESM2M,     ensemble: r1i1p1}
+  - {dataset: HadGEM2-AO,     ensemble: r1i1p1}
+  - {dataset: inmcm4,         ensemble: r1i1p1}
+  - {dataset: IPSL-CM5A-LR,   ensemble: r1i1p1}
+  - {dataset: IPSL-CM5A-LR,   ensemble: r2i1p1}
+  - {dataset: IPSL-CM5A-LR,   ensemble: r3i1p1}
+  - {dataset: IPSL-CM5A-LR,   ensemble: r4i1p1}
+  - {dataset: IPSL-CM5A-MR,   ensemble: r1i1p1}
+  - {dataset: IPSL-CM5B-LR,   ensemble: r1i1p1}
+  - {dataset: MIROC5,         ensemble: r1i1p1}
+  - {dataset: MIROC5,         ensemble: r2i1p1}
+  - {dataset: MIROC-ESM,      ensemble: r1i1p1}
+  - {dataset: MIROC-ESM-CHEM, ensemble: r1i1p1}
+  - {dataset: MPI-ESM-LR,     ensemble: r1i1p1}
+  - {dataset: MPI-ESM-LR,     ensemble: r2i1p1}
+  - {dataset: MPI-ESM-LR,     ensemble: r3i1p1}
+  - {dataset: MPI-ESM-MR,     ensemble: r1i1p1}
+  - {dataset: MPI-ESM-MR,     ensemble: r2i1p1}
+  - {dataset: MPI-ESM-MR,     ensemble: r3i1p1}
+  - {dataset: MRI-CGCM3,      ensemble: r1i1p1}
+  - {dataset: NorESM1-M,      ensemble: r1i1p1}
 
 
 preprocessors:
+
+  noop:
+    {}
+
+  time_average:
+    time_average: null
 
   sp50: &sp50
     extract_levels:
@@ -164,68 +169,81 @@ preprocessors:
 
 diagnostics:
 
-  diag_save_preproc:
-    variables:
-      tas:
-        project: CMIP5
-        mip: Amon
-        field: T2Ms
-        exp: historical
-        ensemble: r1i1p1
-        start_year: 2000
-        end_year: 2000
-        preprocessor: time_average
-        label: DUMMY_TAS
-        var_type: feature
-        broadcast_from: [1, 2]
-        additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-    scripts:
-      save_preproc:
-        script: gbrt/save_preproc.py
+  # FIXME: 'save_preproc.py' not necessary (set ancestors to
+  # 'diag_gbrt_input_*/*)
+  # Only possible in iris > 2 which allows time_average and average_region in
+  # preprocessor.
 
-  diag_gbrt:
-    description: Perform GBRT on input data.
+  diag_gbrt_input_mean_ta_sp100:
     variables:
       ta: &variable_settings
         project: CMIP5
         mip: Amon
         field: T3M
         exp: historical
-        ensemble: r1i1p1
         start_year: 1979
         end_year: 2005
-        preprocessor: time_average
-        label: T
+        # preprocessor: mean_sp100
+        preprocessor: sp100
         var_type: feature
+        label: T-SP_c
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-          # - {dataset: CanESM2}
-          # - {dataset: MPI-ESM-LR}
-      tas:
-        <<: *variable_settings
-        label: TAS
-        field: T2Ms
-        broadcast_from: [1, 2]
-        additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-          # - {dataset: CanESM2}
-          # - {dataset: MPI-ESM-LR}
-      ua:
-        <<: *variable_settings
-        label: UA
-        additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-          - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
-          - {dataset: MPI-ESM-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
     scripts:
-      intra_model_gbrt:
-        script: gbrt/intra_model.py
-        ancestors: ['ta', 'tas', 'ua', 'diag_save_preproc/save_preproc']
+      save_preproc: &save_preproc
+        script: gbrt/save_preproc.py
 
-  diag_austral_jet_position:
-    description: Calculate Austral Jet position.
+  diag_gbrt_input_mean_ta_ng100:
+    variables:
+      ta:
+        <<: *variable_settings
+        # preprocessor: mean_ng100
+        preprocessor: ng100
+        label: T-NGlob_c
     scripts:
-      austral_jet_position:
-        script: austral_jet/jet_position.py
-        ancestors: ['diag_gbrt/intra_model_gbrt']
+      save_preproc:
+        <<: *save_preproc
+
+  diag_gbrt_input_mean_ta_trop250:
+    variables:
+      ta:
+        <<: *variable_settings
+        # preprocessor: mean_trop250
+        preprocessor: trop250
+        label: T-Trop_c
+    scripts:
+      save_preproc:
+        <<: *save_preproc
+
+  diag_gbrt_input_mean_uajet_sh850:
+    variables:
+      uajet:
+        <<: *variable_settings
+        field: T0M
+        derive: True
+        # preprocessor: time_average
+        preprocessor: noop
+        label: U-Jet_c
+    scripts:
+      save_preproc:
+        <<: *save_preproc
+
+  diag_gbrt:
+    description: Perform GBRT on input data.
+    variables:
+      uajet:
+        project: CMIP5
+        mip: Amon
+        field: T0M
+        exp: rcp45
+        start_year: 2015
+        end_year: 2034
+        # preprocessor: time_average
+        preprocessor: noop
+        derive: True
+        var_type: label
+        label: UAJET
+    scripts:
+      inter_model_gbrt:
+        script: gbrt/inter_model.py
+        ancestors: ['uajet', 'diag_gbrt_input_*/save_preproc']

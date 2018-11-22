@@ -18,7 +18,19 @@ def main(cfg):
     if cfg['write_netcdf']:
         for (path, data) in cfg['input_data'].items():
             cube = iris.load_cube(path)
+
+            # Average if desired
+            if cfg.get('global_average'):
+                weights = iris.analysis.cartography.area_weights(cube)
+                cube = cube.collapsed(['latitude', 'longitude'],
+                                      iris.analysis.MEAN,
+                                      weights=weights)
+            if cfg.get('temporal_average'):
+                cube = cube.collapsed('time', iris.analysis.MEAN)
+
+            # Save new cube
             new_path = os.path.join(cfg['work_dir'], os.path.basename(path))
+            data['filename'] = new_path
             gbrt.write_cube(cube, data, new_path, cfg)
 
 
