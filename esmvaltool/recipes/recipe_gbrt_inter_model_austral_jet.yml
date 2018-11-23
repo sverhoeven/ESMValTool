@@ -169,12 +169,7 @@ preprocessors:
 
 diagnostics:
 
-  # FIXME: 'save_preproc.py' not necessary (set ancestors to
-  # 'diag_gbrt_input_*/*)
-  # Only possible in iris > 2 which allows time_average and average_region in
-  # preprocessor.
-
-  diag_gbrt_input_mean_ta_sp100:
+  diag_gbrt_input_ta_sp100:
     variables:
       ta: &variable_settings
         project: CMIP5
@@ -183,37 +178,66 @@ diagnostics:
         exp: historical
         start_year: 1979
         end_year: 2005
-        # preprocessor: mean_sp100
-        preprocessor: sp100
+        preprocessor: mean_sp100
         var_type: feature
         label: T-SP_c
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
     scripts:
-      save_preproc: &save_preproc
-        script: gbrt/save_preproc.py
+      mean: &mean
+        script: gbrt/mean.py
+
+  diag_gbrt_input_trend_ta_ng100:
+    variables:
+      ta:
+        <<: *variable_settings
+        preprocessor: sp100
+        label: T-NGlob_t
+    scripts:
+      trend: &trend
+        script: gbrt/trend.py
+        yearly_trend: True
+
 
   diag_gbrt_input_mean_ta_ng100:
     variables:
       ta:
         <<: *variable_settings
-        # preprocessor: mean_ng100
-        preprocessor: ng100
+        preprocessor: mean_ng100
         label: T-NGlob_c
     scripts:
-      save_preproc:
-        <<: *save_preproc
+      mean:
+        <<: *mean
+
+  diag_gbrt_input_trend_ta_ng100:
+    variables:
+      ta:
+        <<: *variable_settings
+        preprocessor: ng100
+        label: T-NGlob_t
+    scripts:
+      trend:
+        <<: *trend
 
   diag_gbrt_input_mean_ta_trop250:
     variables:
       ta:
         <<: *variable_settings
-        # preprocessor: mean_trop250
-        preprocessor: trop250
+        preprocessor: mean_trop250
         label: T-Trop_c
     scripts:
-      save_preproc:
-        <<: *save_preproc
+      mean:
+        <<: *mean
+
+  diag_gbrt_input_trend_ta_trop250:
+    variables:
+      ta:
+        <<: *variable_settings
+        preprocessor: trop250
+        label: T-Trop_t
+    scripts:
+      trend:
+        <<: *trend
 
   diag_gbrt_input_mean_uajet_sh850:
     variables:
@@ -221,12 +245,23 @@ diagnostics:
         <<: *variable_settings
         field: T0M
         derive: True
-        # preprocessor: time_average
-        preprocessor: noop
+        preprocessor: time_average
         label: U-Jet_c
     scripts:
-      save_preproc:
-        <<: *save_preproc
+      mean:
+        <<: *mean
+
+  diag_gbrt_input_trend_uajet_sh850:
+    variables:
+      uajet:
+        <<: *variable_settings
+        field: T0M
+        derive: True
+        preprocessor: noop
+        label: U-Jet_t
+    scripts:
+      trend:
+        <<: *trend
 
   diag_gbrt:
     description: Perform GBRT on input data.
@@ -238,12 +273,12 @@ diagnostics:
         exp: rcp45
         start_year: 2015
         end_year: 2034
-        # preprocessor: time_average
-        preprocessor: noop
+        preprocessor: time_average
         derive: True
         var_type: label
         label: UAJET
     scripts:
       inter_model_gbrt:
         script: gbrt/inter_model.py
-        ancestors: ['uajet', 'diag_gbrt_input_*/save_preproc']
+        ancestors: ['uajet', 'diag_gbrt_input_*/mean']
+        learning_rate: 0.001

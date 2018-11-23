@@ -36,6 +36,7 @@ parameters : dict, optional
 
 import logging
 import os
+from pprint import pformat
 
 import iris
 import numpy as np
@@ -144,7 +145,7 @@ class InterModelGBRT(GBRTBase):
                 cube = iris.load_cube(dataset['filename'])
 
                 # FIXME
-                cube = cube.collapsed('time', iris.analysis.MEAN)
+                # cube = cube.collapsed('time', iris.analysis.MEAN)
 
                 self._check_cube_shape(cube, climate_model)
                 model_data.append(cube.data)
@@ -195,7 +196,7 @@ class InterModelGBRT(GBRTBase):
             cube = iris.load_cube(dataset['filename'])
 
             # FIXME
-            cube = cube.collapsed('time', iris.analysis.MEAN)
+            # cube = cube.collapsed('time', iris.analysis.MEAN)
 
             self._check_cube_shape(cube, climate_model)
             y_data.append(cube.data)
@@ -232,7 +233,9 @@ def main(cfg):
 
     # Fit and predict
     gbrt.fit()
-    gbrt.predict()
+    predictions = gbrt.predict()
+    logger.info("Predictions:")
+    logger.info("%s", pformat(predictions))
 
     # Plots
     gbrt.plot_scatterplot()
