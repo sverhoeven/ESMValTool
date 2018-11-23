@@ -169,7 +169,7 @@ preprocessors:
 
 diagnostics:
 
-  diag_gbrt_input_ta_sp100:
+  diag_gbrt_input_mean_ta_sp100:
     variables:
       ta: &variable_settings
         project: CMIP5
@@ -187,12 +187,12 @@ diagnostics:
       mean: &mean
         script: gbrt/mean.py
 
-  diag_gbrt_input_trend_ta_ng100:
+  diag_gbrt_input_trend_ta_sp100:
     variables:
       ta:
         <<: *variable_settings
         preprocessor: sp100
-        label: T-NGlob_t
+        label: T-SP_t
     scripts:
       trend: &trend
         script: gbrt/trend.py
@@ -280,5 +280,9 @@ diagnostics:
     scripts:
       inter_model_gbrt:
         script: gbrt/inter_model.py
-        ancestors: ['uajet', 'diag_gbrt_input_*/mean']
+        ancestors: [
+          'uajet',
+          'diag_gbrt_input_*/mean',
+          'diag_gbrt_input_*/trend',
+        ]
         learning_rate: 0.001
