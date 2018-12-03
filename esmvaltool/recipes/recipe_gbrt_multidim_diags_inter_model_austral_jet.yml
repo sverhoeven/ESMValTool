@@ -1,10 +1,10 @@
-# recipe_gbrt_inter_model_austral_jet.yml
+# recipe_gbrt_multidim_diags_inter_model_austral_jet.yml
 ---
 documentation:
 
   description: |
-    Use inter-model GBRT (Gradient Boosted Regression Trees) models to predict
-    future climate.
+    Use inter-model GBRT (Gradient Boosted Regression Trees) model to predict
+    future climate for multidimensional diagnostics.
 
   authors:
     - schl_ma
@@ -62,8 +62,8 @@ diagnostics:
           - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
           - {dataset: MPI-ESM-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
     scripts:
-      intra_model_gbrt:
-        script: gbrt/intra_model.py
+      gbrt:
+        script: gbrt/multi_model.py
         use_coords_as_feature:
           air_pressure: 0
           latitude: 1

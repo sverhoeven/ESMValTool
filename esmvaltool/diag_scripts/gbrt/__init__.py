@@ -1,20 +1,17 @@
-"""Convenience functions and base class for GBRT diagnostics."""
+"""Convenience functions and classes for GBRT diagnostics."""
 
 import logging
 import os
 
 import iris
+import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.ensemble.partial_dependence import plot_partial_dependence
 from sklearn.model_selection import train_test_split
 
 from esmvaltool.diag_scripts.shared import (group_metadata, select_metadata,
-                                            save_iris_cube)
-
-import matplotlib  # noqa
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt  # noqa
+                                            save_iris_cube, sorted_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -79,12 +76,38 @@ def write_cube(cube, attributes, path, cfg):
     save_iris_cube(cube, path, cfg)
 
 
-class GBRTBase():
-    """Base class for GBRT diagnostics.
+class GBRTModel():
+    """Class for GBRT models.
 
     Note
     ----
-    Several functions need to be implemented in child classes.
+    All datasets must have the attribute 'var_type' which specifies this
+    dataset. Possible values are 'feature' (independent variables used for
+    training/testing), 'label' (dependent variables, y-axis) or
+    'prediction_input' (independent variables used for prediction of dependent
+    variables, usually observational data). All 'feature' and 'label' datasets
+    must have the same shape, except the attribute 'broadcast_from' is set to a
+    list of suitable coordinate indices (must be done for each feature/label).
+    This also applies to the 'prediction_input' data sets.
+
+    Multiple predictions can be specified by the key 'prediction_name'.
+
+    Configuration options in recipe
+    -------------------------------
+    parameters : dict, optional
+        Paramter used in the classifier, more information is available here:
+        https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
+    use_coords_as_feature : dict, optional
+        Use coordinates (e.g. 'air_pressure' or 'latitude') as features,
+        coordinate names are given by the dictionary keys, the associated index
+        by the dictionary values.
+    use_only_coords_as_features : bool, optional (default: False)
+        Use only the specified coordinates as features.
+    use_climate_models_as_features : bool, optional (default: False)
+        Use climate models as features.
+    accept_only_scalar_data : bool, optional (default: False)
+        Only accept scalar diagnostic data, use different climate models as
+        observations for the GBRT model.
 
     """
 
@@ -96,17 +119,23 @@ class GBRTBase():
         'loss': 'ls',
     }
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, root_dir=None, **metadata):
         """Initialize class members.
 
         Parameters
         ----------
         cfg : dict
             Diagnostic script configuration.
+        root_dir : str, optional
+            Root directory for output (subdirectory in `work_dir` and
+            `plot_dir`).
+        metadata : keyword arguments
+            Metadata for selecting only specific datasets as `features` and
+            `labels` (e.g. `dataset='CanESM2'`).
 
         """
         # Private members
-        self._clf = {}
+        self._clf = None
         self._cubes = {}
         self._data = {}
         self._datasets = {}
@@ -116,19 +145,34 @@ class GBRTBase():
         self.classes = {}
         self.parameters = self._load_parameters()
 
+        # Adapt output directories
+        if root_dir is None:
+            root_dir = ''
+        self._cfg['gbrt_work_dir'] = os.path.join(self._cfg['work_dir'],
+                                                  root_dir)
+        self._cfg['gbrt_plot_dir'] = os.path.join(self._cfg['plot_dir'],
+                                                  root_dir)
+        if not os.path.exists(self._cfg['gbrt_work_dir']):
+            os.makedirs(self._cfg['gbrt_work_dir'])
+            logger.info("Created %s", self._cfg['gbrt_work_dir'])
+        if not os.path.exists(self._cfg['gbrt_plot_dir']):
+            os.makedirs(self._cfg['gbrt_plot_dir'])
+            logger.info("Created %s", self._cfg['gbrt_plot_dir'])
+
         # Load input datasets
-        (training_datasets, prediction_datasets) = self._get_input_datasets()
+        (training_datasets,
+         prediction_datasets) = self._get_input_datasets(**metadata)
         if not datasets_have_gbrt_attributes(
                 training_datasets, log_level='error'):
             raise ValueError()
         if not datasets_have_gbrt_attributes(
                 prediction_datasets, log_level='error'):
             raise ValueError()
-        self._datasets['training'] = self._group_training_datasets(
-            training_datasets)
+        self._datasets['training'] = training_datasets
         self._datasets['prediction'] = self._group_prediction_datasets(
             prediction_datasets)
-        logger.debug("Initialized GBRT base class")
+        logger.info("Initialized GBRT model with parameters %s",
+                    self.parameters)
 
     def fit(self, **parameters):
         """Build the GBRT model(s).
@@ -140,58 +184,46 @@ class GBRTBase():
             settings.
 
         """
-        for (model_name, datasets) in self._datasets['training'].items():
-            logger.info("Fitting GBRT model%s",
-                        self._get_logger_suffix(model_name))
+        logger.info("Fitting GBRT model")
 
-            # Initialize members
-            self._data[model_name] = {}
-            self._cubes[model_name] = {}
-            self_data = self._data[model_name]
-            self_cubes = self._cubes[model_name]
+        # Extract features and labels
+        (self._data['x_data'], self._cubes['feature'], self._data['y_data'],
+         self._cubes['label']) = self._extract_features_and_labels(
+             self._datasets['training'])
 
-            # Extract features and labels
-            (self_data['x_data'], self_cubes['feature'], self_data['y_data'],
-             self_cubes['label']) = self._extract_features_and_labels(datasets)
+        # Separate training and test data
+        (self._data['x_train'], self._data['x_test'], self._data['y_train'],
+         self._data['y_test']) = self._train_test_split()
 
-            # Separate training and test data
-            (self_data['x_train'], self_data['x_test'], self_data['y_train'],
-             self_data['y_test']) = self._train_test_split(model_name)
-
-            # Create GBRT model with desired parameters and fit it
-            params = self.parameters
-            params.update(parameters)
-            self._clf[model_name] = GradientBoostingRegressor(**params)
-            self._clf[model_name].fit(self_data['x_train'],
-                                      self_data['y_train'])
-            logger.info("Successfully fitted GBRT model%s",
-                        self._get_logger_suffix(model_name))
+        # Create GBRT model with desired parameters and fit it
+        params = self.parameters
+        params.update(parameters)
+        self._clf = GradientBoostingRegressor(**params)
+        self._clf.fit(self._data['x_train'], self._data['y_train'])
+        logger.info("Successfully fitted GBRT model")
 
     def plot_feature_importance(self, filename=None):
         """Plot feature importance."""
         if not self._is_ready_for_plotting():
             return
         if filename is None:
-            filename = 'feature_importance_{model}'
+            filename = 'feature_importance'
         (_, axes) = plt.subplots()
 
-        # Plot for every GBRT model
-        for model_name in self._datasets['training']:
-            feature_importance = self._clf[model_name].feature_importances_
-            sorted_idx = np.argsort(feature_importance)
-            pos = np.arange(sorted_idx.shape[0]) + 0.5
-            axes.barh(pos, feature_importance[sorted_idx], align='center')
-            axes.set_title('Variable Importance')
-            axes.set_xlabel('Relative Importance')
-            axes.set_yticks(pos)
-            axes.set_yticklabels(
-                np.array(self.classes['features'])[sorted_idx])
-            new_filename = (filename.format(model=model_name) + '.' +
-                            self._cfg['output_file_type'])
-            new_path = os.path.join(self._cfg['plot_dir'], new_filename)
-            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-            logger.info("Wrote %s", new_path)
-            axes.clear()
+        # Plot
+        feature_importance = self._clf.feature_importances_
+        sorted_idx = np.argsort(feature_importance)
+        pos = np.arange(sorted_idx.shape[0]) + 0.5
+        axes.barh(pos, feature_importance[sorted_idx], align='center')
+        axes.set_title('Variable Importance')
+        axes.set_xlabel('Relative Importance')
+        axes.set_yticks(pos)
+        axes.set_yticklabels(np.array(self.classes['features'])[sorted_idx])
+        new_filename = filename + '.' + self._cfg['output_file_type']
+        new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
+        plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+        logger.info("Wrote %s", new_path)
+        axes.clear()
         plt.close()
 
     def plot_partial_dependence(self, filename=None):
@@ -199,61 +231,91 @@ class GBRTBase():
         if not self._is_ready_for_plotting():
             return
         if filename is None:
-            filename = 'partial_dependece_of_{feature}_{model}'
+            filename = 'partial_dependece_of_{feature}'
 
-        # Plot for every GBRT model
-        for model_name in self._datasets['training']:
-            for (idx, feature_name) in enumerate(self.classes['features']):
-                (_, [axes]) = plot_partial_dependence(
-                    self._clf[model_name], self._data[model_name]['x_train'],
-                    [idx])
-                axes.set_title('Partial dependence')
-                axes.set_xlabel(feature_name)
-                axes.set_ylabel(self.classes['label'])
-                new_filename = (
-                    filename.format(feature=feature_name, model=model_name) +
-                    '.' + self._cfg['output_file_type'])
-                new_path = os.path.join(self._cfg['plot_dir'], new_filename)
-                plt.savefig(
-                    new_path, orientation='landscape', bbox_inches='tight')
-                logger.info("Wrote %s", new_path)
-                plt.close()
+        # Plot for every feature
+        for (idx, feature_name) in enumerate(self.classes['features']):
+            (_, [axes]) = plot_partial_dependence(self._clf,
+                                                  self._data['x_train'], [idx])
+            axes.set_title('Partial dependence')
+            axes.set_xlabel(feature_name)
+            axes.set_ylabel(self.classes['label'])
+            new_filename = (filename.format(feature=feature_name) + '.' +
+                            self._cfg['output_file_type'])
+            new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
+            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+            logger.info("Wrote %s", new_path)
+            plt.close()
 
     def plot_prediction_error(self, filename=None):
         """Plot prediction error for training and test data."""
         if not self._is_ready_for_plotting():
             return
         if filename is None:
-            filename = 'prediction_error_{model}'
+            filename = 'prediction_error'
         (_, axes) = plt.subplots()
 
-        # Plot for every GBRT model
-        for model_name in self._datasets['training']:
-            clf = self._clf[model_name]
-            data = self._data[model_name]
-            test_score = np.zeros((self.parameters['n_estimators'], ),
-                                  dtype=np.float64)
-            for (idx, y_pred) in enumerate(clf.staged_predict(data['x_test'])):
-                test_score[idx] = clf.loss_(data['y_test'], y_pred)
-            axes.plot(
-                np.arange(len(clf.train_score_)) + 1,
-                clf.train_score_,
-                'b-',
-                label='Training Set Deviance')
-            axes.plot(
-                np.arange(len(test_score)) + 1,
-                test_score,
-                'r-',
-                label='Test Set Deviance')
-            axes.legend(loc='upper right')
-            axes.set_title('Deviance')
-            axes.set_xlabel('Boosting Iterations')
-            axes.set_ylabel('Deviance')
-            new_filename = (filename.format(model=model_name) + '.' +
+        # Plot
+        test_score = np.zeros((self.parameters['n_estimators'], ),
+                              dtype=np.float64)
+        for (idx, y_pred) in enumerate(
+                self._clf.staged_predict(self._data['x_test'])):
+            test_score[idx] = self._clf.loss_(self._data['y_test'], y_pred)
+        axes.plot(
+            np.arange(len(self._clf.train_score_)) + 1,
+            self._clf.train_score_,
+            'b-',
+            label='Training Set Deviance')
+        axes.plot(
+            np.arange(len(test_score)) + 1,
+            test_score,
+            'r-',
+            label='Test Set Deviance')
+        axes.legend(loc='upper right')
+        axes.set_title('Deviance')
+        axes.set_xlabel('Boosting Iterations')
+        axes.set_ylabel('Deviance')
+        new_filename = filename + '.' + self._cfg['output_file_type']
+        new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
+        plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+        logger.info("Wrote %s", new_path)
+        axes.clear()
+        plt.close()
+
+    def plot_scatterplot(self, filename=None):
+        """Plot scatterplot label vs. feature for every feature."""
+        if not self._cfg.get('accept_only_scalar_data'):
+            logger.error("Scatterplots are only allowed for scalar data, use "
+                         "'accept_only_scalar_data'")
+            return
+        if not self._is_ready_for_plotting():
+            return
+        if filename is None:
+            filename = 'scatterplot_{feature}'
+        (_, axes) = plt.subplots()
+
+        # Plot scatterplot for every feature
+        for (f_idx, feature) in enumerate(self.classes['features']):
+            for (m_idx, model) in enumerate(self.classes['climate_models']):
+                x_data = self._data['x_data'][m_idx, f_idx]
+                y_data = self._data['y_data'][m_idx]
+                axes.scatter(x_data, y_data, label=model)
+            axes.set_title(feature)
+            axes.set_xlabel(feature)
+            axes.set_ylabel(self.classes['label'])
+            new_filename = (filename.format(feature=feature) + '.' +
                             self._cfg['output_file_type'])
-            new_path = os.path.join(self._cfg['plot_dir'], new_filename)
-            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-            logger.info("Wrote %s", new_path)
+            new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
+            legend = axes.legend(
+                loc='center left',
+                ncol=2,
+                bbox_to_anchor=[1.05, 0.5],
+                borderaxespad=0.0)
+            plt.savefig(
+                new_path,
+                orientation='landscape',
+                bbox_inches='tight',
+                additional_artists=[legend])
             axes.clear()
         plt.close()
 
@@ -267,60 +329,196 @@ class GBRTBase():
         # Iterate over predictions
         predictions = {}
         for (pred_name, datasets) in self._datasets['prediction'].items():
-            predictions[pred_name] = {}
-            logger.info("Prediction name: %s", pred_name)
+            logger.info("Started prediction for prediction %s", pred_name)
             (x_pred, cube) = self._extract_prediction_input(datasets)
+            y_pred = self._clf.predict(x_pred)
+            self._data[pred_name] = y_pred
+            self._cubes[pred_name] = cube
+            predictions[pred_name] = y_pred
 
-            # Iterate over GBRT models
-            for model_name in self._datasets['training']:
-                logger.info("Predicting%s",
-                            self._get_logger_suffix(model_name))
-                y_pred = self._clf[model_name].predict(x_pred)
-                self._data[model_name][pred_name] = y_pred
-                self._cubes[model_name][pred_name] = cube
-                predictions[pred_name][model_name] = y_pred
-
-                # Save data into cubes
-                cube = cube.copy(data=y_pred.reshape(cube.shape))
-                cube.attributes = {}
-                description = 'GBRT model prediction{}'.format(
-                    self._get_logger_suffix(model_name))
-                cube.attributes.update({
-                    'description': description,
-                    'model_name': str(model_name),
-                    'prediction_name': str(pred_name)
-                })
-                cube.attributes.update(self.parameters)
-                filename = 'prediction_{}_for_{}.nc'.format(
-                    pred_name, model_name)
-                new_path = os.path.join(self._cfg['work_dir'], filename)
-                save_iris_cube(cube, new_path, self._cfg)
+            # Save data into cubes
+            cube = cube.copy(data=y_pred.reshape(cube.shape))
+            cube.attributes = {}
+            cube.attributes.update({
+                'description': 'GBRT model prediction',
+                'model_name': self.__class__.__name__,
+                'prediction_name': str(pred_name)
+            })
+            cube.attributes.update(self.parameters)
+            filename = 'prediction_{}.nc'.format(pred_name)
+            new_path = os.path.join(self._cfg['gbrt_work_dir'], filename)
+            save_iris_cube(cube, new_path, self._cfg)
         logger.info("Prediction successful")
 
         return predictions
 
+    def _append_ensemble_to_name(self, datasets):  # noqa
+        """Append ensemble to dataset name."""
+        for dataset in datasets:
+            if 'ensemble' in dataset:
+                dataset['dataset'] += '_{}'.format(dataset['ensemble'])
+        return datasets
+
+    def _check_climate_models(self, climate_models):
+        """Check if `climate_models` match with already saved data."""
+        if self.classes.get('climate_models') is None:
+            self.classes['climate_models'] = climate_models
+        else:
+            if climate_models != self.classes['climate_models']:
+                raise ValueError("Expected identical climate models for "
+                                 "different var_types, got '{}' and "
+                                 "'{}'".format(climate_models,
+                                               self.classes['climate_models']))
+
+    def _check_cube_coords(self, cube, expected_coords, feature, dataset):
+        """Check shape and coordinates of a given cube."""
+        if self._cfg.get('accept_only_scalar_data'):
+            allowed_shape = ()
+            if cube.shape != allowed_shape:
+                raise ValueError("Expected only cubes with shape {}, got {} "
+                                 "from climate model {}, adapt option "
+                                 "'accept_only_scalar_data' in recipe".format(
+                                     allowed_shape, cube.shape,
+                                     dataset['dataset']))
+        else:
+            if expected_coords is not None:
+                if cube.coords() != expected_coords:
+                    raise ValueError("Expected fields with identical "
+                                     "coordinates but '{}' for dataset '{}' "
+                                     "('{}') is differing, consider "
+                                     "regridding or the option "
+                                     "'broadcast_from'".format(
+                                         feature, dataset['dataset'],
+                                         dataset['var_type']))
+        return cube.coords()
+
+    def _check_features(self, features, additional_text=None):
+        """Check if `features` match with already saved data."""
+        if additional_text is None:
+            msg = ' for {}'.format(additional_text)
+        else:
+            msg = ''
+
+        # Compare new features to already saved ones
+        if self.classes.get('features') is None:
+            self.classes['features'] = features
+        else:
+            if features != self.classes['features']:
+                raise ValueError("Expected features '{}'{}, got "
+                                 "'{}'".format(self.classes['features'], msg,
+                                               features))
+
+        # Check for duplicates
+        duplicates = {
+            f
+            for f in self.classes['features']
+            if self.classes['features'].count(f) > 1
+        }
+        if duplicates:
+            raise ValueError("Got duplicate features '{}'{}".format(
+                duplicates, msg))
+
     def _collect_x_data(self, datasets, var_type):
-        """Collect x data, must be implemented in child class."""
-        raise NotImplementedError("This method must be implemented in the "
-                                  "child class")
+        """Collect x data from `datasets`."""
+        if (self._cfg.get('use_climate_models_as_features')
+                or self._cfg.get('accept_only_scalar_data')):
+            datasets = self._append_ensemble_to_name(datasets)
+            grouped_datasets = group_metadata(datasets, 'dataset', sort=True)
+        else:
+            grouped_datasets = {None: datasets}
+        warning = all([
+            len(grouped_datasets) > 1,
+            not self._cfg.get('use_climate_models_as_features'),
+            not self._cfg.get('accept_only_scalar_data')
+        ])
+        if warning:
+            logger.warning("Got data of multiple climate models but "
+                           "'use_climate_models_as_features' is not used, "
+                           "use 'metadata' keyword arguments in class "
+                           "initialization to preselect datasets")
+
+        # Iterate over datasets
+        climate_models = []
+        x_data = []
+
+        for (climate_model, model_datasets) in grouped_datasets.items():
+            climate_models.append(climate_model)
+            model_datasets = sorted_metadata(model_datasets, 'label')
+            (model_data, feature_names, cube) = self._get_x_data_for_model(
+                model_datasets, climate_model, var_type)
+
+            # Check features
+            if climate_model is None:
+                text = var_type
+            else:
+                text = "{} ('{}')".format(climate_model, var_type)
+            self._check_features(feature_names, additional_text=text)
+
+            # Append data
+            if x_data:
+                x_data = np.vstack((x_data, model_data))
+            else:
+                x_data = model_data
+
+        # Check climate models
+        if var_type == 'feature':
+            self._check_climate_models(climate_models)
+
+        return (x_data, cube)
 
     def _collect_y_data(self, datasets):
-        """Collect y data, must be implemented in child class."""
-        raise NotImplementedError("This method must be implemented in the "
-                                  "child class")
+        """Collect y data from `datasets`."""
+        if (self._cfg.get('use_climate_models_as_features')
+                or self._cfg.get('accept_only_scalar_data')):
+            datasets = self._append_ensemble_to_name(datasets)
+            grouped_datasets = group_metadata(datasets, 'dataset', sort=True)
+        else:
+            grouped_datasets = {None: datasets}
+        climate_models = []
+        y_data = []
+        label_name = None
+        cube = None
 
-    def _extract_features_and_labels(self, datasets, check_features=False):
+        # Iterate over all climate models
+        for (climate_model, dataset) in grouped_datasets.items():
+            if len(dataset) > 1:
+                if climate_model is None:
+                    msg = ""
+                else:
+                    msg = " for model '{}'".format(climate_model)
+                raise ValueError("Expected exactly one 'label' dataset{}, "
+                                 "got {}".format(msg, len(dataset)))
+            dataset = dataset[0]
+            climate_models.append(climate_model)
+
+            # Check label
+            if label_name is None:
+                label_name = dataset['label']
+            else:
+                if dataset['label'] != label_name:
+                    raise ValueError("Expected unique entry for var_type "
+                                     "'label', got '{}' and '{}'".format(
+                                         label_name, dataset['label']))
+
+            # Save data
+            cube = iris.load_cube(dataset['filename'])
+            self._check_cube_coords(cube, None, label_name, dataset)
+            y_data = np.hstack((y_data, self._get_cube_data(cube)))
+
+        # Check if data was found
+        if cube is None:
+            raise ValueError("No 'label' datasets found")
+
+        # Check climate models
+        self._check_climate_models(climate_models)
+
+        # Return data
+        return (y_data, label_name, cube)
+
+    def _extract_features_and_labels(self, datasets):
         """Extract features and labels from `datasets`."""
-        if check_features:
-            required_features = self.classes['features']
         (x_data, feature_cube) = self._extract_x_data(datasets, 'feature')
         (y_data, label_cube) = self._extract_y_data(datasets)
-
-        # Check if all required features are available
-        if check_features:
-            if required_features != self.classes['features']:
-                raise ValueError("Expected features '{}', got '{}'".format(
-                    required_features, self.classes['features']))
 
         # Check sizes
         if len(x_data) != len(y_data):
@@ -329,41 +527,12 @@ class GBRTBase():
                              "observations for the label".format(
                                  len(x_data), len(y_data)))
 
-        # Check for duplicate features
-        duplicates = {
-            f
-            for f in self.classes['features']
-            if self.classes['features'].count(f) > 1
-        }
-        if duplicates:
-            raise ValueError("Duplicate features in x_data: "
-                             "{}".format(duplicates))
-
         return (x_data, feature_cube, y_data, label_cube)
 
-    def _extract_prediction_input(self, datasets, check_features=True):
+    def _extract_prediction_input(self, datasets):
         """Extract prediction input `datasets`."""
-        if check_features:
-            required_features = self.classes['features']
         (x_data, prediction_input_cube) = self._extract_x_data(
             datasets, 'prediction_input')
-
-        # Check if all required features are available
-        if check_features:
-            if required_features != self.classes['features']:
-                raise ValueError("Expected features '{}' for prediction, got "
-                                 "'{}'".format(required_features,
-                                               self.classes['features']))
-
-        # Check for duplicate features
-        duplicates = {
-            f
-            for f in self.classes['features']
-            if self.classes['features'].count(f) > 1
-        }
-        if duplicates:
-            raise ValueError("Duplicate prediction input in x_data: "
-                             "{}".format(duplicates))
 
         return (x_data, prediction_input_cube)
 
@@ -376,10 +545,9 @@ class GBRTBase():
 
         # Collect data from datasets
         datasets = select_metadata(datasets, var_type=var_type)
-        (x_data, names, cube) = self._collect_x_data(datasets, var_type)
+        (x_data, cube) = self._collect_x_data(datasets, var_type)
 
         # Return data
-        self.classes['features'] = names
         logger.debug("Found features: %s", self.classes['features'])
         return (x_data, cube)
 
@@ -425,26 +593,157 @@ class GBRTBase():
 
         return datasets
 
-    def _get_input_datasets(self):
+    def _get_broadcasted_data(self, datasets, target_shape):
+        """Get broadcasted data."""
+        new_data = []
+        names = []
+        if not datasets:
+            return (new_data, names)
+        if self._cfg.get('accept_only_scalar_data'):
+            logger.warning("Broadcasting is not supported for scalar data "
+                           "(option 'accept_only_scalar_data')")
+            return (new_data, names)
+        var_type = datasets[0]['var_type']
+        for dataset in datasets:
+            cube_to_broadcast = iris.load_cube(dataset['filename'])
+            data_to_broadcast = cube_to_broadcast.data
+            name = dataset['label']
+            try:
+                new_axis_pos = np.delete(
+                    np.arange(len(target_shape)), dataset['broadcast_from'])
+            except IndexError:
+                raise ValueError("Broadcasting failed for '{}', index out of "
+                                 "bounds".format(name))
+            logger.info("Broadcasting %s '%s' from %s to %s", var_type, name,
+                        data_to_broadcast.shape, target_shape)
+            for idx in new_axis_pos:
+                data_to_broadcast = np.expand_dims(data_to_broadcast, idx)
+            data_to_broadcast = np.broadcast_to(data_to_broadcast,
+                                                target_shape)
+            if not self._cfg.get('use_only_coords_as_features'):
+                new_data.append(data_to_broadcast.ravel())
+                names.append(name)
+        return (new_data, names)
+
+    def _get_coordinate_data(self, cube):
+        """Get coordinate variables of a `cube` which can be used as x data."""
+        new_data = []
+        names = []
+
+        # Iterate over desired coordinates
+        for (coord, coord_idx) in self._cfg.get('use_coords_as_feature',
+                                                {}).items():
+            if self._cfg.get('accept_only_scalar_data'):
+                logger.warning("Using coordinate data is not supported for "
+                               "scalar data (option 'accept_only_scalar_"
+                               "data')")
+                return (new_data, names)
+            coord_array = cube.coord(coord).points
+            try:
+                new_axis_pos = np.delete(np.arange(len(cube.shape)), coord_idx)
+            except IndexError:
+                raise ValueError("'use_coords_as_feature' failed, index '{}'"
+                                 "is out of bounds for coordinate "
+                                 "'{}'".format(coord_idx, coord))
+            for idx in new_axis_pos:
+                coord_array = np.expand_dims(coord_array, idx)
+            coord_array = np.broadcast_to(coord_array, cube.shape)
+            new_data.append(coord_array.ravel())
+            names.append(coord)
+
+        # Check if data is empty if necessary
+        if self._cfg.get('use_only_coords_as_features') and not new_data:
+            raise ValueError("No data found, 'use_only_coords_as_features' "
+                             "can only be used when 'use_coords_as_feature' "
+                             "is specified")
+        return (new_data, names)
+
+    def _get_cube_data(self, cube):  # noqa
+        """Get data from cube."""
+        if cube.shape == ():
+            return cube.data
+        return cube.data.ravel()
+
+    def _get_input_datasets(self, **metadata):
         """Get input data (including ancestors)."""
         input_datasets = list(self._cfg['input_data'].values())
         input_datasets.extend(self._get_ancestor_datasets())
+
+        # Extract features and labels
         feature_datasets = select_metadata(input_datasets, var_type='feature')
         label_datasets = select_metadata(input_datasets, var_type='label')
+        feature_datasets = select_metadata(feature_datasets, **metadata)
+        label_datasets = select_metadata(label_datasets, **metadata)
+
+        # Prediction datasets
         prediction_datasets = select_metadata(
             input_datasets, var_type='prediction_input')
         training_datasets = feature_datasets + label_datasets
         return (training_datasets, prediction_datasets)
 
-    def _get_logger_suffix(self, model_name):  # noqa
-        """Get message suffix for logger based on `model_name`."""
-        msg = '' if model_name is None else ' for model {}'.format(model_name)
-        return msg
+    def _get_model_name_as_feature(self, climate_model, target_shape):
+        """Get model name as feature if desired."""
+        new_data = []
+        names = []
+        if not self._cfg.get('use_climate_models_as_features'):
+            return (new_data, names)
+        if self._cfg.get('accept_only_scalar_data'):
+            return (new_data, names)
+        new_data.append(np.full(target_shape, climate_model))
+        names.append('Climate model')
+        return (new_data, names)
 
-    def _group_training_datasets(self, datasets):
-        """Group training datasets, must be implemented in child class."""
-        raise NotImplementedError("This method must be implemented in the "
-                                  "child class")
+    def _get_x_data_for_model(self, datasets, climate_model, var_type):
+        """Get x data for climate model."""
+        model_data = []
+        skipped_datasets = []
+        feature_names = []
+        coords = None
+        cube = None
+
+        # Iterate over data
+        for dataset in datasets:
+            if 'broadcast_from' in dataset:
+                skipped_datasets.append(dataset)
+                continue
+            cube = iris.load_cube(dataset['filename'])
+            name = dataset['label']
+            coords = self._check_cube_coords(cube, coords, name, dataset)
+            if not self._cfg.get('use_only_coords_as_features'):
+                model_data.append(self._get_cube_data(cube))
+                feature_names.append(name)
+
+        # Check if data was found
+        if cube is None:
+            if skipped_datasets:
+                raise ValueError(
+                    "Expected at least one '{}' dataset without "
+                    "the option 'broadcast_from'".format(var_type))
+            else:
+                raise ValueError("No '{}' datasets found".format(var_type))
+
+        # Add skipped data (which needs broadcasting)
+        broadcasted_data = self._get_broadcasted_data(skipped_datasets,
+                                                      cube.shape)
+        model_data.extend(broadcasted_data[0])
+        feature_names.extend(broadcasted_data[1])
+
+        # Add coordinate data if desired and possible
+        coord_data = self._get_coordinate_data(cube)
+        model_data.extend(coord_data[0])
+        feature_names.extend(coord_data[1])
+
+        # Add model name to features
+        model_names = self._get_model_name_as_feature(climate_model,
+                                                      cube.shape)
+        model_data.extend(model_names[0])
+        feature_names.extend(model_names[1])
+
+        # Convert data to numpy array with correct shape
+        model_data = np.array(model_data)
+        if model_data.ndim > 1:
+            model_data = np.swapaxes(model_data, 0, 1)
+        return (model_data, feature_names, cube)
 
     def _group_prediction_datasets(self, datasets):  # noqa
         """Group prediction datasets (use `prediction_name` key)."""
@@ -473,9 +772,9 @@ class GBRTBase():
         logger.debug("Use parameters %s for GBRT", parameters)
         return parameters
 
-    def _train_test_split(self, model_name):
-        """Split data into training and test data for `model_name`."""
+    def _train_test_split(self):
+        """Split data into training and test data."""
         return train_test_split(
-            self._data[model_name]['x_data'],
-            self._data[model_name]['y_data'],
+            self._data['x_data'],
+            self._data['y_data'],
             test_size=self.parameters.get('test_size', 0.25))

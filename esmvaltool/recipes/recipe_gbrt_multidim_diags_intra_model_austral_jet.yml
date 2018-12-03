@@ -1,10 +1,10 @@
-# recipe_gbrt_intra_model_austral_jet.yml
+# recipe_gbrt_multidim_diags_intra_model_austral_jet.yml
 ---
 documentation:
 
   description: |
     Use intra-model GBRT (Gradient Boosted Regression Trees) models to predict
-    future climate.
+    future climate for multidimensional diagnostics.
 
   authors:
     - schl_ma
@@ -83,8 +83,8 @@ diagnostics:
           - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
           - {dataset: MPI-ESM-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
     scripts:
-      intra_model_gbrt:
-        script: gbrt/intra_model.py
+      gbrt:
+        script: gbrt/multi_model.py
         ancestors: ['ta', 'tas', 'ua', 'diag_external_tas/*']
         use_coords_as_feature:
           air_pressure: 0
@@ -96,4 +96,4 @@ diagnostics:
     scripts:
       austral_jet_position:
         script: austral_jet/jet_position.py
-        ancestors: ['diag_gbrt/intra_model_gbrt']
+        ancestors: ['diag_gbrt/gbrt']

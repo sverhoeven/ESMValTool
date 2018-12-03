@@ -1,4 +1,4 @@
-# recipe_gbrt_inter_model_austral_jet_scalar.yml
+# recipe_gbrt_scalar_diagnostics_austral_jet.yml
 ---
 documentation:
 
@@ -184,8 +184,7 @@ diagnostics:
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
     scripts:
-      mean: &mean
-        script: gbrt/mean.py
+      null
 
   diag_gbrt_input_trend_ta_sp100:
     variables:
@@ -206,8 +205,7 @@ diagnostics:
         preprocessor: mean_ng100
         label: T-NGlob_c
     scripts:
-      mean:
-        <<: *mean
+      null
 
   diag_gbrt_input_trend_ta_ng100:
     variables:
@@ -226,8 +224,7 @@ diagnostics:
         preprocessor: mean_trop250
         label: T-Trop_c
     scripts:
-      mean:
-        <<: *mean
+      null
 
   diag_gbrt_input_trend_ta_trop250:
     variables:
@@ -248,8 +245,7 @@ diagnostics:
         preprocessor: time_average
         label: U-Jet_c
     scripts:
-      mean:
-        <<: *mean
+      null
 
   diag_gbrt_input_trend_uajet_sh850:
     variables:
@@ -278,11 +274,12 @@ diagnostics:
         var_type: label
         label: UAJET
     scripts:
-      inter_model_gbrt:
-        script: gbrt/inter_model.py
+      gbrt:
+        script: gbrt/one_model.py
         ancestors: [
           'uajet',
-          'diag_gbrt_input_*/mean',
-          'diag_gbrt_input_*/trend',
+          'diag_gbrt_input_mean_*/*',
+          'diag_gbrt_input_trend*/trend',
         ]
+        accept_only_scalar_data: True
         learning_rate: 0.001
