@@ -9,7 +9,8 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.ensemble.partial_dependence import plot_partial_dependence
 from sklearn.model_selection import train_test_split
 
-from ._base import group_metadata, select_metadata, save_iris_cube  # noqa
+from esmvaltool.diag_scripts.shared import (group_metadata, select_metadata,
+                                            save_iris_cube)
 
 import matplotlib  # noqa
 matplotlib.use('Agg')

@@ -46,7 +46,7 @@ import os
 import iris
 import numpy as np
 
-from esmvaltool.diag_scripts.shared.gbrt import GBRTBase
+from esmvaltool.diag_scripts.gbrt import GBRTBase
 from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
                                             sorted_metadata)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Diagnostic script to create one GBRT for multiple climate models.
+"""Diagnostic script to create one GBRT model for multiple climate models.
 
 Description
 -----------
@@ -39,15 +39,15 @@ import os
 from pprint import pformat
 
 import iris
+import matplotlib  # noqa
+import matplotlib.pyplot as plt  # noqa
 import numpy as np
 
-from esmvaltool.diag_scripts.shared.gbrt import GBRTBase
+from esmvaltool.diag_scripts.gbrt import GBRTBase
 from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
                                             sorted_metadata)
 
-import matplotlib  # noqa
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt  # noqa
 
 logger = logging.getLogger(os.path.basename(__file__))
 

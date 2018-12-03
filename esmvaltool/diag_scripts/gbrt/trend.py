@@ -6,7 +6,8 @@ import os
 import iris
 from scipy import stats
 
-from esmvaltool.diag_scripts.shared import run_diagnostic, gbrt
+from esmvaltool.diag_scripts.gbrt import write_cube
+from esmvaltool.diag_scripts.shared import run_diagnostic
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -33,7 +34,7 @@ def main(cfg):
             data['units'] += temp_units
             data['short_name'] += '_trend'
             data['long_name'] += ' (trend)'
-            gbrt.write_cube(cube, data, new_path, cfg)
+            write_cube(cube, data, new_path, cfg)
     else:
         logger.warning("Cannot save netcdf files because 'write_netcdf' is "
                        "set to 'False' in user configuration file.")
