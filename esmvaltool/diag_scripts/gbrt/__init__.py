@@ -88,9 +88,8 @@ class GBRTModel():
     variables, usually observational data). All 'feature' and 'label' datasets
     must have the same shape, except the attribute 'broadcast_from' is set to a
     list of suitable coordinate indices (must be done for each feature/label).
-    This also applies to the 'prediction_input' data sets.
-
-    Multiple predictions can be specified by the key 'prediction_name'.
+    This also applies to the 'prediction_input' data sets. Multiple predictions
+    can be specified by the key 'prediction_name'.
 
     Configuration options in recipe
     -------------------------------
@@ -103,11 +102,13 @@ class GBRTModel():
         by the dictionary values.
     use_only_coords_as_features : bool, optional (default: False)
         Use only the specified coordinates as features.
-    use_climate_models_as_features : bool, optional (default: False)
-        Use climate models as features.
     accept_only_scalar_data : bool, optional (default: False)
-        Only accept scalar diagnostic data, use different climate models as
-        observations for the GBRT model.
+        Only accept scalar diagnostic data, if specified
+        'group_datasets_by_attributes must be given.
+    group_datasets_by_attributes : list of str, optional
+        List of dataset attributes which are used to group input data for
+        `features` and `labels`, e.g. specify `dataset` to use the different
+        `dataset`s as observations for the GBRT model.
 
     """
 
@@ -168,11 +169,17 @@ class GBRTModel():
         if not datasets_have_gbrt_attributes(
                 prediction_datasets, log_level='error'):
             raise ValueError()
+        self._group_datasets_by_attributes(training_datasets)
+        self._group_datasets_by_attributes(prediction_datasets)
         self._datasets['training'] = training_datasets
         self._datasets['prediction'] = self._group_prediction_datasets(
             prediction_datasets)
         logger.info("Initialized GBRT model with parameters %s",
                     self.parameters)
+
+        # Check if data was found
+        if not training_datasets:
+            raise ValueError("No training data (features/labels) found")
 
     def fit(self, **parameters):
         """Build the GBRT model(s).
@@ -296,10 +303,11 @@ class GBRTModel():
 
         # Plot scatterplot for every feature
         for (f_idx, feature) in enumerate(self.classes['features']):
-            for (m_idx, model) in enumerate(self.classes['climate_models']):
-                x_data = self._data['x_data'][m_idx, f_idx]
-                y_data = self._data['y_data'][m_idx]
-                axes.scatter(x_data, y_data, label=model)
+            for (g_idx,
+                 group_attr) in enumerate(self.classes['group_attributes']):
+                x_data = self._data['x_data'][g_idx, f_idx]
+                y_data = self._data['y_data'][g_idx]
+                axes.scatter(x_data, y_data, label=group_attr)
             axes.set_title(feature)
             axes.set_xlabel(feature)
             axes.set_ylabel(self.classes['label'])
@@ -352,43 +360,37 @@ class GBRTModel():
 
         return predictions
 
-    def _append_ensemble_to_name(self, datasets):  # noqa
-        """Append ensemble to dataset name."""
-        for dataset in datasets:
-            if 'ensemble' in dataset:
-                dataset['dataset'] += '_{}'.format(dataset['ensemble'])
-        return datasets
-
-    def _check_climate_models(self, climate_models):
-        """Check if `climate_models` match with already saved data."""
-        if self.classes.get('climate_models') is None:
-            self.classes['climate_models'] = climate_models
+    def _check_group_attributes(self, group_attributes):
+        """Check if `group_attributes` match with already saved data."""
+        if self.classes.get('group_attributes') is None:
+            self.classes['group_attributes'] = group_attributes
         else:
-            if climate_models != self.classes['climate_models']:
-                raise ValueError("Expected identical climate models for "
-                                 "different var_types, got '{}' and "
-                                 "'{}'".format(climate_models,
-                                               self.classes['climate_models']))
+            if group_attributes != self.classes['group_attributes']:
+                raise ValueError(
+                    "Expected identical group attributes for "
+                    "different var_types, got '{}' and '{}'".format(
+                        group_attributes, self.classes['group_attributes']))
 
-    def _check_cube_coords(self, cube, expected_coords, feature, dataset):
+    def _check_cube_coords(self, cube, expected_coords, dataset):
         """Check shape and coordinates of a given cube."""
         if self._cfg.get('accept_only_scalar_data'):
             allowed_shape = ()
             if cube.shape != allowed_shape:
                 raise ValueError("Expected only cubes with shape {}, got {} "
-                                 "from climate model {}, adapt option "
+                                 "from '{}' dataset {}, adapt option "
                                  "'accept_only_scalar_data' in recipe".format(
                                      allowed_shape, cube.shape,
-                                     dataset['dataset']))
+                                     dataset['label'], dataset['dataset']))
         else:
             if expected_coords is not None:
                 if cube.coords() != expected_coords:
                     raise ValueError("Expected fields with identical "
-                                     "coordinates but '{}' for dataset '{}' "
+                                     "coordinates for '{}', but dataset '{}' "
                                      "('{}') is differing, consider "
-                                     "regridding or the option "
-                                     "'broadcast_from'".format(
-                                         feature, dataset['dataset'],
+                                     "regridding or the options "
+                                     "'broadcast_from' or 'group_datasets_by_"
+                                     "attributes'".format(
+                                         dataset['label'], dataset['dataset'],
                                          dataset['var_type']))
         return cube.coords()
 
@@ -415,105 +417,93 @@ class GBRTModel():
             if self.classes['features'].count(f) > 1
         }
         if duplicates:
-            raise ValueError("Got duplicate features '{}'{}".format(
-                duplicates, msg))
+            raise ValueError("Got duplicate features '{}'{}, consider the "
+                             "the use of '**metadata' in class initialization "
+                             "to pre-select datasets or specify attributes to "
+                             "group dataset with the option "
+                             "'group_by_attributes'".format(duplicates, msg))
+
+    def _check_labels(self, label):
+        """Check if `label` matches with already saved data."""
+        if self.classes.get('label') is None:
+            self.classes['label'] = label
+        else:
+            if label != self.classes['label']:
+                raise ValueError("Expected unique entries for var_type "
+                                 "'label', got '{}' and '{}'".format(
+                                     label, self.classes['label']))
 
     def _collect_x_data(self, datasets, var_type):
         """Collect x data from `datasets`."""
-        if (self._cfg.get('use_climate_models_as_features')
-                or self._cfg.get('accept_only_scalar_data')):
-            datasets = self._append_ensemble_to_name(datasets)
-            grouped_datasets = group_metadata(datasets, 'dataset', sort=True)
-        else:
-            grouped_datasets = {None: datasets}
-        warning = all([
-            len(grouped_datasets) > 1,
-            not self._cfg.get('use_climate_models_as_features'),
-            not self._cfg.get('accept_only_scalar_data')
-        ])
-        if warning:
-            logger.warning("Got data of multiple climate models but "
-                           "'use_climate_models_as_features' is not used, "
-                           "use 'metadata' keyword arguments in class "
-                           "initialization to preselect datasets")
+        grouped_datasets = group_metadata(
+            datasets, 'group_by_attributes', sort=True)
+        group_attributes = []
+        x_data = []
+        cube = None
 
         # Iterate over datasets
-        climate_models = []
-        x_data = []
-
-        for (climate_model, model_datasets) in grouped_datasets.items():
-            climate_models.append(climate_model)
-            model_datasets = sorted_metadata(model_datasets, 'label')
-            (model_data, feature_names, cube) = self._get_x_data_for_model(
-                model_datasets, climate_model, var_type)
+        for (group_attr, attr_datasets) in grouped_datasets.items():
+            group_attributes.append(group_attr)
+            attr_datasets = sorted_metadata(attr_datasets, 'label')
+            (attr_data, feature_names, cube) = self._get_x_data_for_group(
+                attr_datasets, var_type)
 
             # Check features
-            if climate_model is None:
+            if group_attr is None:
                 text = var_type
             else:
-                text = "{} ('{}')".format(climate_model, var_type)
+                text = "{} ('{}')".format(group_attr, var_type)
             self._check_features(feature_names, additional_text=text)
 
             # Append data
             if x_data:
-                x_data = np.vstack((x_data, model_data))
+                x_data = np.vstack((x_data, attr_data))
             else:
-                x_data = model_data
+                x_data = attr_data
 
-        # Check climate models
+        # Check group attributes
         if var_type == 'feature':
-            self._check_climate_models(climate_models)
+            self._check_group_attributes(group_attributes)
 
         return (x_data, cube)
 
     def _collect_y_data(self, datasets):
         """Collect y data from `datasets`."""
-        if (self._cfg.get('use_climate_models_as_features')
-                or self._cfg.get('accept_only_scalar_data')):
-            datasets = self._append_ensemble_to_name(datasets)
-            grouped_datasets = group_metadata(datasets, 'dataset', sort=True)
-        else:
-            grouped_datasets = {None: datasets}
-        climate_models = []
+        grouped_datasets = group_metadata(
+            datasets, 'group_by_attributes', sort=True)
+        group_attributes = []
         y_data = []
-        label_name = None
         cube = None
 
-        # Iterate over all climate models
-        for (climate_model, dataset) in grouped_datasets.items():
+        # Iterate over datasets
+        for (group_attr, dataset) in grouped_datasets.items():
             if len(dataset) > 1:
-                if climate_model is None:
+                if group_attr is None:
                     msg = ""
                 else:
-                    msg = " for model '{}'".format(climate_model)
+                    msg = " for '{}'".format(group_attr)
                 raise ValueError("Expected exactly one 'label' dataset{}, "
                                  "got {}".format(msg, len(dataset)))
             dataset = dataset[0]
-            climate_models.append(climate_model)
+            group_attributes.append(group_attr)
 
             # Check label
-            if label_name is None:
-                label_name = dataset['label']
-            else:
-                if dataset['label'] != label_name:
-                    raise ValueError("Expected unique entry for var_type "
-                                     "'label', got '{}' and '{}'".format(
-                                         label_name, dataset['label']))
+            self._check_labels(dataset['label'])
 
             # Save data
             cube = iris.load_cube(dataset['filename'])
-            self._check_cube_coords(cube, None, label_name, dataset)
+            self._check_cube_coords(cube, None, dataset)
             y_data = np.hstack((y_data, self._get_cube_data(cube)))
 
         # Check if data was found
         if cube is None:
             raise ValueError("No 'label' datasets found")
 
-        # Check climate models
-        self._check_climate_models(climate_models)
+        # Check group attributes
+        self._check_group_attributes(group_attributes)
 
         # Return data
-        return (y_data, label_name, cube)
+        return (y_data, cube)
 
     def _extract_features_and_labels(self, datasets):
         """Extract features and labels from `datasets`."""
@@ -554,8 +544,7 @@ class GBRTModel():
     def _extract_y_data(self, datasets):
         """Extract y data (labels) from `datasets`."""
         datasets = select_metadata(datasets, var_type='label')
-        (y_data, name, cube) = self._collect_y_data(datasets)
-        self.classes['label'] = name
+        (y_data, cube) = self._collect_y_data(datasets)
         logger.debug("Found label: %s", self.classes['label'])
         return (y_data, cube)
 
@@ -681,21 +670,9 @@ class GBRTModel():
         training_datasets = feature_datasets + label_datasets
         return (training_datasets, prediction_datasets)
 
-    def _get_model_name_as_feature(self, climate_model, target_shape):
-        """Get model name as feature if desired."""
-        new_data = []
-        names = []
-        if not self._cfg.get('use_climate_models_as_features'):
-            return (new_data, names)
-        if self._cfg.get('accept_only_scalar_data'):
-            return (new_data, names)
-        new_data.append(np.full(target_shape, climate_model))
-        names.append('Climate model')
-        return (new_data, names)
-
-    def _get_x_data_for_model(self, datasets, climate_model, var_type):
-        """Get x data for climate model."""
-        model_data = []
+    def _get_x_data_for_group(self, datasets, var_type):
+        """Get x data for a group of datasets."""
+        attr_data = []
         skipped_datasets = []
         feature_names = []
         coords = None
@@ -708,9 +685,9 @@ class GBRTModel():
                 continue
             cube = iris.load_cube(dataset['filename'])
             name = dataset['label']
-            coords = self._check_cube_coords(cube, coords, name, dataset)
+            coords = self._check_cube_coords(cube, coords, dataset)
             if not self._cfg.get('use_only_coords_as_features'):
-                model_data.append(self._get_cube_data(cube))
+                attr_data.append(self._get_cube_data(cube))
                 feature_names.append(name)
 
         # Check if data was found
@@ -725,29 +702,35 @@ class GBRTModel():
         # Add skipped data (which needs broadcasting)
         broadcasted_data = self._get_broadcasted_data(skipped_datasets,
                                                       cube.shape)
-        model_data.extend(broadcasted_data[0])
+        attr_data.extend(broadcasted_data[0])
         feature_names.extend(broadcasted_data[1])
 
         # Add coordinate data if desired and possible
         coord_data = self._get_coordinate_data(cube)
-        model_data.extend(coord_data[0])
+        attr_data.extend(coord_data[0])
         feature_names.extend(coord_data[1])
 
-        # Add model name to features
-        model_names = self._get_model_name_as_feature(climate_model,
-                                                      cube.shape)
-        model_data.extend(model_names[0])
-        feature_names.extend(model_names[1])
-
         # Convert data to numpy array with correct shape
-        model_data = np.array(model_data)
-        if model_data.ndim > 1:
-            model_data = np.swapaxes(model_data, 0, 1)
-        return (model_data, feature_names, cube)
+        attr_data = np.array(attr_data)
+        if attr_data.ndim > 1:
+            attr_data = np.swapaxes(attr_data, 0, 1)
+        return (attr_data, feature_names, cube)
 
     def _group_prediction_datasets(self, datasets):  # noqa
         """Group prediction datasets (use `prediction_name` key)."""
         return group_metadata(datasets, 'prediction_name')
+
+    def _group_datasets_by_attributes(self, datasets):
+        """Group datasets by specified attributes."""
+        if not self._cfg.get('group_datasets_by_attributes'):
+            return
+        for dataset in datasets:
+            group_by_attributes = ''
+            for attribute in self._cfg.get('group_datasets_by_attributes', []):
+                group_by_attributes += dataset.get(attribute, '')
+            if not group_by_attributes:
+                group_by_attributes = dataset['dataset']
+            dataset['group_by_attributes'] = group_by_attributes
 
     def _is_fitted(self):
         """Check if the GBRT models are fitted."""

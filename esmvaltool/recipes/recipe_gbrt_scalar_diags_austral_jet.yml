@@ -282,4 +282,5 @@ diagnostics:
           'diag_gbrt_input_trend*/trend',
         ]
         accept_only_scalar_data: True
+        group_datasets_by_attributes: ['dataset', 'ensemble']
         learning_rate: 0.001

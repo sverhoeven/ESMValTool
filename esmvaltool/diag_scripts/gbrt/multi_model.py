@@ -25,7 +25,8 @@ import logging
 import os
 
 from esmvaltool.diag_scripts.gbrt import GBRTModel
-from esmvaltool.diag_scripts.shared import group_metadata, run_diagnostic
+from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
+                                            select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -33,6 +34,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 def main(cfg):
     """Run the diagnostic."""
     input_data = cfg['input_data'].values()
+    input_data = select_metadata(input_data, project='CMIP5')
     grouped_datasets = group_metadata(input_data, 'dataset')
     for dataset in grouped_datasets:
         logger.info("Processing %s", dataset)
