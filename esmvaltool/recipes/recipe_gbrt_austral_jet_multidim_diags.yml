@@ -1,10 +1,10 @@
-# recipe_gbrt_multidim_diags_inter_model_austral_jet.yml
+# recipe_gbrt_austral_jet_multidim_diags.yml
 ---
 documentation:
 
   description: |
-    Use inter-model GBRT (Gradient Boosted Regression Trees) model to predict
-    future climate for multidimensional diagnostics.
+    Use GBRT (Gradient Boosted Regression Trees) models to predict future
+    climate for multidimensional diagnostics.
 
   authors:
     - schl_ma
@@ -30,6 +30,25 @@ preprocessors:
 
 
 diagnostics:
+
+  diag_external_tas:
+    variables:
+      tas:
+        project: CMIP5
+        mip: Amon
+        field: T2Ms
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 2000
+        end_year: 2000
+        preprocessor: time_average
+        label: DUMMY_TAS
+        var_type: feature
+        broadcast_from: [1, 2]
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+    scripts:
+      null
 
   diag_gbrt:
     description: Perform GBRT on input data.
@@ -62,16 +81,28 @@ diagnostics:
           - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
           - {dataset: MPI-ESM-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
     scripts:
-      gbrt:
-        script: gbrt/multi_model.py
+      multiple_gbrt_models:
+        script: gbrt/multiple_gbrt_models.py
+        ancestors: ['ta', 'tas', 'ua', 'diag_external_tas/*']
         use_coords_as_feature:
           air_pressure: 0
           latitude: 1
           longitude: 2
+      single_gbrt_model:
+        script: gbrt/single_gbrt_model.py
+        ancestors: ['ta', 'tas', 'ua', 'diag_external_tas/*']
+        use_coords_as_feature:
+          air_pressure: 0
+          latitude: 1
+          longitude: 2
+        group_datasets_by_attributes: ['dataset']
 
   diag_austral_jet_position:
     description: Calculate Austral Jet position.
     scripts:
       austral_jet_position:
         script: austral_jet/jet_position.py
-        ancestors: ['diag_gbrt/intra_model_gbrt']
+        ancestors: [
+          'diag_gbrt/multiple_gbrt_models',
+          'diag_gbrt/single_gbrt_model',
+        ]

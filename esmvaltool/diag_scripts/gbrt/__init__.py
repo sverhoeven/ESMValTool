@@ -103,8 +103,8 @@ class GBRTModel():
     use_only_coords_as_features : bool, optional (default: False)
         Use only the specified coordinates as features.
     accept_only_scalar_data : bool, optional (default: False)
-        Only accept scalar diagnostic data, if specified
-        'group_datasets_by_attributes must be given.
+        Only accept scalar diagnostic data, if set to True
+        'group_datasets_by_attributes should be given.
     group_datasets_by_attributes : list of str, optional
         List of dataset attributes which are used to group input data for
         `features` and `labels`, e.g. specify `dataset` to use the different
@@ -169,9 +169,8 @@ class GBRTModel():
         if not datasets_have_gbrt_attributes(
                 prediction_datasets, log_level='error'):
             raise ValueError()
-        self._group_datasets_by_attributes(training_datasets)
-        self._group_datasets_by_attributes(prediction_datasets)
-        self._datasets['training'] = training_datasets
+        self._datasets['training'] = self._group_by_attributes(
+            training_datasets)
         self._datasets['prediction'] = self._group_prediction_datasets(
             prediction_datasets)
         logger.info("Initialized GBRT model with parameters %s",
@@ -720,17 +719,29 @@ class GBRTModel():
         """Group prediction datasets (use `prediction_name` key)."""
         return group_metadata(datasets, 'prediction_name')
 
-    def _group_datasets_by_attributes(self, datasets):
+    def _group_by_attributes(self, datasets):
         """Group datasets by specified attributes."""
-        if not self._cfg.get('group_datasets_by_attributes'):
-            return
+        attributes = self._cfg.get('group_datasets_by_attributes', [])
+        if not attributes:
+            if self._cfg.get('accept_only_scalar_data'):
+                attributes = ['dataset']
+                logger.warning("Automatically set 'group_datasets_by_'"
+                               "attributes' to ['dataset'] because 'accept_"
+                               "only_scalar_data' is given")
+            else:
+                return datasets
         for dataset in datasets:
             group_by_attributes = ''
-            for attribute in self._cfg.get('group_datasets_by_attributes', []):
-                group_by_attributes += dataset.get(attribute, '')
+            for attribute in attributes:
+                if attribute in dataset:
+                    group_by_attributes += dataset[attribute] + '-'
             if not group_by_attributes:
                 group_by_attributes = dataset['dataset']
+            else:
+                group_by_attributes = group_by_attributes[:-1]
             dataset['group_by_attributes'] = group_by_attributes
+        logger.info("Grouped feature and label datasets by %s", attributes)
+        return datasets
 
     def _is_fitted(self):
         """Check if the GBRT models are fitted."""
