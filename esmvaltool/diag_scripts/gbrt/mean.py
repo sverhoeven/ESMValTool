@@ -1,10 +1,9 @@
-"""Calculate trends to use them for GBRT models."""
+"""Calculate means to use them for GBRT models."""
 
 import logging
 import os
 
 import iris
-from scipy import stats
 
 from esmvaltool.diag_scripts.gbrt import write_cube
 from esmvaltool.diag_scripts.shared import run_diagnostic
@@ -18,22 +17,18 @@ def main(cfg):
         for (path, data) in cfg['input_data'].items():
             cube = iris.load_cube(path)
 
-            # Calculate trends
-            if cfg.get('yearly_trend'):
-                cube = cube.aggregated_by('year', iris.analysis.MEAN)
-                temp_units = ' yr-1'
-            else:
-                temp_units = ' mon-1'
-            reg = stats.linregress(cube.coord('year').points, cube.data)
+            # Calculate desired means
+            if cfg.get('global_mean'):
+                weights = iris.analysis.cartography.area_weights(cube)
+                cube = cube.collapsed(['latitude', 'longitude'],
+                                      iris.analysis.MEAN,
+                                      weights=weights)
+            if cfg.get('temporal_mean'):
+                cube = cube.collapsed('time', iris.analysis.MEAN)
 
             # Save new cube
-            cube = cube.collapsed('time', iris.analysis.MEAN)
-            cube.data = reg.slope
             new_path = os.path.join(cfg['work_dir'], os.path.basename(path))
             data['filename'] = new_path
-            data['units'] += temp_units
-            data['short_name'] += '_trend'
-            data['long_name'] += ' (trend)'
             if 'tag' in cfg:
                 data['tag'] = cfg['tag']
             write_cube(cube, data, new_path, cfg)

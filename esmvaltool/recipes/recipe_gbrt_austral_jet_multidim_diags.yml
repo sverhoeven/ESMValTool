@@ -17,10 +17,12 @@ documentation:
 
 
 datasets:
-  - {dataset: ACCESS1-0}
-  - {dataset: ACCESS1-3}
   - {dataset: CanESM2}
+  - {dataset: IPSL-CM5A-LR}
+  - {dataset: MIROC5}
+  - {dataset: MIROC-ESM}
   - {dataset: MPI-ESM-LR}
+  - {dataset: NorESM1-M}
 
 
 preprocessors:
@@ -42,7 +44,7 @@ diagnostics:
         start_year: 2000
         end_year: 2000
         preprocessor: time_average
-        label: DUMMY_TAS
+        tag: DUMMY_TAS
         var_type: feature
         broadcast_from: [1, 2]
         additional_datasets:
@@ -62,24 +64,28 @@ diagnostics:
         start_year: 1979
         end_year: 2005
         preprocessor: time_average
-        label: T
+        tag: T
         var_type: feature
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
       tas:
         <<: *variable_settings
-        label: TAS
+        tag: TAS
         field: T2Ms
         broadcast_from: [1, 2]
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
       ua:
         <<: *variable_settings
-        label: UA
+        tag: UA
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-          - {dataset: CanESM2, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
-          - {dataset: MPI-ESM-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+          - {dataset: CanESM2,      exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+          - {dataset: IPSL-CM5A-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+          - {dataset: MIROC5,       exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+          - {dataset: MIROC-ESM,    exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+          - {dataset: MPI-ESM-LR,   exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+          - {dataset: NorESM1-M,    exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
     scripts:
       multiple_gbrt_models:
         script: gbrt/multiple_gbrt_models.py
@@ -88,6 +94,10 @@ diagnostics:
           air_pressure: 0
           latitude: 1
           longitude: 2
+        metadata_preselection:
+          select:
+            project: CMIP5
+          group: dataset
       single_gbrt_model:
         script: gbrt/single_gbrt_model.py
         ancestors: ['ta', 'tas', 'ua', 'diag_external_tas/*']

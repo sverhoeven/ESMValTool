@@ -23,7 +23,7 @@ VAR_KEYS = [
 NECESSARY_KEYS = VAR_KEYS + [
     'dataset',
     'filename',
-    'label',
+    'tag',
     'short_name',
     'var_type',
 ]
@@ -94,8 +94,11 @@ class GBRTModel():
     Configuration options in recipe
     -------------------------------
     parameters : dict, optional
-        Paramter used in the classifier, more information is available here:
+        Parameters used in the classifier, more information is available here:
         https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
+    test_size : float, optional (default: 0.25)
+        Fraction of feature/label data which is used as test data and not for
+        training.
     use_coords_as_feature : dict, optional
         Use coordinates (e.g. 'air_pressure' or 'latitude') as features,
         coordinate names are given by the dictionary keys, the associated index
@@ -113,7 +116,9 @@ class GBRTModel():
     """
 
     _DEFAULT_PARAMETERS = {
-        'n_estimators': 1000,
+        # TODO
+        # 'n_estimators': 1000,
+        'n_estimators': 50,
         'max_depth': 4,
         'min_samples_split': 2,
         'learning_rate': 0.01,
@@ -178,7 +183,12 @@ class GBRTModel():
 
         # Check if data was found
         if not training_datasets:
-            raise ValueError("No training data (features/labels) found")
+            if metadata:
+                msg = ' for metadata {}'.format(metadata)
+            else:
+                msg = ''
+            raise ValueError("No training data (features/labels){} "
+                             "found".format(msg))
 
     def fit(self, **parameters):
         """Build the GBRT model(s).
@@ -323,6 +333,7 @@ class GBRTModel():
                 orientation='landscape',
                 bbox_inches='tight',
                 additional_artists=[legend])
+            logger.info("Wrote %s", new_path)
             axes.clear()
         plt.close()
 
@@ -378,18 +389,19 @@ class GBRTModel():
                 raise ValueError("Expected only cubes with shape {}, got {} "
                                  "from '{}' dataset {}, adapt option "
                                  "'accept_only_scalar_data' in recipe".format(
-                                     allowed_shape, cube.shape,
-                                     dataset['label'], dataset['dataset']))
+                                     allowed_shape, cube.shape, dataset['tag'],
+                                     dataset['dataset']))
         else:
             if expected_coords is not None:
                 if cube.coords() != expected_coords:
                     raise ValueError("Expected fields with identical "
                                      "coordinates for '{}', but dataset '{}' "
                                      "('{}') is differing, consider "
-                                     "regridding or the options "
-                                     "'broadcast_from' or 'group_datasets_by_"
-                                     "attributes'".format(
-                                         dataset['label'], dataset['dataset'],
+                                     "regridding, pre-selecting datasets at "
+                                     "class initialization using '**metadata' "
+                                     "or the options 'broadcast_from' or "
+                                     "'group_datasets_by_attributes'".format(
+                                         dataset['tag'], dataset['dataset'],
                                          dataset['var_type']))
         return cube.coords()
 
@@ -406,8 +418,12 @@ class GBRTModel():
         else:
             if features != self.classes['features']:
                 raise ValueError("Expected features '{}'{}, got "
-                                 "'{}'".format(self.classes['features'], msg,
-                                               features))
+                                 "'{}', consider the use of '**metadata' in "
+                                 "class initialization to pre-select dataset "
+                                 "or specifiy suitable attributes to group "
+                                 "datasets with the option 'group_datasets_"
+                                 "by_attributes'".format(
+                                     self.classes['features'], msg, features))
 
         # Check for duplicates
         duplicates = {
@@ -418,11 +434,12 @@ class GBRTModel():
         if duplicates:
             raise ValueError("Got duplicate features '{}'{}, consider the "
                              "the use of '**metadata' in class initialization "
-                             "to pre-select datasets or specify attributes to "
-                             "group dataset with the option "
-                             "'group_by_attributes'".format(duplicates, msg))
+                             "to pre-select datasets or specify suitable "
+                             "attributes to group datasets with the option "
+                             "'group_datasets_by_attributes'".format(
+                                 duplicates, msg))
 
-    def _check_labels(self, label):
+    def _check_label(self, label):
         """Check if `label` matches with already saved data."""
         if self.classes.get('label') is None:
             self.classes['label'] = label
@@ -437,13 +454,15 @@ class GBRTModel():
         grouped_datasets = group_metadata(
             datasets, 'group_by_attributes', sort=True)
         group_attributes = []
-        x_data = []
+        x_data = None
         cube = None
 
         # Iterate over datasets
         for (group_attr, attr_datasets) in grouped_datasets.items():
+            if group_attr is not None:
+                logger.info("Loading x data of %s", group_attr)
             group_attributes.append(group_attr)
-            attr_datasets = sorted_metadata(attr_datasets, 'label')
+            attr_datasets = sorted_metadata(attr_datasets, 'tag')
             (attr_data, feature_names, cube) = self._get_x_data_for_group(
                 attr_datasets, var_type)
 
@@ -455,10 +474,10 @@ class GBRTModel():
             self._check_features(feature_names, additional_text=text)
 
             # Append data
-            if x_data:
-                x_data = np.vstack((x_data, attr_data))
-            else:
+            if x_data is None:
                 x_data = attr_data
+            else:
+                x_data = np.ma.vstack((x_data, attr_data))
 
         # Check group attributes
         if var_type == 'feature':
@@ -471,7 +490,7 @@ class GBRTModel():
         grouped_datasets = group_metadata(
             datasets, 'group_by_attributes', sort=True)
         group_attributes = []
-        y_data = []
+        y_data = np.ma.array([])
         cube = None
 
         # Iterate over datasets
@@ -487,12 +506,12 @@ class GBRTModel():
             group_attributes.append(group_attr)
 
             # Check label
-            self._check_labels(dataset['label'])
+            self._check_label(dataset['tag'])
 
             # Save data
             cube = iris.load_cube(dataset['filename'])
             self._check_cube_coords(cube, None, dataset)
-            y_data = np.hstack((y_data, self._get_cube_data(cube)))
+            y_data = np.ma.hstack((y_data, self._get_cube_data(cube)))
 
         # Check if data was found
         if cube is None:
@@ -511,7 +530,7 @@ class GBRTModel():
 
         # Check sizes
         if len(x_data) != len(y_data):
-            raise ValueError("Size of features and labels does not match, got "
+            raise ValueError("Size of features and labels do not match, got "
                              "{} observations for the features and {} "
                              "observations for the label".format(
                                  len(x_data), len(y_data)))
@@ -522,7 +541,6 @@ class GBRTModel():
         """Extract prediction input `datasets`."""
         (x_data, prediction_input_cube) = self._extract_x_data(
             datasets, 'prediction_input')
-
         return (x_data, prediction_input_cube)
 
     def _extract_x_data(self, datasets, var_type):
@@ -594,8 +612,8 @@ class GBRTModel():
         var_type = datasets[0]['var_type']
         for dataset in datasets:
             cube_to_broadcast = iris.load_cube(dataset['filename'])
-            data_to_broadcast = cube_to_broadcast.data
-            name = dataset['label']
+            data_to_broadcast = np.ma.array(cube_to_broadcast.data)
+            name = dataset['tag']
             try:
                 new_axis_pos = np.delete(
                     np.arange(len(target_shape)), dataset['broadcast_from'])
@@ -605,9 +623,11 @@ class GBRTModel():
             logger.info("Broadcasting %s '%s' from %s to %s", var_type, name,
                         data_to_broadcast.shape, target_shape)
             for idx in new_axis_pos:
-                data_to_broadcast = np.expand_dims(data_to_broadcast, idx)
-            data_to_broadcast = np.broadcast_to(data_to_broadcast,
-                                                target_shape)
+                data_to_broadcast = np.ma.expand_dims(data_to_broadcast, idx)
+            mask = data_to_broadcast.mask
+            data_to_broadcast = np.broadcast_to(
+                data_to_broadcast, target_shape, subok=True)
+            data_to_broadcast.mask = np.broadcast_to(mask, target_shape)
             if not self._cfg.get('use_only_coords_as_features'):
                 new_data.append(data_to_broadcast.ravel())
                 names.append(name)
@@ -626,7 +646,7 @@ class GBRTModel():
                                "scalar data (option 'accept_only_scalar_"
                                "data')")
                 return (new_data, names)
-            coord_array = cube.coord(coord).points
+            coord_array = np.ma.array(cube.coord(coord).points)
             try:
                 new_axis_pos = np.delete(np.arange(len(cube.shape)), coord_idx)
             except IndexError:
@@ -634,8 +654,10 @@ class GBRTModel():
                                  "is out of bounds for coordinate "
                                  "'{}'".format(coord_idx, coord))
             for idx in new_axis_pos:
-                coord_array = np.expand_dims(coord_array, idx)
-            coord_array = np.broadcast_to(coord_array, cube.shape)
+                coord_array = np.ma.expand_dims(coord_array, idx)
+            mask = coord_array.mask
+            coord_array = np.broadcast_to(coord_array, cube.shape, subok=True)
+            coord_array.mask = np.broadcast_to(mask, cube.shape)
             new_data.append(coord_array.ravel())
             names.append(coord)
 
@@ -662,6 +684,9 @@ class GBRTModel():
         label_datasets = select_metadata(input_datasets, var_type='label')
         feature_datasets = select_metadata(feature_datasets, **metadata)
         label_datasets = select_metadata(label_datasets, **metadata)
+        if metadata:
+            logger.info("Only considered features and labels matching %s",
+                        metadata)
 
         # Prediction datasets
         prediction_datasets = select_metadata(
@@ -683,7 +708,7 @@ class GBRTModel():
                 skipped_datasets.append(dataset)
                 continue
             cube = iris.load_cube(dataset['filename'])
-            name = dataset['label']
+            name = dataset['tag']
             coords = self._check_cube_coords(cube, coords, dataset)
             if not self._cfg.get('use_only_coords_as_features'):
                 attr_data.append(self._get_cube_data(cube))
@@ -710,9 +735,11 @@ class GBRTModel():
         feature_names.extend(coord_data[1])
 
         # Convert data to numpy array with correct shape
-        attr_data = np.array(attr_data)
-        if attr_data.ndim > 1:
-            attr_data = np.swapaxes(attr_data, 0, 1)
+        attr_data = np.ma.array(attr_data)
+        if attr_data.ndim == 1:
+            attr_data = np.ma.expand_dims(attr_data, 0)
+        elif attr_data.ndim > 1:
+            attr_data = np.ma.swapaxes(attr_data, 0, 1)
         return (attr_data, feature_names, cube)
 
     def _group_prediction_datasets(self, datasets):  # noqa
@@ -771,4 +798,4 @@ class GBRTModel():
         return train_test_split(
             self._data['x_data'],
             self._data['y_data'],
-            test_size=self.parameters.get('test_size', 0.25))
+            test_size=self._cfg.get('test_size', 0.25))

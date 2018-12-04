@@ -34,11 +34,21 @@ logger = logging.getLogger(os.path.basename(__file__))
 def main(cfg):
     """Run the diagnostic."""
     input_data = cfg['input_data'].values()
-    input_data = select_metadata(input_data, project='CMIP5')
-    grouped_datasets = group_metadata(input_data, 'dataset')
-    for dataset in grouped_datasets:
-        logger.info("Processing %s", dataset)
-        gbrt_model = GBRTModel(cfg, root_dir=dataset, dataset=dataset)
+    preselection = cfg.get('metadata_preselection', {})
+    group = preselection.get('group')
+    input_data = select_metadata(input_data, **preselection.get('select', {}))
+    grouped_datasets = group_metadata(input_data, group)
+    for attr in grouped_datasets:
+        logger.info("Processing %s", attr)
+        if group is not None:
+            metadata = {group: attr}
+        else:
+            metadata = {}
+        gbrt_model = GBRTModel(cfg, root_dir=attr, **metadata)
+
+        # TODO
+        for d in grouped_datasets[attr]:
+            print(d['filename'])
 
         # Fit and predict
         gbrt_model.fit()
