@@ -221,7 +221,7 @@ diagnostics:
   #       <<: *trend
   #       tag: U-Jet_t
 
-  diag_gbrt_input_mmstf:
+  diag_gbrt_input_shhcb:
     variables:
       va:
         <<: *variable_settings
@@ -231,12 +231,14 @@ diagnostics:
         field: T2Ms
         preprocessor: noop
     scripts:
-      mean:
-        script: austral_jet/mmstf.ncl
+      mean: &shhcb
+        script: austral_jet/shhcb.ncl
         calc_type: mean
         tag: H-SH_c
+        lat_range: [-80, -20]
+        lev: 500
       trend:
-        script: austral_jet/mmstf.ncl
+        <<: *shhcb
         calc_type: trend
         tag: H-SH_t
 

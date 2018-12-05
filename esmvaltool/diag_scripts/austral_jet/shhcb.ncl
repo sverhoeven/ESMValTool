@@ -1,12 +1,12 @@
 ; #############################################################################
-; austral_jet/mmstf.ncl
+; austral_jet/shhcb.ncl
 ; #############################################################################
 ; Author: Manuel Schlund (DLR, Germany)
 ; #############################################################################
 ;
 ; Description:
-;     Simple script to calculate and save the zonal mean meridional stream
-;     function mmstf for the use in other diagnostics (e.g. GBRT models).
+;     Simple script to calculate and save the Hadley cell boundary in the
+;     southern hemisphere for the use in other diagnostics (e.g. GBRT models).
 ;
 ; Required diag_script_info attributes:
 ;     calc_type : Calculation type (mean/trend)
@@ -45,14 +45,14 @@ begin
   n_datasets = dimsizes(va_datasets)
 
   ; Required attributes
-  req_atts = (/"calc_type", "tag"/)
+  req_atts = (/"calc_type", "tag", "lev", "lat_range"/)
   exit_if_missing_atts(diag_script_info, req_atts)
 
 end
 
 begin
 
-  ; Calculate mmstf for every dataset
+  ; Iterate over datasets
   do i_dat = 0, n_datasets - 1
     va = read_data(va_info[i_dat])
     ps = read_data(ps_info[i_dat])
@@ -71,23 +71,52 @@ begin
     end if
 
     ; Calculate zonal mean meridional stream function
-    outvar = zonal_mpsi_Wrap(vt2b, va&lat, pr, ps)
-    outvar!0 = va!0
-    outvar!1 = va!1
-    outvar!2 = va!2
-    outvar&time = va&time
-    outvar&plev = va&plev(p_idx)
-    outvar&lat = va&lat
+    mmstf = zonal_mpsi_Wrap(vt2b, va&lat, pr, ps)
+    mmstf!0 = va!0
+    mmstf!1 = va!1
+    mmstf!2 = va!2
+    mmstf&time = va&time
+    mmstf&plev = va&plev(p_idx)
+    mmstf&lat = va&lat
     delete([/va, ps, pr, p_idx, vt2b/])
+
+    ; Calculate southern hemisphere Hadley cell boundary
+    lev = diag_script_info@lev
+    lat_range = diag_script_info@lat_range
+    printVarSummary(mmstf)
+    print(lev)
+    print(lat_range)
+    mmstf := mmstf({time|:}, {plev|lev}, {lat|lat_range(0):lat_range(1)})
+    outvar = new(dimsizes(mmstf&time), typeof(mmstf&lat))
+
+    ; 1st degree polynomial fit for all times
+    do tt = 0, dimsizes(mmstf&time) - 1
+      idx_min = minind(mmstf(tt, :))
+      idx_max = maxind(mmstf(tt, :))
+      tmp = mmstf(tt, idx_min:idx_max)
+      idx_1 = min(ind(tmp .ge. 0.0))
+      idx_1 = max(ind(tmp .le. 0.0))
+      if (idx_2 .gt. (idx_1 - 1)) then
+        idx_2 = idx_1 - 1
+      end if
+      scal_x = tmp(idx_2:idx_1)
+      scal_y = tmp&lat(idx_2:idx_1)
+      pf = lspoly(scal_x, scal_y, 1, 2)
+      y_fit = pf(0) + pf(1) * scal_x
+      outvar(tt) = yfit(1)
+      delete([/pf, idx_1, idx_2, idx_min, idx_max, yfit, tmp, scal_x, scal_y/])
+    end do
+    outvar!0 = "time"
+    outvar&time = mmstf&time
 
     ; Set attributes
     ; copy_VarAtts(variable_info[i_dat], outvar)
-    outvar@var = "mmstf"
+    outvar@var = "hsh"
     outvar@diag_script = DIAG_SCRIPT
-    outvar@standard_name = "zonal_meridional_stream_function"
-    outvar@long_name = "Zonal Meridional Stream Function"
-    outvar@units = "kg s-1"
-    outvar@ncdf = config_user_info@work_dir + "mmstf_" + \
+    outvar@standard_name = "southern_hemisphere_hadley_cell_boundary"
+    outvar@long_name = "Boundary of Hadley cell in southern hemisphere"
+    outvar@units = "degrees_south"
+    outvar@ncdf = config_user_info@work_dir + "hsh" + \
       va_info[i_dat]@dataset + "_" + va_info[i_dat]@ensemble + ".nc"
 
     ; Save file
