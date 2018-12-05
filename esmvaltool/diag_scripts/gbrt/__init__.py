@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.ensemble.partial_dependence import plot_partial_dependence
+from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 
 from esmvaltool.diag_scripts.shared import (group_metadata, select_metadata,
@@ -93,6 +94,16 @@ class GBRTModel():
 
     Configuration options in recipe
     -------------------------------
+    accept_only_scalar_data : bool, optional (default: False)
+        Only accept scalar diagnostic data, if set to True
+        'group_datasets_by_attributes should be given.
+    group_datasets_by_attributes : list of str, optional
+        List of dataset attributes which are used to group input data for
+        `features` and `labels`, e.g. specify `dataset` to use the different
+        `dataset`s as observations for the GBRT model.
+    imputation_strategy : str, optional (default: 'remove')
+        Strategy for the imputation of missing values in the features. Must be
+        one of `remove`, `mean`, `median`, `most_frequent` or `constant`.
     parameters : dict, optional
         Parameters used in the classifier, more information is available here:
         https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
@@ -105,20 +116,11 @@ class GBRTModel():
         by the dictionary values.
     use_only_coords_as_features : bool, optional (default: False)
         Use only the specified coordinates as features.
-    accept_only_scalar_data : bool, optional (default: False)
-        Only accept scalar diagnostic data, if set to True
-        'group_datasets_by_attributes should be given.
-    group_datasets_by_attributes : list of str, optional
-        List of dataset attributes which are used to group input data for
-        `features` and `labels`, e.g. specify `dataset` to use the different
-        `dataset`s as observations for the GBRT model.
 
     """
 
     _DEFAULT_PARAMETERS = {
-        # TODO
-        # 'n_estimators': 1000,
-        'n_estimators': 50,
+        'n_estimators': 1000,
         'max_depth': 4,
         'min_samples_split': 2,
         'learning_rate': 0.01,
@@ -142,10 +144,14 @@ class GBRTModel():
         """
         # Private members
         self._clf = None
-        self._cubes = {}
         self._data = {}
         self._datasets = {}
         self._cfg = cfg
+        imputation_strategy = self._cfg.get('imputation_strategy', 'remove')
+        if imputation_strategy == 'remove':
+            self._imputer = None
+        else:
+            self._imputer = SimpleImputer(strategy=imputation_strategy)
 
         # Public members
         self.classes = {}
@@ -203,20 +209,31 @@ class GBRTModel():
         logger.info("Fitting GBRT model")
 
         # Extract features and labels
-        (self._data['x_data'], self._cubes['feature'], self._data['y_data'],
-         self._cubes['label']) = self._extract_features_and_labels(
+        (self._data['x_data'],
+         self._data['y_data']) = self._extract_features_and_labels(
              self._datasets['training'])
 
         # Separate training and test data
         (self._data['x_train'], self._data['x_test'], self._data['y_train'],
          self._data['y_test']) = self._train_test_split()
 
+        # Impute missing features
+        if self._imputer is not None:
+            self._imputer.fit(self._data['x_train'])
+        for data_type in ('data', 'train', 'test'):
+            x_type = 'x_' + data_type
+            y_type = 'y_' + data_type
+            (self._data[x_type],
+             self._data[y_type]) = self._impute_missing_features(
+                 self._data[x_type], self._data[y_type], text=data_type)
+
         # Create GBRT model with desired parameters and fit it
         params = self.parameters
         params.update(parameters)
         self._clf = GradientBoostingRegressor(**params)
         self._clf.fit(self._data['x_train'], self._data['y_train'])
-        logger.info("Successfully fitted GBRT model")
+        logger.info("Successfully fitted GBRT model with %i training points",
+                    len(self._data['y_train']))
 
     def plot_feature_importance(self, filename=None):
         """Plot feature importance."""
@@ -349,9 +366,10 @@ class GBRTModel():
         for (pred_name, datasets) in self._datasets['prediction'].items():
             logger.info("Started prediction for prediction %s", pred_name)
             (x_pred, cube) = self._extract_prediction_input(datasets)
+            (x_pred, _) = self._impute_missing_features(
+                x_pred, y_data=None, text='prediction input')
             y_pred = self._clf.predict(x_pred)
             self._data[pred_name] = y_pred
-            self._cubes[pred_name] = cube
             predictions[pred_name] = y_pred
 
             # Save data into cubes
@@ -366,7 +384,7 @@ class GBRTModel():
             filename = 'prediction_{}.nc'.format(pred_name)
             new_path = os.path.join(self._cfg['gbrt_work_dir'], filename)
             save_iris_cube(cube, new_path, self._cfg)
-        logger.info("Prediction successful")
+            logger.info("Successfully predicted %s points", len(y_pred))
 
         return predictions
 
@@ -405,10 +423,10 @@ class GBRTModel():
                                          dataset['var_type']))
         return cube.coords()
 
-    def _check_features(self, features, additional_text=None):
+    def _check_features(self, features, text=None):
         """Check if `features` match with already saved data."""
-        if additional_text is None:
-            msg = ' for {}'.format(additional_text)
+        if text is None:
+            msg = ' for {}'.format(text)
         else:
             msg = ''
 
@@ -471,7 +489,7 @@ class GBRTModel():
                 text = var_type
             else:
                 text = "{} ('{}')".format(group_attr, var_type)
-            self._check_features(feature_names, additional_text=text)
+            self._check_features(feature_names, text=text)
 
             # Append data
             if x_data is None:
@@ -521,12 +539,15 @@ class GBRTModel():
         self._check_group_attributes(group_attributes)
 
         # Return data
-        return (y_data, cube)
+        return y_data
 
     def _extract_features_and_labels(self, datasets):
         """Extract features and labels from `datasets`."""
-        (x_data, feature_cube) = self._extract_x_data(datasets, 'feature')
-        (y_data, label_cube) = self._extract_y_data(datasets)
+        (x_data, _) = self._extract_x_data(datasets, 'feature')
+        y_data = self._extract_y_data(datasets)
+
+        # Handle missing values in labels
+        (x_data, y_data) = self._remove_missing_labels(x_data, y_data)
 
         # Check sizes
         if len(x_data) != len(y_data):
@@ -535,7 +556,7 @@ class GBRTModel():
                              "observations for the label".format(
                                  len(x_data), len(y_data)))
 
-        return (x_data, feature_cube, y_data, label_cube)
+        return (x_data, y_data)
 
     def _extract_prediction_input(self, datasets):
         """Extract prediction input `datasets`."""
@@ -561,9 +582,9 @@ class GBRTModel():
     def _extract_y_data(self, datasets):
         """Extract y data (labels) from `datasets`."""
         datasets = select_metadata(datasets, var_type='label')
-        (y_data, cube) = self._collect_y_data(datasets)
+        y_data = self._collect_y_data(datasets)
         logger.debug("Found label: %s", self.classes['label'])
-        return (y_data, cube)
+        return y_data
 
     def _get_ancestor_datasets(self):
         """Get ancestor datasets."""
@@ -769,6 +790,48 @@ class GBRTModel():
             dataset['group_by_attributes'] = group_by_attributes
         logger.info("Grouped feature and label datasets by %s", attributes)
         return datasets
+
+    def _remove_missing_labels(self, x_data, y_data):  # noqa
+        """Remove missing values in the label data."""
+        new_x_data = x_data[~y_data.mask]
+        new_y_data = y_data[~y_data.mask]
+        diff = len(y_data) - len(new_y_data)
+        if diff:
+            logger.info("Removed %i data points where labels were missing",
+                        diff)
+        return (new_x_data, new_y_data)
+
+    def _impute_missing_features(self, x_data, y_data=None, text=None):
+        """Impute missing values in the feature data."""
+        if self._imputer is None:
+            strategy = 'removing them'
+            if x_data.mask.shape == ():
+                mask = np.full(x_data.shape[0], False)
+            else:
+                mask = np.any(x_data.mask, axis=1)
+            new_x_data = x_data.filled()[~mask]
+            if y_data is not None:
+                new_y_data = y_data.filled()[~mask]
+            else:
+                new_y_data = None
+            n_imputes = x_data.shape[0] - new_x_data.shape[0]
+        else:
+            strategy = 'setting them to {}'.format(
+                self._cfg['imputation_strategy'])
+            new_x_data = self._imputer.transform(x_data.filled(np.nan))
+            if y_data is not None:
+                new_y_data = y_data.filled()
+            else:
+                new_y_data = None
+            n_imputes = np.count_nonzero(x_data != new_x_data)
+        if n_imputes:
+            if text is None:
+                msg = ''
+            else:
+                msg = ' for {}'.format(text)
+            logger.info("Imputed %i missing features%s by %s", n_imputes, msg,
+                        strategy)
+        return (new_x_data, new_y_data)
 
     def _is_fitted(self):
         """Check if the GBRT models are fitted."""

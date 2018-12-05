@@ -30,21 +30,27 @@ preprocessors:
   time_average:
     time_average: null
 
+  external_ua:
+    time_average: null
+    extract_levels:
+      levels: 100000
+      scheme: linear
+
 
 diagnostics:
 
-  diag_external_tas:
+  diag_external_ua:
     variables:
-      tas:
+      ua:
         project: CMIP5
         mip: Amon
-        field: T2Ms
+        field: T3M
         exp: historical
         ensemble: r1i1p1
         start_year: 2000
         end_year: 2000
-        preprocessor: time_average
-        tag: DUMMY_TAS
+        preprocessor: external_ua
+        tag: EXTERNAL_UA
         var_type: feature
         broadcast_from: [1, 2]
         additional_datasets:
@@ -89,7 +95,8 @@ diagnostics:
     scripts:
       multiple_gbrt_models:
         script: gbrt/multiple_gbrt_models.py
-        ancestors: ['ta', 'tas', 'ua', 'diag_external_tas/*']
+        ancestors: ['ta', 'tas', 'ua', 'diag_external_ua/*']
+        imputation_strategy: mean
         use_coords_as_feature:
           air_pressure: 0
           latitude: 1
@@ -100,7 +107,8 @@ diagnostics:
           group: dataset
       single_gbrt_model:
         script: gbrt/single_gbrt_model.py
-        ancestors: ['ta', 'tas', 'ua', 'diag_external_tas/*']
+        ancestors: ['ta', 'tas', 'ua', 'diag_external_ua/*']
+        imputation_strategy: mean
         use_coords_as_feature:
           air_pressure: 0
           latitude: 1
