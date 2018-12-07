@@ -24,12 +24,12 @@ datasets:
   # - {dataset: bcc-csm1-1,     ensemble: r1i1p1}
 
 
-  # - {dataset: BNU-ESM,        ensemble: r1i1p1}
-  # - {dataset: CanESM2,        ensemble: r1i1p1}
-  # - {dataset: CanESM2,        ensemble: r2i1p1}
-  # - {dataset: CanESM2,        ensemble: r3i1p1}
-  # - {dataset: CanESM2,        ensemble: r4i1p1}
-  # - {dataset: CanESM2,        ensemble: r5i1p1}
+  - {dataset: BNU-ESM,        ensemble: r1i1p1}
+  - {dataset: CanESM2,        ensemble: r1i1p1}
+  - {dataset: CanESM2,        ensemble: r2i1p1}
+  - {dataset: CanESM2,        ensemble: r3i1p1}
+  - {dataset: CanESM2,        ensemble: r4i1p1}
+  - {dataset: CanESM2,        ensemble: r5i1p1}
 
 
   # - {dataset: CCSM4,          ensemble: r1i1p1}
@@ -40,45 +40,45 @@ datasets:
   # - {dataset: CCSM4,          ensemble: r6i1p1}
 
 
-  # - {dataset: CESM1-BGC,      ensemble: r1i1p1}
-  # - {dataset: CESM1-CAM5,     ensemble: r1i1p1}
-  # - {dataset: CESM1-CAM5,     ensemble: r2i1p1}
-  # - {dataset: CESM1-CAM5,     ensemble: r3i1p1}
-  # - {dataset: CMCC-CMS,       ensemble: r1i1p1}
-  # - {dataset: CNRM-CM5,       ensemble: r1i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r1i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r2i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r3i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r4i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r5i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r6i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r7i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r8i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r9i1p1}
-  # - {dataset: CSIRO-Mk3-6-0,  ensemble: r10i1p1}
-  # - {dataset: GFDL-CM3,       ensemble: r1i1p1}
-  # - {dataset: GFDL-ESM2G,     ensemble: r1i1p1}
-  # - {dataset: GFDL-ESM2M,     ensemble: r1i1p1}
-  # - {dataset: HadGEM2-AO,     ensemble: r1i1p1}
-  # - {dataset: inmcm4,         ensemble: r1i1p1}
-  # - {dataset: IPSL-CM5A-LR,   ensemble: r1i1p1}
-  # - {dataset: IPSL-CM5A-LR,   ensemble: r2i1p1}
-  # - {dataset: IPSL-CM5A-LR,   ensemble: r3i1p1}
-  # - {dataset: IPSL-CM5A-LR,   ensemble: r4i1p1}
-  # - {dataset: IPSL-CM5A-MR,   ensemble: r1i1p1}
-  # - {dataset: IPSL-CM5B-LR,   ensemble: r1i1p1}
-  # - {dataset: MIROC5,         ensemble: r1i1p1}
-  # - {dataset: MIROC5,         ensemble: r2i1p1}
-  # - {dataset: MIROC-ESM,      ensemble: r1i1p1}
-  # - {dataset: MIROC-ESM-CHEM, ensemble: r1i1p1}
-  # - {dataset: MPI-ESM-LR,     ensemble: r1i1p1}
-  # - {dataset: MPI-ESM-LR,     ensemble: r2i1p1}
-  # - {dataset: MPI-ESM-LR,     ensemble: r3i1p1}
-  # - {dataset: MPI-ESM-MR,     ensemble: r1i1p1}
-  # - {dataset: MPI-ESM-MR,     ensemble: r2i1p1}
-  # - {dataset: MPI-ESM-MR,     ensemble: r3i1p1}
-  # - {dataset: MRI-CGCM3,      ensemble: r1i1p1}
-  # - {dataset: NorESM1-M,      ensemble: r1i1p1}
+  - {dataset: CESM1-BGC,      ensemble: r1i1p1}
+  - {dataset: CESM1-CAM5,     ensemble: r1i1p1}
+  - {dataset: CESM1-CAM5,     ensemble: r2i1p1}
+  - {dataset: CESM1-CAM5,     ensemble: r3i1p1}
+  - {dataset: CMCC-CMS,       ensemble: r1i1p1}
+  - {dataset: CNRM-CM5,       ensemble: r1i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r1i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r2i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r3i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r4i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r5i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r6i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r7i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r8i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r9i1p1}
+  - {dataset: CSIRO-Mk3-6-0,  ensemble: r10i1p1}
+  - {dataset: GFDL-CM3,       ensemble: r1i1p1}
+  - {dataset: GFDL-ESM2G,     ensemble: r1i1p1}
+  - {dataset: GFDL-ESM2M,     ensemble: r1i1p1}
+  - {dataset: HadGEM2-AO,     ensemble: r1i1p1}
+  - {dataset: inmcm4,         ensemble: r1i1p1}
+  - {dataset: IPSL-CM5A-LR,   ensemble: r1i1p1}
+  - {dataset: IPSL-CM5A-LR,   ensemble: r2i1p1}
+  - {dataset: IPSL-CM5A-LR,   ensemble: r3i1p1}
+  - {dataset: IPSL-CM5A-LR,   ensemble: r4i1p1}
+  - {dataset: IPSL-CM5A-MR,   ensemble: r1i1p1}
+  - {dataset: IPSL-CM5B-LR,   ensemble: r1i1p1}
+  - {dataset: MIROC5,         ensemble: r1i1p1}
+  - {dataset: MIROC5,         ensemble: r2i1p1}
+  - {dataset: MIROC-ESM,      ensemble: r1i1p1}
+  - {dataset: MIROC-ESM-CHEM, ensemble: r1i1p1}
+  - {dataset: MPI-ESM-LR,     ensemble: r1i1p1}
+  - {dataset: MPI-ESM-LR,     ensemble: r2i1p1}
+  - {dataset: MPI-ESM-LR,     ensemble: r3i1p1}
+  - {dataset: MPI-ESM-MR,     ensemble: r1i1p1}
+  - {dataset: MPI-ESM-MR,     ensemble: r2i1p1}
+  - {dataset: MPI-ESM-MR,     ensemble: r3i1p1}
+  - {dataset: MRI-CGCM3,      ensemble: r1i1p1}
+  - {dataset: NorESM1-M,      ensemble: r1i1p1}
 
 
 preprocessors:
@@ -180,46 +180,46 @@ diagnostics:
         yearly_trend: True
         tag: T-SP_t
 
-  # diag_gbrt_input_ta_ng100:
-  #   variables:
-  #     ta:
-  #       <<: *variable_settings
-  #       preprocessor: ng100
-  #   scripts:
-  #     mean:
-  #       <<: *mean
-  #       tag: T-NGlob_c
-  #     trend:
-  #       <<: *trend
-  #       tag: T-NGlob_t
+  diag_gbrt_input_ta_ng100:
+    variables:
+      ta:
+        <<: *variable_settings
+        preprocessor: ng100
+    scripts:
+      mean:
+        <<: *mean
+        tag: T-NGlob_c
+      trend:
+        <<: *trend
+        tag: T-NGlob_t
 
-  # diag_gbrt_input_ta_trop250:
-  #   variables:
-  #     ta:
-  #       <<: *variable_settings
-  #       preprocessor: trop250
-  #   scripts:
-  #     mean:
-  #       <<: *mean
-  #       tag: T-Trop_c
-  #     trend:
-  #       <<: *trend
-  #       tag: T-Trop_t
+  diag_gbrt_input_ta_trop250:
+    variables:
+      ta:
+        <<: *variable_settings
+        preprocessor: trop250
+    scripts:
+      mean:
+        <<: *mean
+        tag: T-Trop_c
+      trend:
+        <<: *trend
+        tag: T-Trop_t
 
-  # diag_gbrt_input_uajet_sh850:
-  #   variables:
-  #     uajet:
-  #       <<: *variable_settings
-  #       field: T0M
-  #       preprocessor: noop
-  #       derive: True
-  #   scripts:
-  #     mean:
-  #       <<: *mean
-  #       tag: U-Jet_c
-  #     trend:
-  #       <<: *trend
-  #       tag: U-Jet_t
+  diag_gbrt_input_uajet_sh850:
+    variables:
+      uajet:
+        <<: *variable_settings
+        field: T0M
+        preprocessor: noop
+        derive: True
+    scripts:
+      mean:
+        <<: *mean
+        tag: U-Jet_c
+      trend:
+        <<: *trend
+        tag: U-Jet_t
 
   diag_gbrt_input_shhcb:
     variables:
@@ -232,15 +232,16 @@ diagnostics:
         preprocessor: noop
     scripts:
       mean: &shhcb
-        script: austral_jet/shhcb.ncl
+        # script: austral_jet/mmstf.ncl
+        script: austral_jet/dummy.py
         calc_type: mean
         tag: H-SH_c
         lat_range: [-80, -20]
         lev: 500
-      trend:
-        <<: *shhcb
-        calc_type: trend
-        tag: H-SH_t
+      # trend:
+      #   <<: *shhcb
+      #   calc_type: trend
+      #   tag: H-SH_t
 
   diag_gbrt:
     description: Perform GBRT on input data.
@@ -267,4 +268,5 @@ diagnostics:
         accept_only_scalar_data: True
         group_datasets_by_attributes: ['dataset', 'ensemble']
         parameters:
+          n_estimators: 2000
           learning_rate: 0.001

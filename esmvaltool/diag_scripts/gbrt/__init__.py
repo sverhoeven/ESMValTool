@@ -21,6 +21,11 @@ VAR_KEYS = [
     'standard_name',
     'units',
 ]
+VAR_TYPES = [
+    'feature',
+    'label',
+    'prediction_input',
+]
 NECESSARY_KEYS = VAR_KEYS + [
     'dataset',
     'filename',
@@ -39,6 +44,10 @@ def datasets_have_gbrt_attributes(datasets, log_level='debug'):
                                            "necessary attribute '%s'", dataset,
                                            key)
                 return False
+        if dataset['var_type'] not in VAR_TYPES:
+            getattr(logger, log_level)("Dataset '%s' has invalid var_type "
+                                       "'%s', must be one of '%s'", dataset,
+                                       dataset['var_type'], VAR_TYPES)
     return True
 
 
@@ -174,12 +183,6 @@ class GBRTModel():
         # Load input datasets
         (training_datasets,
          prediction_datasets) = self._get_input_datasets(**metadata)
-        if not datasets_have_gbrt_attributes(
-                training_datasets, log_level='error'):
-            raise ValueError()
-        if not datasets_have_gbrt_attributes(
-                prediction_datasets, log_level='error'):
-            raise ValueError()
         self._datasets['training'] = self._group_by_attributes(
             training_datasets)
         self._datasets['prediction'] = self._group_prediction_datasets(
@@ -232,7 +235,7 @@ class GBRTModel():
         params.update(parameters)
         self._clf = GradientBoostingRegressor(**params)
         self._clf.fit(self._data['x_train'], self._data['y_train'])
-        logger.info("Successfully fitted GBRT model with %i training points",
+        logger.info("Successfully fitted GBRT model with %i training point(s)",
                     len(self._data['y_train']))
 
     def plot_feature_importance(self, filename=None):
@@ -374,17 +377,12 @@ class GBRTModel():
 
             # Save data into cubes
             cube = cube.copy(data=y_pred.reshape(cube.shape))
-            cube.attributes = {}
-            cube.attributes.update({
-                'description': 'GBRT model prediction',
-                'model_name': self.__class__.__name__,
-                'prediction_name': str(pred_name)
-            })
-            cube.attributes.update(self.parameters)
+            self._set_prediction_cube_attributes(
+                cube, prediction_name=pred_name)
             filename = 'prediction_{}.nc'.format(pred_name)
             new_path = os.path.join(self._cfg['gbrt_work_dir'], filename)
             save_iris_cube(cube, new_path, self._cfg)
-            logger.info("Successfully predicted %s points", len(y_pred))
+            logger.info("Successfully predicted %s point(s)", len(y_pred))
 
         return predictions
 
@@ -426,9 +424,9 @@ class GBRTModel():
     def _check_features(self, features, text=None):
         """Check if `features` match with already saved data."""
         if text is None:
-            msg = ' for {}'.format(text)
-        else:
             msg = ''
+        else:
+            msg = ' for {}'.format(text)
 
         # Compare new features to already saved ones
         if self.classes.get('features') is None:
@@ -713,6 +711,14 @@ class GBRTModel():
         prediction_datasets = select_metadata(
             input_datasets, var_type='prediction_input')
         training_datasets = feature_datasets + label_datasets
+
+        # Check datasets
+        if not datasets_have_gbrt_attributes(
+                training_datasets, log_level='error'):
+            raise ValueError()
+        if not datasets_have_gbrt_attributes(
+                prediction_datasets, log_level='error'):
+            raise ValueError()
         return (training_datasets, prediction_datasets)
 
     def _get_x_data_for_group(self, datasets, var_type):
@@ -797,7 +803,7 @@ class GBRTModel():
         new_y_data = y_data[~y_data.mask]
         diff = len(y_data) - len(new_y_data)
         if diff:
-            logger.info("Removed %i data points where labels were missing",
+            logger.info("Removed %i data point(s) where labels were missing",
                         diff)
         return (new_x_data, new_y_data)
 
@@ -855,6 +861,19 @@ class GBRTModel():
         parameters.update(self._cfg.get('parameters', {}))
         logger.debug("Use parameters %s for GBRT", parameters)
         return parameters
+
+    def _set_prediction_cube_attributes(self, cube, prediction_name=None):
+        """Set the attributes of the prediction cube."""
+        cube.attributes = {}
+        cube.attributes['description'] = 'GBRT model prediction'
+        if prediction_name is not None:
+            cube.attributes['prediction_name'] = prediction_name
+        cube.attributes.update(self.parameters)
+        label = select_metadata(
+            self._datasets['training'], var_type='label')[0]
+        label_cube = iris.load_cube(label['filename'])
+        for attr in ('var_name', 'standard_name', 'long_name', 'units'):
+            setattr(cube, attr, getattr(label_cube, attr))
 
     def _train_test_split(self):
         """Split data into training and test data."""
