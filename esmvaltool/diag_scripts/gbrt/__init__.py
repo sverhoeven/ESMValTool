@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pprint import pformat
 
 import iris
 import matplotlib.pyplot as plt
@@ -189,6 +190,10 @@ class GBRTModel():
             prediction_datasets)
         logger.info("Initialized GBRT model with parameters %s",
                     self.parameters)
+        logger.debug("Found training data:")
+        logger.debug(pformat(self._datasets['training']))
+        logger.debug("Found prediction data:")
+        logger.debug(pformat(self._datasets['prediction']))
 
         # Check if data was found
         if not training_datasets:
@@ -382,7 +387,7 @@ class GBRTModel():
             filename = 'prediction_{}.nc'.format(pred_name)
             new_path = os.path.join(self._cfg['gbrt_work_dir'], filename)
             save_iris_cube(cube, new_path, self._cfg)
-            logger.info("Successfully predicted %s point(s)", len(y_pred))
+            logger.info("Successfully predicted %i point(s)", len(y_pred))
 
         return predictions
 
@@ -400,13 +405,13 @@ class GBRTModel():
     def _check_cube_coords(self, cube, expected_coords, dataset):
         """Check shape and coordinates of a given cube."""
         if self._cfg.get('accept_only_scalar_data'):
-            allowed_shape = ()
-            if cube.shape != allowed_shape:
-                raise ValueError("Expected only cubes with shape {}, got {} "
+            allowed_shapes = [(), (1, )]
+            if cube.shape not in allowed_shapes:
+                raise ValueError("Expected only cubes with shapes {}, got {} "
                                  "from '{}' dataset {}, adapt option "
                                  "'accept_only_scalar_data' in recipe".format(
-                                     allowed_shape, cube.shape, dataset['tag'],
-                                     dataset['dataset']))
+                                     allowed_shapes, cube.shape,
+                                     dataset['tag'], dataset['dataset']))
         else:
             if expected_coords is not None:
                 if cube.coords() != expected_coords:
@@ -574,7 +579,8 @@ class GBRTModel():
         (x_data, cube) = self._collect_x_data(datasets, var_type)
 
         # Return data
-        logger.debug("Found features: %s", self.classes['features'])
+        logger.debug("Found features:")
+        logger.debug(pformat(self.classes['features']))
         return (x_data, cube)
 
     def _extract_y_data(self, datasets):
@@ -594,7 +600,8 @@ class GBRTModel():
             logger.debug("Skipping loading ancestor datasets, 'ancestors' key "
                          "not given")
             return []
-        logger.debug("Found ancestor directories: %s", input_dirs)
+        logger.debug("Found ancestor directories:")
+        logger.debug(pformat(input_dirs))
 
         # Extract datasets
         datasets = []
@@ -795,6 +802,8 @@ class GBRTModel():
                 group_by_attributes = group_by_attributes[:-1]
             dataset['group_by_attributes'] = group_by_attributes
         logger.info("Grouped feature and label datasets by %s", attributes)
+        all_groups = {data['group_by_attributes'] for data in datasets}
+        logger.info("Found groups %s", all_groups)
         return datasets
 
     def _remove_missing_labels(self, x_data, y_data):  # noqa

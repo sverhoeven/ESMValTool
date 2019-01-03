@@ -17,7 +17,7 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-see esmvaltool.gbrt module.
+See esmvaltool.gbrt module.
 
 """
 

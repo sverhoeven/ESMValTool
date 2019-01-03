@@ -232,16 +232,17 @@ diagnostics:
         preprocessor: noop
     scripts:
       mean: &shhcb
-        # script: austral_jet/mmstf.ncl
-        script: austral_jet/dummy.py
+        script: austral_jet/shhcb.ncl
         calc_type: mean
         tag: H-SH_c
+        season: DJF
         lat_range: [-80, -20]
-        lev: 500
-      # trend:
-      #   <<: *shhcb
-      #   calc_type: trend
-      #   tag: H-SH_t
+        lev: 50000
+      trend:
+        <<: *shhcb
+        calc_type: trend
+        yearly_trend: True
+        tag: H-SH_t
 
   diag_gbrt:
     description: Perform GBRT on input data.

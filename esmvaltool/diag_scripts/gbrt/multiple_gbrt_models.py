@@ -17,7 +17,7 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-see esmvaltool.gbrt module.
+See esmvaltool.gbrt module.
 
 """
 
@@ -45,10 +45,6 @@ def main(cfg):
         else:
             metadata = {}
         gbrt_model = GBRTModel(cfg, root_dir=attr, **metadata)
-
-        # TODO
-        for d in grouped_datasets[attr]:
-            print(d['filename'])
 
         # Fit and predict
         gbrt_model.fit()
