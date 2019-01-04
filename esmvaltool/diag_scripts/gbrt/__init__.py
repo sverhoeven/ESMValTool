@@ -374,8 +374,10 @@ class GBRTModel():
         for (pred_name, datasets) in self._datasets['prediction'].items():
             if pred_name is None:
                 logger.info("Started prediction")
+                filename = 'prediction.nc'
             else:
                 logger.info("Started prediction for prediction %s", pred_name)
+                filename = 'prediction_{}.nc'.format(pred_name)
             (x_pred, cube) = self._extract_prediction_input(datasets)
             (x_pred, _) = self._impute_missing_features(
                 x_pred, y_data=None, text='prediction input')
@@ -387,7 +389,6 @@ class GBRTModel():
             cube = cube.copy(data=y_pred.reshape(cube.shape))
             self._set_prediction_cube_attributes(
                 cube, prediction_name=pred_name)
-            filename = 'prediction_{}.nc'.format(pred_name)
             new_path = os.path.join(self._cfg['gbrt_work_dir'], filename)
             save_iris_cube(cube, new_path, self._cfg)
             logger.info("Successfully predicted %i point(s)", len(y_pred))
