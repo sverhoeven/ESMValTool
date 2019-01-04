@@ -372,7 +372,10 @@ class GBRTModel():
         # Iterate over predictions
         predictions = {}
         for (pred_name, datasets) in self._datasets['prediction'].items():
-            logger.info("Started prediction for prediction %s", pred_name)
+            if pred_name is None:
+                logger.info("Started prediction")
+            else:
+                logger.info("Started prediction for prediction %s", pred_name)
             (x_pred, cube) = self._extract_prediction_input(datasets)
             (x_pred, _) = self._impute_missing_features(
                 x_pred, y_data=None, text='prediction input')
@@ -404,6 +407,13 @@ class GBRTModel():
 
     def _check_cube_coords(self, cube, expected_coords, dataset):
         """Check shape and coordinates of a given cube."""
+        cube_coords = [
+            '{}, shape {}'.format(coord.name(), coord.shape)
+            for coord in cube.coords(dim_coords=True)
+        ]
+        if expected_coords is None:
+            logger.debug("Using coordinates %s for '%s' (found in '%s')",
+                         cube_coords, dataset['var_type'], dataset['tag'])
         if self._cfg.get('accept_only_scalar_data'):
             allowed_shapes = [(), (1, )]
             if cube.shape not in allowed_shapes:
@@ -414,17 +424,23 @@ class GBRTModel():
                                      dataset['tag'], dataset['dataset']))
         else:
             if expected_coords is not None:
-                if cube.coords() != expected_coords:
+                if cube.coords(dim_coords=True) != expected_coords:
+                    coords = [
+                        '{}, shape {}'.format(coord.name(), coord.shape)
+                        for coord in expected_coords
+                    ]
                     raise ValueError("Expected fields with identical "
-                                     "coordinates for '{}', but dataset '{}' "
-                                     "('{}') is differing, consider "
-                                     "regridding, pre-selecting datasets at "
-                                     "class initialization using '**metadata' "
-                                     "or the options 'broadcast_from' or "
+                                     "coordinates ({}) for '{}', but '{}' of "
+                                     "dataset '{}' is differing ({}), "
+                                     "consider regridding, pre-selecting "
+                                     "datasets at class initialization using "
+                                     "'**metadata' or the options "
+                                     "'broadcast_from' or "
                                      "'group_datasets_by_attributes'".format(
+                                         coords, dataset['var_type'],
                                          dataset['tag'], dataset['dataset'],
-                                         dataset['var_type']))
-        return cube.coords()
+                                         cube_coords))
+        return cube.coords(dim_coords=True)
 
     def _check_features(self, features, text=None):
         """Check if `features` match with already saved data."""
@@ -438,10 +454,10 @@ class GBRTModel():
             self.classes['features'] = features
         else:
             if features != self.classes['features']:
-                raise ValueError("Expected features '{}'{}, got "
-                                 "'{}', consider the use of '**metadata' in "
-                                 "class initialization to pre-select dataset "
-                                 "or specifiy suitable attributes to group "
+                raise ValueError("Expected tags '{}'{}, got '{}', consider "
+                                 "the use of '**metadata' in class "
+                                 "initialization to pre-select dataset or "
+                                 "specifiy suitable attributes to group "
                                  "datasets with the option 'group_datasets_"
                                  "by_attributes'".format(
                                      self.classes['features'], msg, features))

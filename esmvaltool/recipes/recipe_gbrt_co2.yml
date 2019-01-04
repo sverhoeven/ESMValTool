@@ -1,0 +1,103 @@
+# recipe_gbrt_co2.yml
+---
+documentation:
+
+  description: |
+    Use GBRT (Gradient Boosted Regression Trees) models to predict future
+    climate for multidimensional diagnostics.
+
+  authors:
+    - schl_ma
+
+  references:
+    null
+
+  projects:
+    - crescendo
+
+  # Yaml anchor for datasets
+  YAML_ANCHOR: &datasets
+    - {dataset: CanESM2}
+    - {dataset: IPSL-CM5A-LR}
+    # - {dataset: MIROC5}
+    # - {dataset: MIROC-ESM}
+    # - {dataset: MPI-ESM-LR}
+    # - {dataset: NorESM1-M}
+
+
+preprocessors:
+
+  time_average:
+    time_average: null
+
+  regrid_and_time_average:
+    regrid:
+      scheme: nearest
+      target_grid: 1x1
+    time_average: null
+
+
+diagnostics:
+
+  diag_gbrt:
+    description: Perform GBRT on input data.
+    variables:
+      tas: &variable_settings
+        project: CMIP5
+        mip: Amon
+        field: T2Ms
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 1986
+        end_year: 2005
+        preprocessor: time_average
+        tag: T-Glob_c
+        var_type: feature
+        additional_datasets: *datasets
+      tas_prediction_input:
+        <<: *variable_settings
+        short_name: tas
+        preprocessor: regrid_and_time_average
+        var_type: prediction_input
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
+      nbp:
+        <<: *variable_settings
+        mip: Lmon
+        tag: NBP
+        additional_datasets: *datasets
+      nbp_prediction_input:
+        <<: *variable_settings
+        short_name: nbp
+        mip: Lmon
+        preprocessor: regrid_and_time_average
+        tag: NBP
+        var_type: prediction_input
+        additional_datasets:
+          - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
+      labels:
+        <<: *variable_settings
+        short_name: nbp
+        mip: Lmon
+        exp: rcp45
+        start_year: 2020
+        end_year: 2040
+        tag: NBP
+        var_type: label
+    scripts:
+      multiple_gbrt_models:
+        script: gbrt/multiple_gbrt_models.py
+        use_coords_as_feature:
+          latitude: 0
+          longitude: 1
+        metadata_preselection:
+          select:
+            project: CMIP5
+          group: dataset
+      # single_gbrt_model:
+      #   script: gbrt/single_gbrt_model.py
+      #   use_coords_as_feature:
+      #     air_pressure: 0
+      #     latitude: 1
+      #     longitude: 2
+      #   group_datasets_by_attributes: ['dataset']

@@ -30,10 +30,11 @@ def main(cfg):
             cube = cube.collapsed('time', iris.analysis.MEAN)
             cube.data = reg.slope
             new_path = os.path.join(cfg['work_dir'], os.path.basename(path))
-            data['filename'] = new_path
-            data['units'] += temp_units
+            data['standard_name'] += '_trend'
             data['short_name'] += '_trend'
             data['long_name'] += ' (trend)'
+            data['units'] += temp_units
+            data['filename'] = new_path
             if 'tag' in cfg:
                 data['tag'] = cfg['tag']
             write_cube(cube, data, new_path, cfg)
