@@ -1,0 +1,60 @@
+# recipe_complex_variable_definition.yml
+---
+documentation:
+
+  description: |
+    Example to demonstrate more complex variable definitions in the
+    diagnostics.
+
+  authors:
+    - schl_ma
+
+  references:
+    null
+
+  ARBITRARY_YAML_ANCHOR: &datasets
+    - {dataset: CanESM2}
+    - {dataset: IPSL-CM5A-LR}
+    - {dataset: MIROC5}
+    - {dataset: MPI-ESM-LR}
+    - {dataset: NorESM1-M}
+
+
+preprocessors:
+
+  time_average:
+    time_average: null
+
+
+diagnostics:
+
+  diag_gbrt:
+    description: Perform GBRT on input data.
+    variables:
+      tas: &variable_settings
+        project: CMIP5
+        mip: Amon
+        field: T2Ms
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 2000
+        end_year: 2005
+        tag: TAS1
+        additional_datasets: *datasets
+      tas_2:
+        <<: *variable_settings
+        short_name: tas
+        preprocessor: time_average
+        tag: TAS2
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
+      tas_3:
+        <<: *variable_settings
+        short_name: tas
+        exp: rcp45
+        start_year: 2020
+        end_year: 2025
+        tag: TAS3
+        additional_datasets: *datasets
+    scripts:
+      null

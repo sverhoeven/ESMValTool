@@ -920,6 +920,7 @@ class Recipe(object):
         for variable_name, raw_variable in raw_variables.items():
             if 'short_name' not in raw_variable:
                 raw_variable['short_name'] = variable_name
+            raw_variable['variable_section_title'] = variable_name
             raw_variable['diagnostic'] = diagnostic_name
             raw_variable['preprocessor'] = str(
                 raw_variable.get('preprocessor', 'default'))
