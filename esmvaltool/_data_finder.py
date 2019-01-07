@@ -273,7 +273,7 @@ def get_output_file(variable, preproc_dir):
     if variable['variable_section_title'] == variable['short_name']:
         sub_dir = '{diagnostic}_{preprocessor}_{short_name}'.format(**variable)
     else:
-        sub_dir = variable['variable_section_title']
+        sub_dir = '{diagnostic}_{variable_section_title}'.format(**variable)
     outfile = os.path.join(
         preproc_dir, sub_dir,
         _replace_tags(cfg['output_file'], variable)[0] + '.nc')
