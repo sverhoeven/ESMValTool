@@ -82,7 +82,10 @@ begin
     va = read_data(info)
     ps = read_data(PS_INFO[idat])
     if (dimsizes(va&lat) .ne. dimsizes(ps&lat)) then
-      ps := ps({time|:}, {lat|va&lat}, {lon|:})
+      tmp = ps({time|:}, {lat|va&lat}, {lon|:})
+      delete(ps)
+      ps = tmp
+      delete(tmp)  ; ps := ps(...) causes memory leaks
     end if
 
     ; Preprocess plev (see documentation of NCL's zonal_mpsi_Wrap)
@@ -104,7 +107,7 @@ begin
     mmstf!1 = va!1
     mmstf!2 = va!2
     mmstf&time = va&time
-    mmstf&plev = va&plev(p_idx)
+    mmstf&plev = pr
     mmstf&lat = va&lat
     delete([/va, ps, pr, p_idx, vt2b/])
 
