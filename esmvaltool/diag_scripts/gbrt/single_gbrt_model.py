@@ -42,9 +42,9 @@ def main(cfg):
     logger.info("%s", pformat(predictions))
 
     # Plots
-    gbrt_model.plot_scatterplot()
+    gbrt_model.plot_scatterplots()
     gbrt_model.plot_feature_importance()
-    gbrt_model.plot_partial_dependence()
+    gbrt_model.plot_partial_dependences()
     gbrt_model.plot_prediction_error()
 
 

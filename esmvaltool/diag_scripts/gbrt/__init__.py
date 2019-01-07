@@ -114,9 +114,17 @@ class GBRTModel():
     imputation_strategy : str, optional (default: 'remove')
         Strategy for the imputation of missing values in the features. Must be
         one of `remove`, `mean`, `median`, `most_frequent` or `constant`.
+    imputation_constant : str or numerical value, optional (default: None)
+        When imputation strategy is `constant`, replace missing values with
+        this value. If `None`, replace numerical values by 0 and others by
+        `missing_value`.
     parameters : dict, optional
         Parameters used in the classifier, more information is available here:
         https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
+    regularize_data : bool, optional (default: False)
+        Regularize data by setting mean to 1 using multiplication (may be
+        necessary when raw data is very small or large which leads to large
+        errors due to machine precision).
     test_size : float, optional (default: 0.25)
         Fraction of feature/label data which is used as test data and not for
         training.
@@ -161,7 +169,9 @@ class GBRTModel():
         if imputation_strategy == 'remove':
             self._imputer = None
         else:
-            self._imputer = SimpleImputer(strategy=imputation_strategy)
+            self._imputer = SimpleImputer(
+                strategy=imputation_strategy,
+                fill_value=self._cfg.get('imputation_constant'))
 
         # Public members
         self.classes = {}
@@ -197,10 +207,7 @@ class GBRTModel():
 
         # Check if data was found
         if not training_datasets:
-            if metadata:
-                msg = ' for metadata {}'.format(metadata)
-            else:
-                msg = ''
+            msg = ' for metadata {}'.format(metadata) if metadata else ''
             raise ValueError("No training data (features/labels){} "
                              "found".format(msg))
 
@@ -220,6 +227,14 @@ class GBRTModel():
         (self._data['x_data'],
          self._data['y_data']) = self._extract_features_and_labels(
              self._datasets['training'])
+
+        # FIXME: Regularize data if desired
+        (self._data['x_data'],
+         self._data['x_reg']) = self._regularize(self._data['x_data'])
+        (self._data['y_data'],
+         self._data['y_reg']) = self._regularize(self._data['y_data'])
+        self._data['x_data'] = self._data['x_data'].astype(np.float64)
+        self._data['y_data'] = self._data['y_data'].astype(np.float64)
 
         # Separate training and test data
         (self._data['x_train'], self._data['x_test'], self._data['y_train'],
@@ -267,8 +282,8 @@ class GBRTModel():
         axes.clear()
         plt.close()
 
-    def plot_partial_dependence(self, filename=None):
-        """Plot partial dependence."""
+    def plot_partial_dependences(self, filename=None):
+        """Plot partial dependences for every feature."""
         if not self._is_ready_for_plotting():
             return
         if filename is None:
@@ -323,12 +338,8 @@ class GBRTModel():
         axes.clear()
         plt.close()
 
-    def plot_scatterplot(self, filename=None):
-        """Plot scatterplot label vs. feature for every feature."""
-        if not self._cfg.get('accept_only_scalar_data'):
-            logger.error("Scatterplots are only allowed for scalar data, use "
-                         "'accept_only_scalar_data'")
-            return
+    def plot_scatterplots(self, filename=None):
+        """Plot scatterplots label vs. feature for every feature."""
         if not self._is_ready_for_plotting():
             return
         if filename is None:
@@ -337,22 +348,28 @@ class GBRTModel():
 
         # Plot scatterplot for every feature
         for (f_idx, feature) in enumerate(self.classes['features']):
-            for (g_idx,
-                 group_attr) in enumerate(self.classes['group_attributes']):
-                x_data = self._data['x_data'][g_idx, f_idx]
-                y_data = self._data['y_data'][g_idx]
-                axes.scatter(x_data, y_data, label=group_attr)
+            if self._cfg.get('accept_only_scalar_data'):
+                for (g_idx, group_attr) in enumerate(
+                        self.classes['group_attributes']):
+                    x_data = self._data['x_data'][g_idx, f_idx]
+                    y_data = self._data['y_data'][g_idx]
+                    axes.scatter(x_data, y_data, label=group_attr)
+                    legend = axes.legend(
+                        loc='center left',
+                        ncol=2,
+                        bbox_to_anchor=[1.05, 0.5],
+                        borderaxespad=0.0)
+            else:
+                x_data = self._data['x_data'][:, f_idx]
+                y_data = self._data['y_data']
+                axes.plot(x_data, y_data, '.')
+                legend = None
             axes.set_title(feature)
             axes.set_xlabel(feature)
             axes.set_ylabel(self.classes['label'])
             new_filename = (filename.format(feature=feature) + '.' +
                             self._cfg['output_file_type'])
             new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
-            legend = axes.legend(
-                loc='center left',
-                ncol=2,
-                bbox_to_anchor=[1.05, 0.5],
-                borderaxespad=0.0)
             plt.savefig(
                 new_path,
                 orientation='landscape',
@@ -379,18 +396,23 @@ class GBRTModel():
                 logger.info("Started prediction for prediction %s", pred_name)
                 filename = 'prediction_{}.nc'.format(pred_name)
             (x_pred, cube) = self._extract_prediction_input(datasets)
-            (x_pred, _) = self._impute_missing_features(
-                x_pred, y_data=None, text='prediction input')
+            if self._imputer is not None:
+                (x_pred, _) = self._impute_missing_features(
+                    x_pred, y_data=None, text='prediction input')
             y_pred = self._clf.predict(x_pred)
             self._data[pred_name] = y_pred
             predictions[pred_name] = y_pred
 
             # Save data into cubes
-            cube = cube.copy(data=y_pred.reshape(cube.shape))
+            pred_cube = cube.copy(data=y_pred.reshape(cube.shape))
+            if self._imputer is None:
+                if np.ma.is_masked(cube.data):
+                    pred_cube.data = np.ma.array(
+                        pred_cube.data, mask=cube.data.mask)
             self._set_prediction_cube_attributes(
-                cube, prediction_name=pred_name)
+                pred_cube, prediction_name=pred_name)
             new_path = os.path.join(self._cfg['gbrt_work_dir'], filename)
-            save_iris_cube(cube, new_path, self._cfg)
+            save_iris_cube(pred_cube, new_path, self._cfg)
             logger.info("Successfully predicted %i point(s)", len(y_pred))
 
         return predictions
@@ -445,10 +467,7 @@ class GBRTModel():
 
     def _check_features(self, features, text=None):
         """Check if `features` match with already saved data."""
-        if text is None:
-            msg = ''
-        else:
-            msg = ' for {}'.format(text)
+        msg = '' if text is None else ' for {}'.format(text)
 
         # Compare new features to already saved ones
         if self.classes.get('features') is None:
@@ -505,10 +524,8 @@ class GBRTModel():
                 attr_datasets, var_type)
 
             # Check features
-            if group_attr is None:
-                text = var_type
-            else:
-                text = "{} ('{}')".format(group_attr, var_type)
+            text = var_type if group_attr is None else "{} ('{}')".format(
+                group_attr, var_type)
             self._check_features(feature_names, text=text)
 
             # Append data
@@ -534,10 +551,8 @@ class GBRTModel():
         # Iterate over datasets
         for (group_attr, dataset) in grouped_datasets.items():
             if len(dataset) > 1:
-                if group_attr is None:
-                    msg = ""
-                else:
-                    msg = " for '{}'".format(group_attr)
+                msg = "" if group_attr is None else " for '{}'".format(
+                    group_attr)
                 raise ValueError("Expected exactly one 'label' dataset{}, "
                                  "got {}".format(msg, len(dataset)))
             dataset = dataset[0]
@@ -848,8 +863,13 @@ class GBRTModel():
                 new_y_data = None
             n_imputes = x_data.shape[0] - new_x_data.shape[0]
         else:
-            strategy = 'setting them to {}'.format(
-                self._cfg['imputation_strategy'])
+            if (self._cfg['imputation_strategy'] == 'constant'
+                    and self._cfg.get('imputation_constant') is not None):
+                constant = ' ({})'.format(self._cfg['imputation_constant'])
+            else:
+                constant = ''
+            strategy = 'setting them to {}{}'.format(
+                self._cfg['imputation_strategy'], constant)
             new_x_data = self._imputer.transform(x_data.filled(np.nan))
             if y_data is not None:
                 new_y_data = y_data.filled()
@@ -857,10 +877,7 @@ class GBRTModel():
                 new_y_data = None
             n_imputes = np.count_nonzero(x_data != new_x_data)
         if n_imputes:
-            if text is None:
-                msg = ''
-            else:
-                msg = ' for {}'.format(text)
+            msg = '' if text is None else ' for {}'.format(text)
             logger.info("Imputed %i missing features%s by %s", n_imputes, msg,
                         strategy)
         return (new_x_data, new_y_data)
@@ -887,6 +904,15 @@ class GBRTModel():
         parameters.update(self._cfg.get('parameters', {}))
         logger.debug("Use parameters %s for GBRT", parameters)
         return parameters
+
+    # FIXME
+    def _regularize(self, data, constant=None):
+        """Regularize data."""
+        if self._cfg.get('regularize_data'):
+            if constant is None:
+                constant = np.ma.mean(data, axis=0)
+            data = data / constant
+        return (data, constant)
 
     def _set_prediction_cube_attributes(self, cube, prediction_name=None):
         """Set the attributes of the prediction cube."""

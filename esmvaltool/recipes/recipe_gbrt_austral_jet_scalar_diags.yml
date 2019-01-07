@@ -3,8 +3,8 @@
 documentation:
 
   description: |
-    Use inter-model GBRT (Gradient Boosted Regression Trees) model to predict
-    future climate for scalar diagnostics.
+    Use GBRT (Gradient Boosted Regression Trees) model to predict future
+    climate for scalar diagnostics.
 
   authors:
     - schl_ma

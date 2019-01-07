@@ -51,8 +51,9 @@ def main(cfg):
         gbrt_model.predict()
 
         # Plots
+        gbrt_model.plot_scatterplots()
         gbrt_model.plot_feature_importance()
-        gbrt_model.plot_partial_dependence()
+        gbrt_model.plot_partial_dependences()
         gbrt_model.plot_prediction_error()
 
 

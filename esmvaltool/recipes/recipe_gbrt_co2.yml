@@ -15,26 +15,19 @@ documentation:
   projects:
     - crescendo
 
-  # Yaml anchor for datasets
-  YAML_ANCHOR: &datasets
-    - {dataset: CanESM2}
-    - {dataset: IPSL-CM5A-LR}
-    # - {dataset: MIROC5}
-    # - {dataset: MIROC-ESM}
-    # - {dataset: MPI-ESM-LR}
-    # - {dataset: NorESM1-M}
-
 
 preprocessors:
 
-  time_average:
+  time_average: &time_average
+    mask_landsea:
+      mask_out: sea
     time_average: null
 
   regrid_and_time_average:
+    <<: *time_average
     regrid:
       scheme: nearest
       target_grid: 1x1
-    time_average: null
 
 
 diagnostics:
@@ -42,7 +35,8 @@ diagnostics:
   diag_gbrt:
     description: Perform GBRT on input data.
     variables:
-      tas: &variable_settings
+      feature_tas: &variable_settings
+        short_name: tas
         project: CMIP5
         mip: Amon
         field: T2Ms
@@ -53,20 +47,25 @@ diagnostics:
         preprocessor: time_average
         tag: T-Glob_c
         var_type: feature
-        additional_datasets: *datasets
-      tas_prediction_input:
+        additional_datasets: &datasets
+          - {dataset: CanESM2}
+          - {dataset: IPSL-CM5A-LR}
+          # - {dataset: MIROC5}
+          # - {dataset: MIROC-ESM}
+          # - {dataset: MPI-ESM-LR}
+          # - {dataset: NorESM1-M}
+      prediction_input_tas:
         <<: *variable_settings
-        short_name: tas
         preprocessor: regrid_and_time_average
         var_type: prediction_input
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
-      nbp:
+      feature_nbp:
         <<: *variable_settings
+        short_name: nbp
         mip: Lmon
         tag: NBP
-        additional_datasets: *datasets
-      nbp_prediction_input:
+      prediction_input_nbp:
         <<: *variable_settings
         short_name: nbp
         mip: Lmon
@@ -75,7 +74,7 @@ diagnostics:
         var_type: prediction_input
         additional_datasets:
           - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
-      labels:
+      label:
         <<: *variable_settings
         short_name: nbp
         mip: Lmon

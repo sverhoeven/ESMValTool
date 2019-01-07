@@ -16,15 +16,6 @@ documentation:
     - crescendo
 
 
-datasets:
-  - {dataset: CanESM2}
-  - {dataset: IPSL-CM5A-LR}
-  - {dataset: MIROC5}
-  - {dataset: MIROC-ESM}
-  - {dataset: MPI-ESM-LR}
-  - {dataset: NorESM1-M}
-
-
 preprocessors:
 
   time_average:
@@ -41,7 +32,8 @@ diagnostics:
 
   diag_external_ua:
     variables:
-      ua:
+      ua_feature: &ext_variable_settings
+        short_name: ua
         project: CMIP5
         mip: Amon
         field: T3M
@@ -53,15 +45,26 @@ diagnostics:
         tag: EXTERNAL_UA
         var_type: feature
         broadcast_from: [1, 2]
+        additional_datasets: &datasets
+          # - {dataset: CanESM2}
+          - {dataset: IPSL-CM5A-LR}
+          # - {dataset: MIROC5}
+          # - {dataset: MIROC-ESM}
+          # - {dataset: MPI-ESM-LR}
+          # - {dataset: NorESM1-M}
+      ua_prediction_input:
+        <<: *ext_variable_settings
+        var_type: prediction_input
         additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       null
 
   diag_gbrt:
     description: Perform GBRT on input data.
     variables:
-      ta: &variable_settings
+      feature_ta: &variable_settings
+        short_name: ta
         project: CMIP5
         mip: Amon
         field: T3M
@@ -72,30 +75,51 @@ diagnostics:
         preprocessor: time_average
         tag: T
         var_type: feature
-        additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-      tas:
+        additional_datasets: *datasets
+      prediction_input_ta:
         <<: *variable_settings
-        tag: TAS
+        var_type: prediction_input
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
+      feature_tas:
+        <<: *variable_settings
+        short_name: tas
         field: T2Ms
+        tag: TAS
+        broadcast_from: [1, 2]
+      prediction_input_tas:
+        <<: *variable_settings
+        short_name: tas
+        field: T2Ms
+        tag: TAS
+        var_type: prediction_input
         broadcast_from: [1, 2]
         additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-      ua:
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
+      feature_ua:
+        short_name: ua
         <<: *variable_settings
         tag: UA
+      prediction_input_ua:
+        <<: *variable_settings
+        short_name: ua
+        tag: UA
+        var_type: prediction_input
         additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-          - {dataset: CanESM2,      exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
-          - {dataset: IPSL-CM5A-LR, exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
-          - {dataset: MIROC5,       exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
-          - {dataset: MIROC-ESM,    exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
-          - {dataset: MPI-ESM-LR,   exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
-          - {dataset: NorESM1-M,    exp: rcp45, start_year: 2015, end_year: 2034, var_type: label}
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
+      label:
+        <<: *variable_settings
+        short_name: ua
+        exp: rcp45
+        start_year: 2015
+        end_year: 2034
+        tag: UA
+        var_type: label
     scripts:
       multiple_gbrt_models:
         script: gbrt/multiple_gbrt_models.py
-        ancestors: ['ta', 'tas', 'ua', 'diag_external_ua/*']
+        ancestors: ['feature_*', 'prediction_input_*', 'label',
+                    'diag_external_ua/*']
         imputation_strategy: mean
         use_coords_as_feature:
           air_pressure: 0
@@ -107,7 +131,8 @@ diagnostics:
           group: dataset
       single_gbrt_model:
         script: gbrt/single_gbrt_model.py
-        ancestors: ['ta', 'tas', 'ua', 'diag_external_ua/*']
+        ancestors: ['feature_*', 'prediction_input_*', 'label',
+                    'diag_external_ua/*']
         imputation_strategy: mean
         use_coords_as_feature:
           air_pressure: 0
