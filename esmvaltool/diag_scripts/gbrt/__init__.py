@@ -121,10 +121,11 @@ class GBRTModel():
     parameters : dict, optional
         Parameters used in the classifier, more information is available here:
         https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
-    regularize_data : bool, optional (default: False)
-        Regularize data by setting mean to 1 using multiplication (may be
-        necessary when raw data is very small or large which leads to large
-        errors due to machine precision).
+    normalize_data : dict, optional
+        Specify tags (keys) and constants (`float` or `'mean'`, value) for
+        normalization of data. This is done by dividing the data by the
+        given constant and might be necessary when raw data is very small or
+        large which leads to large errors due to finite machine precision.
     test_size : float, optional (default: 0.25)
         Fraction of feature/label data which is used as test data and not for
         training.
@@ -224,17 +225,9 @@ class GBRTModel():
         logger.info("Fitting GBRT model")
 
         # Extract features and labels
-        (self._data['x_data'],
-         self._data['y_data']) = self._extract_features_and_labels(
+        (self._data['x_data'], self._data['x_norm'], self._data['y_data'],
+         self._data['y_norm']) = self._extract_features_and_labels(
              self._datasets['training'])
-
-        # FIXME: Regularize data if desired
-        (self._data['x_data'],
-         self._data['x_reg']) = self._regularize(self._data['x_data'])
-        (self._data['y_data'],
-         self._data['y_reg']) = self._regularize(self._data['y_data'])
-        self._data['x_data'] = self._data['x_data'].astype(np.float64)
-        self._data['y_data'] = self._data['y_data'].astype(np.float64)
 
         # Separate training and test data
         (self._data['x_train'], self._data['x_test'], self._data['y_train'],
@@ -396,10 +389,12 @@ class GBRTModel():
                 logger.info("Started prediction for prediction %s", pred_name)
                 filename = 'prediction_{}.nc'.format(pred_name)
             (x_pred, cube) = self._extract_prediction_input(datasets)
+            x_pred /= self._data['x_norm']
             if self._imputer is not None:
                 (x_pred, _) = self._impute_missing_features(
                     x_pred, y_data=None, text='prediction input')
             y_pred = self._clf.predict(x_pred)
+            y_pred *= self._data['y_norm']
             self._data[pred_name] = y_pred
             predictions[pred_name] = y_pred
 
@@ -591,7 +586,12 @@ class GBRTModel():
                              "observations for the label".format(
                                  len(x_data), len(y_data)))
 
-        return (x_data, y_data)
+        # Normalize data
+        (x_norm, y_norm) = self._get_normalization_constants(x_data, y_data)
+        x_data /= x_norm
+        y_data /= y_norm
+
+        return (x_data, x_norm, y_data, y_norm)
 
     def _extract_prediction_input(self, datasets):
         """Extract prediction input `datasets`."""
@@ -760,6 +760,40 @@ class GBRTModel():
             raise ValueError()
         return (training_datasets, prediction_datasets)
 
+    def _get_normalization_constants(self, x_data, y_data):
+        """Get normalization constants for features and labels."""
+        x_norm = np.ones(x_data.shape[1])
+        y_norm = 1.0
+        for (tag, constant) in self._cfg.get('normalize_data', {}).items():
+            found_tag = False
+            if tag in self.classes['features']:
+                idx = self.classes['features'].index(tag)
+                if isinstance(constant, str):
+                    constant = np.ma.mean(x_data[:, idx])
+                if constant == 0.0:
+                    logger.warning(
+                        "Constant for normalization of feature '%s' is 0.0, "
+                        "specify another constant in recipe", tag)
+                else:
+                    x_norm[idx] = constant
+                    logger.info("Normalized feature '%s' with %s", tag,
+                                constant)
+                found_tag = True
+            if tag == self.classes['label']:
+                if isinstance(constant, str):
+                    constant = np.ma.mean(y_data)
+                if constant == 0.0:
+                    logger.warning(
+                        "Constant for normalization of label '%s' is 0.0, "
+                        "specify another constant in recipe", tag)
+                else:
+                    y_norm = constant
+                    logger.info("Normalized label '%s' with %s", tag, constant)
+                found_tag = True
+            if not found_tag:
+                logger.warning("Tag for normalization '%s' not found", tag)
+        return (x_norm, y_norm)
+
     def _get_x_data_for_group(self, datasets, var_type):
         """Get x data for a group of datasets."""
         attr_data = []
@@ -904,15 +938,6 @@ class GBRTModel():
         parameters.update(self._cfg.get('parameters', {}))
         logger.debug("Use parameters %s for GBRT", parameters)
         return parameters
-
-    # FIXME
-    def _regularize(self, data, constant=None):
-        """Regularize data."""
-        if self._cfg.get('regularize_data'):
-            if constant is None:
-                constant = np.ma.mean(data, axis=0)
-            data = data / constant
-        return (data, constant)
 
     def _set_prediction_cube_attributes(self, cube, prediction_name=None):
         """Set the attributes of the prediction cube."""

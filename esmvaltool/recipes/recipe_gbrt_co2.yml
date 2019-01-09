@@ -86,6 +86,8 @@ diagnostics:
     scripts:
       multiple_gbrt_models:
         script: gbrt/multiple_gbrt_models.py
+        normalize_data:
+          NBP: mean
         use_coords_as_feature:
           latitude: 0
           longitude: 1
