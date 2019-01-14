@@ -4,6 +4,7 @@ import logging
 import os
 from pprint import pformat
 
+import cf_units
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
@@ -286,9 +287,17 @@ class GBRTModel():
         for (idx, feature_name) in enumerate(self.classes['features']):
             (_, [axes]) = plot_partial_dependence(self._clf,
                                                   self._data['x_train'], [idx])
+            x_label_norm = ('' if self._data['x_norm'][idx] == 1.0 else
+                            '{:.2E} '.format(self._data['x_norm'][idx]))
+            y_label_norm = ('' if self._data['y_norm'] == 1.0 else
+                            '{:.2E} '.format(self._data['y_norm']))
             axes.set_title('Partial dependence')
-            axes.set_xlabel(feature_name)
-            axes.set_ylabel(self.classes['label'])
+            axes.set_xlabel('{} / {}{}'.format(
+                feature_name, x_label_norm,
+                self.classes['features_units'][idx]))
+            axes.set_ylabel('{} / {}{}'.format(self.classes['label'],
+                                               y_label_norm,
+                                               self.classes['label_units']))
             new_filename = (filename.format(feature=feature_name) + '.' +
                             self._cfg['output_file_type'])
             new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
@@ -344,8 +353,10 @@ class GBRTModel():
             if self._cfg.get('accept_only_scalar_data'):
                 for (g_idx, group_attr) in enumerate(
                         self.classes['group_attributes']):
-                    x_data = self._data['x_data'][g_idx, f_idx]
-                    y_data = self._data['y_data'][g_idx]
+                    x_data = (self._data['x_data'][g_idx, f_idx] *
+                              self._data['x_norm'][f_idx])
+                    y_data = (
+                        self._data['y_data'][g_idx] * self._data['y_norm'])
                     axes.scatter(x_data, y_data, label=group_attr)
                     legend = axes.legend(
                         loc='center left',
@@ -353,13 +364,16 @@ class GBRTModel():
                         bbox_to_anchor=[1.05, 0.5],
                         borderaxespad=0.0)
             else:
-                x_data = self._data['x_data'][:, f_idx]
-                y_data = self._data['y_data']
+                x_data = (self._data['x_data'][:, f_idx] *
+                          self._data['x_norm'][f_idx])
+                y_data = self._data['y_data'] * self._data['y_norm']
                 axes.plot(x_data, y_data, '.')
                 legend = None
             axes.set_title(feature)
-            axes.set_xlabel(feature)
-            axes.set_ylabel(self.classes['label'])
+            axes.set_xlabel('{} / {}'.format(
+                feature, self.classes['features_units'][f_idx]))
+            axes.set_ylabel('{} / {}'.format(self.classes['label'],
+                                             self.classes['label_units']))
             new_filename = (filename.format(feature=feature) + '.' +
                             self._cfg['output_file_type'])
             new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
@@ -460,13 +474,14 @@ class GBRTModel():
                                          cube_coords))
         return cube.coords(dim_coords=True)
 
-    def _check_features(self, features, text=None):
+    def _check_features(self, features, units, text=None):
         """Check if `features` match with already saved data."""
         msg = '' if text is None else ' for {}'.format(text)
 
         # Compare new features to already saved ones
         if self.classes.get('features') is None:
             self.classes['features'] = features
+            self.classes['features_units'] = units
         else:
             if features != self.classes['features']:
                 raise ValueError("Expected tags '{}'{}, got '{}', consider "
@@ -476,6 +491,11 @@ class GBRTModel():
                                  "datasets with the option 'group_datasets_"
                                  "by_attributes'".format(
                                      self.classes['features'], msg, features))
+            if units != self.classes['features_units']:
+                raise ValueError("Expected units '{}' for the tags '{}', got "
+                                 "'{}'{}".format(
+                                     self.classes['features_units'],
+                                     self.classes['features'], units, msg))
 
         # Check for duplicates
         duplicates = {
@@ -491,15 +511,21 @@ class GBRTModel():
                              "'group_datasets_by_attributes'".format(
                                  duplicates, msg))
 
-    def _check_label(self, label):
+    def _check_label(self, label, units):
         """Check if `label` matches with already saved data."""
         if self.classes.get('label') is None:
             self.classes['label'] = label
+            self.classes['label_units'] = units
         else:
             if label != self.classes['label']:
                 raise ValueError("Expected unique entries for var_type "
                                  "'label', got '{}' and '{}'".format(
                                      label, self.classes['label']))
+            if units != self.classes['label_units']:
+                raise ValueError("Expected unique units for the label '{}', "
+                                 "got '{}' and '{}'".format(
+                                     self.classes['label'], units,
+                                     self.classes['label_units']))
 
     def _collect_x_data(self, datasets, var_type):
         """Collect x data from `datasets`."""
@@ -515,13 +541,13 @@ class GBRTModel():
                 logger.info("Loading x data of %s", group_attr)
             group_attributes.append(group_attr)
             attr_datasets = sorted_metadata(attr_datasets, 'tag')
-            (attr_data, feature_names, cube) = self._get_x_data_for_group(
-                attr_datasets, var_type)
+            (attr_data, feature_names, feature_units,
+             cube) = (self._get_x_data_for_group(attr_datasets, var_type))
 
             # Check features
             text = var_type if group_attr is None else "{} ('{}')".format(
                 group_attr, var_type)
-            self._check_features(feature_names, text=text)
+            self._check_features(feature_names, feature_units, text=text)
 
             # Append data
             if x_data is None:
@@ -554,10 +580,10 @@ class GBRTModel():
             group_attributes.append(group_attr)
 
             # Check label
-            self._check_label(dataset['tag'])
+            self._check_label(dataset['tag'], cf_units.Unit(dataset['units']))
 
             # Save data
-            cube = iris.load_cube(dataset['filename'])
+            cube = self._load_cube(dataset['filename'])
             self._check_cube_coords(cube, None, dataset)
             y_data = np.ma.hstack((y_data, self._get_cube_data(cube)))
 
@@ -611,15 +637,16 @@ class GBRTModel():
         (x_data, cube) = self._collect_x_data(datasets, var_type)
 
         # Return data
-        logger.debug("Found features:")
-        logger.debug(pformat(self.classes['features']))
+        logger.debug("Found features '%s' with units '%s'",
+                     self.classes['features'], self.classes['features_units'])
         return (x_data, cube)
 
     def _extract_y_data(self, datasets):
         """Extract y data (labels) from `datasets`."""
         datasets = select_metadata(datasets, var_type='label')
         y_data = self._collect_y_data(datasets)
-        logger.debug("Found label: %s", self.classes['label'])
+        logger.debug("Found label '%s' with units '%s'", self.classes['label'],
+                     self.classes['label_units'])
         return y_data
 
     def _get_ancestor_datasets(self):
@@ -661,15 +688,16 @@ class GBRTModel():
         """Get broadcasted data."""
         new_data = []
         names = []
+        units = []
         if not datasets:
-            return (new_data, names)
+            return (new_data, names, units)
         if self._cfg.get('accept_only_scalar_data'):
             logger.warning("Broadcasting is not supported for scalar data "
                            "(option 'accept_only_scalar_data')")
-            return (new_data, names)
+            return (new_data, names, units)
         var_type = datasets[0]['var_type']
         for dataset in datasets:
-            cube_to_broadcast = iris.load_cube(dataset['filename'])
+            cube_to_broadcast = self._load_cube(dataset['filename'])
             data_to_broadcast = np.ma.array(cube_to_broadcast.data)
             name = dataset['tag']
             try:
@@ -689,12 +717,14 @@ class GBRTModel():
             if not self._cfg.get('use_only_coords_as_features'):
                 new_data.append(data_to_broadcast.ravel())
                 names.append(name)
-        return (new_data, names)
+                units.append(cube_to_broadcast.units)
+        return (new_data, names, units)
 
     def _get_coordinate_data(self, cube):
         """Get coordinate variables of a `cube` which can be used as x data."""
         new_data = []
         names = []
+        units = []
 
         # Iterate over desired coordinates
         for (coord, coord_idx) in self._cfg.get('use_coords_as_feature',
@@ -703,7 +733,7 @@ class GBRTModel():
                 logger.warning("Using coordinate data is not supported for "
                                "scalar data (option 'accept_only_scalar_"
                                "data')")
-                return (new_data, names)
+                return (new_data, names, units)
             coord_array = np.ma.array(cube.coord(coord).points)
             try:
                 new_axis_pos = np.delete(np.arange(len(cube.shape)), coord_idx)
@@ -718,13 +748,14 @@ class GBRTModel():
             coord_array.mask = np.broadcast_to(mask, cube.shape)
             new_data.append(coord_array.ravel())
             names.append(coord)
+            units.append(cube.coord(coord).units)
 
         # Check if data is empty if necessary
         if self._cfg.get('use_only_coords_as_features') and not new_data:
             raise ValueError("No data found, 'use_only_coords_as_features' "
                              "can only be used when 'use_coords_as_feature' "
                              "is specified")
-        return (new_data, names)
+        return (new_data, names, units)
 
     def _get_cube_data(self, cube):  # noqa
         """Get data from cube."""
@@ -776,8 +807,8 @@ class GBRTModel():
                         "specify another constant in recipe", tag)
                 else:
                     x_norm[idx] = constant
-                    logger.info("Normalized feature '%s' with %s", tag,
-                                constant)
+                    logger.info("Normalized feature '%s' with %.2E %s", tag,
+                                constant, self.classes['features_units'][idx])
                 found_tag = True
             if tag == self.classes['label']:
                 if isinstance(constant, str):
@@ -788,7 +819,8 @@ class GBRTModel():
                         "specify another constant in recipe", tag)
                 else:
                     y_norm = constant
-                    logger.info("Normalized label '%s' with %s", tag, constant)
+                    logger.info("Normalized label '%s' with %.2E %s", tag,
+                                constant, self.classes['label_units'])
                 found_tag = True
             if not found_tag:
                 logger.warning("Tag for normalization '%s' not found", tag)
@@ -799,6 +831,7 @@ class GBRTModel():
         attr_data = []
         skipped_datasets = []
         feature_names = []
+        feature_units = []
         coords = None
         cube = None
 
@@ -807,12 +840,13 @@ class GBRTModel():
             if 'broadcast_from' in dataset:
                 skipped_datasets.append(dataset)
                 continue
-            cube = iris.load_cube(dataset['filename'])
+            cube = self._load_cube(dataset['filename'])
             name = dataset['tag']
             coords = self._check_cube_coords(cube, coords, dataset)
             if not self._cfg.get('use_only_coords_as_features'):
                 attr_data.append(self._get_cube_data(cube))
                 feature_names.append(name)
+                feature_units.append(cube.units)
 
         # Check if data was found
         if cube is None:
@@ -828,11 +862,13 @@ class GBRTModel():
                                                       cube.shape)
         attr_data.extend(broadcasted_data[0])
         feature_names.extend(broadcasted_data[1])
+        feature_units.extend(broadcasted_data[2])
 
         # Add coordinate data if desired and possible
         coord_data = self._get_coordinate_data(cube)
         attr_data.extend(coord_data[0])
         feature_names.extend(coord_data[1])
+        feature_units.extend(coord_data[2])
 
         # Convert data to numpy array with correct shape
         attr_data = np.ma.array(attr_data)
@@ -840,7 +876,7 @@ class GBRTModel():
             attr_data = np.ma.expand_dims(attr_data, 0)
         elif attr_data.ndim > 1:
             attr_data = np.ma.swapaxes(attr_data, 0, 1)
-        return (attr_data, feature_names, cube)
+        return (attr_data, feature_names, feature_units, cube)
 
     def _group_prediction_datasets(self, datasets):  # noqa
         """Group prediction datasets (use `prediction_name` key)."""
@@ -932,6 +968,16 @@ class GBRTModel():
             return False
         return True
 
+    def _load_cube(self, path):  # noqa
+        """Load iris cube and check data type."""
+        cube = iris.load_cube(path)
+        if not np.issubdtype(cube.dtype, np.number):
+            raise TypeError(
+                "Data type of cube loaded from '{}' is '{}', at "
+                "the moment only numerical data is supported".format(
+                    path, cube.dtype))
+        return cube
+
     def _load_parameters(self):
         """Load parameters for classifier from recipe."""
         parameters = self._DEFAULT_PARAMETERS
@@ -948,7 +994,7 @@ class GBRTModel():
         cube.attributes.update(self.parameters)
         label = select_metadata(
             self._datasets['training'], var_type='label')[0]
-        label_cube = iris.load_cube(label['filename'])
+        label_cube = self._load_cube(label['filename'])
         for attr in ('var_name', 'standard_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
 
