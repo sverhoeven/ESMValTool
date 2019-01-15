@@ -13,8 +13,8 @@ from sklearn.ensemble.partial_dependence import plot_partial_dependence
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 
-from esmvaltool.diag_scripts.shared import (group_metadata, select_metadata,
-                                            save_iris_cube, sorted_metadata)
+from esmvaltool.diag_scripts.shared import (
+    group_metadata, plot, select_metadata, save_iris_cube, sorted_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -162,6 +162,8 @@ class GBRTModel():
             `labels` (e.g. `dataset='CanESM2'`).
 
         """
+        plt.style.use(plot.get_path_to_mpl_style())
+
         # Private members
         self._clf = None
         self._data = {}

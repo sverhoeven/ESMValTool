@@ -172,12 +172,12 @@ diagnostics:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
     scripts:
       mean: &mean
-        script: gbrt/mean.py
-        temporal_mean: True
+        script: gbrt/single_var.py
+        mean: ['time']
         tag: T-SP_c
       trend: &trend
-        script: gbrt/trend.py
-        yearly_trend: True
+        script: gbrt/single_var.py
+        trend: year
         tag: T-SP_t
 
   diag_gbrt_input_ta_ng100:
