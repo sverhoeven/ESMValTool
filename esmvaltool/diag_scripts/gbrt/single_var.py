@@ -45,6 +45,17 @@ from esmvaltool.diag_scripts.shared import run_diagnostic
 logger = logging.getLogger(os.path.basename(__file__))
 
 
+def _get_slope(x_arr, y_arr):
+    """Get slope of linear regression of two (masked) arrays."""
+    if np.ma.is_masked(y_arr):
+        x_arr = x_arr[~y_arr.mask]
+        y_arr = y_arr[~y_arr.mask]
+    if len(y_arr) < 2:
+        return np.nan
+    reg = stats.linregress(x_arr, y_arr)
+    return reg.slope
+
+
 def _get_weights(cfg, cube):
     """Calculate weights."""
     area_weights = None
@@ -70,8 +81,8 @@ def calculate_sum_and_mean(cfg, cube):
     (area_weights, time_weights) = _get_weights(cfg, cube)
     ops = {'sum': iris.analysis.SUM, 'mean': iris.analysis.MEAN}
     for (oper, iris_op) in ops.items():
-        logger.debug("Calculating %s", oper)
         if cfg.get(oper):
+            logger.info("Calculating %s over %s", oper, cfg[oper])
             if area_weights is not None:
                 cube = cube.collapsed(['latitude', 'longitude'],
                                       iris_op,
@@ -97,13 +108,18 @@ def calculate_trend(cfg, cube, data):
         else:
             temp_units = (data['frequency']
                           if data['frequency'] != 'mon' else 'month')
-        logger.debug("Calculating trend (units: %s)", temp_units)
+        logger.info("Calculating trend (units: %s)", temp_units)
 
         # Use x-axis with incremental differences of 1
         time = np.arange(cube.coord('time').shape[0])
-        reg = stats.linregress(time, cube.data)
+
+        # Calculate slope for (vectorized function)
+        v_get_slope = np.vectorize(
+            _get_slope, excluded=['x'], signature='(n),(n)->()')
+        y_data = np.moveaxis(cube.data, cube.coord_dims('time')[0], -1)
+        slopes = v_get_slope(time, y_data)
         cube = cube.collapsed('time', iris.analysis.MEAN)
-        cube.data = reg.slope
+        cube.data = np.ma.masked_invalid(slopes)
         data['standard_name'] += '_trend'
         data['short_name'] += '_trend'
         data['long_name'] += ' (trend)'
