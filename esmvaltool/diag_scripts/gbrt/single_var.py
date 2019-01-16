@@ -108,16 +108,16 @@ def calculate_trend(cfg, cube, data):
         else:
             temp_units = (data['frequency']
                           if data['frequency'] != 'mon' else 'month')
-        logger.info("Calculating trend (units: %s)", temp_units)
+        logger.info("Calculating %sly trend", temp_units)
 
         # Use x-axis with incremental differences of 1
-        time = np.arange(cube.coord('time').shape[0])
+        x_data = np.arange(cube.coord('time').shape[0])
+        y_data = np.moveaxis(cube.data, cube.coord_dims('time')[0], -1)
 
         # Calculate slope for (vectorized function)
         v_get_slope = np.vectorize(
             _get_slope, excluded=['x'], signature='(n),(n)->()')
-        y_data = np.moveaxis(cube.data, cube.coord_dims('time')[0], -1)
-        slopes = v_get_slope(time, y_data)
+        slopes = v_get_slope(x_data, y_data)
         cube = cube.collapsed('time', iris.analysis.MEAN)
         cube.data = np.ma.masked_invalid(slopes)
         data['standard_name'] += '_trend'
