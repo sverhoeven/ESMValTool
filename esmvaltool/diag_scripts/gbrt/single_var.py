@@ -34,7 +34,6 @@ tag : str, optional
 import logging
 import os
 
-import cf_units
 import iris
 import numpy as np
 from scipy import stats
@@ -104,10 +103,11 @@ def calculate_trend(cfg, cube, data):
             logger.debug("Aggregating over %s for trend calculation",
                          cfg['trend'])
             cube = cube.aggregated_by(cfg['trend'], iris.analysis.MEAN)
-            temp_units = cf_units.Unit(cfg['trend'])
+            temp_units = cfg['trend']
         else:
             temp_units = (data['frequency']
                           if data['frequency'] != 'mon' else 'month')
+        temp_units += '-1'
         logger.info("Calculating %sly trend", temp_units)
 
         # Use x-axis with incremental differences of 1
@@ -123,8 +123,7 @@ def calculate_trend(cfg, cube, data):
         data['standard_name'] += '_trend'
         data['short_name'] += '_trend'
         data['long_name'] += ' (trend)'
-        new_units = cf_units.Unit(data['units']) / temp_units
-        data['units'] = new_units.name
+        data['units'] += ' {}'.format(temp_units)
     return (cube, data)
 
 

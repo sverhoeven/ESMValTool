@@ -123,6 +123,9 @@ diagnostics:
           select:
             project: CMIP5
           group: dataset
+        parameters:
+          n_estimators: 5000
+          learning_rate: 0.05
       # single_gbrt_model:
       #   script: gbrt/single_gbrt_model.py
       #   use_coords_as_feature:

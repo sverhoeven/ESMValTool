@@ -544,7 +544,7 @@ class GBRTModel():
             group_attributes.append(group_attr)
             attr_datasets = sorted_metadata(attr_datasets, 'tag')
             (attr_data, feature_names, feature_units,
-             cube) = (self._get_x_data_for_group(attr_datasets, var_type))
+             cube) = self._get_x_data_for_group(attr_datasets, var_type)
 
             # Check features
             text = var_type if group_attr is None else "{} ('{}')".format(
