@@ -14,7 +14,9 @@ from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 
 from esmvaltool.diag_scripts.shared import (
-    group_metadata, plot, select_metadata, save_iris_cube, sorted_metadata)
+    # TODO
+    # group_metadata, plot, select_metadata, save_iris_cube, sorted_metadata)
+    group_metadata, plot, select_metadata, sorted_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -53,7 +55,7 @@ def datasets_have_gbrt_attributes(datasets, log_level='debug'):
     return True
 
 
-def write_cube(cube, attributes, path, cfg):
+def write_cube(cube, attributes, path):
     """Write cube with all necessary information for GBRT models.
 
     Parameters
@@ -85,7 +87,9 @@ def write_cube(cube, attributes, path, cfg):
         if isinstance(attr, bool):
             attributes[key] = str(attr)
     cube.attributes.update(attributes)
-    save_iris_cube(cube, path, cfg)
+    # TODO
+    # save_iris_cube(cube, path, cfg)
+    iris.save(cube, path)
 
 
 class GBRTModel():
@@ -423,7 +427,9 @@ class GBRTModel():
             self._set_prediction_cube_attributes(
                 pred_cube, prediction_name=pred_name)
             new_path = os.path.join(self._cfg['gbrt_work_dir'], filename)
-            save_iris_cube(pred_cube, new_path, self._cfg)
+            # TODO
+            # save_iris_cube(pred_cube, new_path, self._cfg)
+            iris.save(pred_cube, new_path)
             logger.info("Successfully predicted %i point(s)", len(y_pred))
 
         return predictions

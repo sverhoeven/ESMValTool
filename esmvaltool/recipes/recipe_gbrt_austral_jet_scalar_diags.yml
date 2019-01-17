@@ -9,8 +9,8 @@ documentation:
   authors:
     - schl_ma
 
-  references:
-    null
+  maintainer:
+    - schl_ma
 
   projects:
     - crescendo

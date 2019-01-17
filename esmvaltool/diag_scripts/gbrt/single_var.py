@@ -145,7 +145,7 @@ def main(cfg):
             data['filename'] = new_path
             if 'tag' in cfg:
                 data['tag'] = cfg['tag']
-            write_cube(cube, data, new_path, cfg)
+            write_cube(cube, data, new_path)
     else:
         logger.warning("Cannot save netcdf files because 'write_netcdf' is "
                        "set to 'False' in user configuration file.")
