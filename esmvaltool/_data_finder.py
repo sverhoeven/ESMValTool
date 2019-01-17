@@ -270,12 +270,9 @@ def get_output_file(variable, preproc_dir):
     """Return the full path to the output (preprocessed) file."""
     cfg = get_project_config(variable['project'])
 
-    if variable['variable_section_title'] == variable['short_name']:
-        sub_dir = '{diagnostic}_{preprocessor}_{short_name}'.format(**variable)
-    else:
-        sub_dir = variable['variable_section_title']
     outfile = os.path.join(
-        preproc_dir, sub_dir,
+        preproc_dir,
+        '{diagnostic}_{preprocessor}_{short_name}'.format(**variable),
         _replace_tags(cfg['output_file'], variable)[0] + '.nc')
 
     return outfile
