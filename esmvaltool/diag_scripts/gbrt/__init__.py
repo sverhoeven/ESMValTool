@@ -242,7 +242,7 @@ class GBRTModel():
 
         # Impute missing features
         if self._imputer is not None:
-            self._imputer.fit(self._data['x_train'])
+            self._imputer.fit(self._data['x_train'].filled(np.nan))
         for data_type in ('data', 'train', 'test'):
             x_type = 'x_' + data_type
             y_type = 'y_' + data_type
@@ -941,13 +941,8 @@ class GBRTModel():
                 new_y_data = None
             n_imputes = x_data.shape[0] - new_x_data.shape[0]
         else:
-            if (self._cfg['imputation_strategy'] == 'constant'
-                    and self._cfg.get('imputation_constant') is not None):
-                constant = ' ({})'.format(self._cfg['imputation_constant'])
-            else:
-                constant = ''
-            strategy = 'setting them to {}{}'.format(
-                self._cfg['imputation_strategy'], constant)
+            strategy = 'setting them to {} ({})'.format(
+                self._cfg['imputation_strategy'], self._imputer.statistics_)
             new_x_data = self._imputer.transform(x_data.filled(np.nan))
             if y_data is not None:
                 new_y_data = y_data.filled()
