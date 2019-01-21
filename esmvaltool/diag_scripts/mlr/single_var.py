@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Preprocess single variables to use them as input for GBRT models.
+"""Preprocess single variables to use them as input for MLR models.
 
 Description
 -----------
 This diagnostic preprocesses single variables in a desired way so that they can
-be used as input data for GBRT models.
+be used as input data for MLR models.
 
 Author
 ------
@@ -27,7 +27,7 @@ trend : bool or str, optional (default: False)
 weighted : bool, optional (default: True)
     Calculate weighted averages/sums (using grid cell boundaries).
 tag : str, optional
-    Tag for the variable used in the GBRT model.
+    Tag for the variable used in the MLR model.
 
 """
 
@@ -38,7 +38,7 @@ import iris
 import numpy as np
 from scipy import stats
 
-from esmvaltool.diag_scripts.gbrt import write_cube
+from esmvaltool.diag_scripts.mlr import write_cube
 from esmvaltool.diag_scripts.shared import run_diagnostic
 
 logger = logging.getLogger(os.path.basename(__file__))

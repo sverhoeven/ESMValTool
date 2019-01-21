@@ -1,10 +1,10 @@
-# recipe_gbrt_scalar_diagnostics_austral_jet.yml
+# recipe_mlr_scalar_diagnostics_austral_jet.yml
 ---
 documentation:
 
   description: |
-    Use GBRT (Gradient Boosted Regression Trees) model to predict future
-    climate for scalar diagnostics.
+    Use MLR (Machine Learning Regression) models to predict future austral jet
+    position for scalar diagnostics.
 
   authors:
     - schl_ma
@@ -157,7 +157,7 @@ preprocessors:
 
 diagnostics:
 
-  diag_gbrt_input_ta_sp100:
+  diag_mlr_input_ta_sp100:
     variables:
       ta: &variable_settings
         project: CMIP5
@@ -172,15 +172,15 @@ diagnostics:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
     scripts:
       mean: &mean
-        script: gbrt/single_var.py
+        script: mlr/single_var.py
         mean: ['time']
         tag: T-SP_c
       trend: &trend
-        script: gbrt/single_var.py
+        script: mlr/single_var.py
         trend: year
         tag: T-SP_t
 
-  diag_gbrt_input_ta_ng100:
+  diag_mlr_input_ta_ng100:
     variables:
       ta:
         <<: *variable_settings
@@ -193,7 +193,7 @@ diagnostics:
         <<: *trend
         tag: T-NGlob_t
 
-  diag_gbrt_input_ta_trop250:
+  diag_mlr_input_ta_trop250:
     variables:
       ta:
         <<: *variable_settings
@@ -206,7 +206,7 @@ diagnostics:
         <<: *trend
         tag: T-Trop_t
 
-  diag_gbrt_input_uajet_sh850:
+  diag_mlr_input_uajet_sh850:
     variables:
       uajet:
         <<: *variable_settings
@@ -221,7 +221,7 @@ diagnostics:
         <<: *trend
         tag: U-Jet_t
 
-  diag_gbrt_input_shhcb:
+  diag_mlr_input_shhcb:
     variables:
       va:
         <<: *variable_settings
@@ -244,8 +244,8 @@ diagnostics:
         yearly_trend: True
         tag: H-SH_t
 
-  diag_gbrt:
-    description: Perform GBRT on input data.
+  diag_mlr:
+    description: Perform MLR on input data.
     variables:
       uajet:
         project: CMIP5
@@ -259,12 +259,12 @@ diagnostics:
         var_type: label
         tag: UAJET
     scripts:
-      gbrt:
-        script: gbrt/single_gbrt_model.py
+      mlr:
+        script: mlr/single_mlr_model.py
         ancestors: [
           'uajet',
-          'diag_gbrt_input_*/mean',
-          'diag_gbrt_input_*/trend',
+          'diag_mlr_input_*/mean',
+          'diag_mlr_input_*/trend',
         ]
         accept_only_scalar_data: True
         group_datasets_by_attributes: ['dataset', 'ensemble']

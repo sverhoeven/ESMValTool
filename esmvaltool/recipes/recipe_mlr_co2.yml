@@ -1,10 +1,9 @@
-# recipe_gbrt_co2.yml
+# recipe_mlr_co2.yml
 ---
 documentation:
 
   description: |
-    Use GBRT (Gradient Boosted Regression Trees) models to predict future
-    climate for multidimensional diagnostics.
+    Use MLR (Machine Learning Regression) models to predict future CO2 fluxes.
 
   authors:
     - schl_ma
@@ -35,7 +34,7 @@ preprocessors:
 
 diagnostics:
 
-  diag_gbrt_input_nbp:
+  diag_mlr_input_nbp:
     variables:
       features: &variable_settings
         short_name: nbp
@@ -63,15 +62,15 @@ diagnostics:
           - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       mean: &mean
-        script: gbrt/single_var.py
+        script: mlr/single_var.py
         mean: ['time']
         tag: NBP-Glob_c
       trend: &trend
-        script: gbrt/single_var.py
+        script: mlr/single_var.py
         trend: year
         tag: NBP-Glob_t
 
-  diag_gbrt_input_tas:
+  diag_mlr_input_tas:
     variables:
       features:
         <<: *variable_settings
@@ -93,8 +92,8 @@ diagnostics:
         <<: *trend
         tag: T-Glob_t
 
-  diag_gbrt:
-    description: Perform GBRT on input data.
+  diag_mlr:
+    description: Perform MLR on input data.
     variables:
       label:
         <<: *variable_settings
@@ -105,12 +104,12 @@ diagnostics:
         var_type: label
         tag: NBP
     scripts:
-      multiple_gbrt_models:
-        script: gbrt/multiple_gbrt_models.py
+      multiple_mlr_models:
+        script: mlr/multiple_mlr_models.py
         ancestors: [
           'label',
-          'diag_gbrt_input_*/mean',
-          'diag_gbrt_input_*/trend',
+          'diag_mlr_input_*/mean',
+          'diag_mlr_input_*/trend',
         ]
         normalize_data:
           NBP: mean
@@ -126,8 +125,8 @@ diagnostics:
         parameters:
           n_estimators: 5000
           learning_rate: 0.05
-      # single_gbrt_model:
-      #   script: gbrt/single_gbrt_model.py
+      # single_mlr_model:
+      #   script: mlr/single_mlr_model.py
       #   use_coords_as_feature:
       #     air_pressure: 0
       #     latitude: 1

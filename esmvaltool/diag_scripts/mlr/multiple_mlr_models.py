@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Diagnostic script to create individual GBRT models for many climate models.
+"""Diagnostic script to create multiple MLR models for many climate models.
 
 Description
 -----------
-This diagnostic creates "Gradient Boosted Regression Trees" (GBRT) models to
-predict future climate for multiple climate models.
+This diagnostic creates multiple "Machine Learning Regression" (MLR) models to
+predict future climate for several climate models.
 
 Author
 ------
@@ -17,14 +17,14 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-See esmvaltool.gbrt module.
+See esmvaltool.mlr module.
 
 """
 
 import logging
 import os
 
-from esmvaltool.diag_scripts.gbrt import GBRTModel
+from esmvaltool.diag_scripts.mlr import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
                                             select_metadata)
 
@@ -44,17 +44,17 @@ def main(cfg):
             metadata = {group: attr}
         else:
             metadata = {}
-        gbrt_model = GBRTModel(cfg, root_dir=attr, **metadata)
+        mlr_model = MLRModel(cfg, root_dir=attr, **metadata)
 
         # Fit and predict
-        gbrt_model.fit()
-        gbrt_model.predict()
+        mlr_model.fit()
+        mlr_model.predict()
 
         # Plots
-        gbrt_model.plot_scatterplots()
-        gbrt_model.plot_feature_importance()
-        gbrt_model.plot_partial_dependences()
-        gbrt_model.plot_prediction_error()
+        mlr_model.plot_scatterplots()
+        mlr_model.plot_feature_importance()
+        mlr_model.plot_partial_dependences()
+        mlr_model.plot_prediction_error()
 
 
 # Run main function when this script is called

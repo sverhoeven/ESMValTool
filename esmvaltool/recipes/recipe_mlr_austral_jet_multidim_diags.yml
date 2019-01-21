@@ -1,10 +1,10 @@
-# recipe_gbrt_austral_jet_multidim_diags.yml
+# recipe_mlr_austral_jet_multidim_diags.yml
 ---
 documentation:
 
   description: |
-    Use GBRT (Gradient Boosted Regression Trees) models to predict future
-    climate for multidimensional diagnostics.
+    Use MLR (Machine Learning Regression) models to predict future austral jet
+    position multidimensional diagnostics.
 
   authors:
     - schl_ma
@@ -60,8 +60,8 @@ diagnostics:
     scripts:
       null
 
-  diag_gbrt:
-    description: Perform GBRT on input data.
+  diag_mlr:
+    description: Perform MLR on input data.
     variables:
       feature_ta: &variable_settings
         short_name: ta
@@ -116,8 +116,8 @@ diagnostics:
         tag: UA
         var_type: label
     scripts:
-      multiple_gbrt_models:
-        script: gbrt/multiple_gbrt_models.py
+      multiple_mlr_models:
+        script: mlr/multiple_mlr_models.py
         ancestors: ['feature_*', 'prediction_input_*', 'label',
                     'diag_external_ua/*']
         imputation_strategy: mean
@@ -129,8 +129,8 @@ diagnostics:
           select:
             project: CMIP5
           group: dataset
-      single_gbrt_model:
-        script: gbrt/single_gbrt_model.py
+      single_mlr_model:
+        script: mlr/single_mlr_model.py
         ancestors: ['feature_*', 'prediction_input_*', 'label',
                     'diag_external_ua/*']
         imputation_strategy: mean
@@ -146,6 +146,6 @@ diagnostics:
       austral_jet_position:
         script: austral_jet/jet_position.py
         ancestors: [
-          'diag_gbrt/multiple_gbrt_models',
-          'diag_gbrt/single_gbrt_model',
+          'diag_mlr/multiple_mlr_models',
+          'diag_mlr/single_mlr_model',
         ]

@@ -1,4 +1,4 @@
-"""Convenience functions and classes for GBRT diagnostics."""
+"""Convenience functions and classes for MLR diagnostics."""
 
 import logging
 import os
@@ -16,7 +16,10 @@ from sklearn.model_selection import train_test_split
 from esmvaltool.diag_scripts.shared import (
     # TODO
     # group_metadata, plot, select_metadata, save_iris_cube, sorted_metadata)
-    group_metadata, plot, select_metadata, sorted_metadata)
+    group_metadata,
+    plot,
+    select_metadata,
+    sorted_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -39,7 +42,7 @@ NECESSARY_KEYS = VAR_KEYS + [
 ]
 
 
-def datasets_have_gbrt_attributes(datasets, log_level='debug'):
+def datasets_have_mlr_attributes(datasets, log_level='debug'):
     """Check if necessary dataset attributes are given."""
     for dataset in datasets:
         for key in NECESSARY_KEYS:
@@ -56,14 +59,14 @@ def datasets_have_gbrt_attributes(datasets, log_level='debug'):
 
 
 def write_cube(cube, attributes, path):
-    """Write cube with all necessary information for GBRT models.
+    """Write cube with all necessary information for MLR models.
 
     Parameters
     ----------
     cube : iris.cube.Cube
         Cube which should be written.
     attributes : dict
-        Attributes for the cube (needed for GBRT models).
+        Attributes for the cube (needed for MLR models).
     path : str
         Path to the new file.
     cfg : dict
@@ -92,8 +95,8 @@ def write_cube(cube, attributes, path):
     iris.save(cube, path)
 
 
-class GBRTModel():
-    """Class for GBRT models.
+class MLRModel():
+    """Class for MLR models.
 
     Note
     ----
@@ -115,7 +118,7 @@ class GBRTModel():
     group_datasets_by_attributes : list of str, optional
         List of dataset attributes which are used to group input data for
         `features` and `labels`, e.g. specify `dataset` to use the different
-        `dataset`s as observations for the GBRT model.
+        `dataset`s as observations for the MLR model.
     imputation_strategy : str, optional (default: 'remove')
         Strategy for the imputation of missing values in the features. Must be
         one of `remove`, `mean`, `median`, `most_frequent` or `constant`.
@@ -188,16 +191,16 @@ class GBRTModel():
         # Adapt output directories
         if root_dir is None:
             root_dir = ''
-        self._cfg['gbrt_work_dir'] = os.path.join(self._cfg['work_dir'],
-                                                  root_dir)
-        self._cfg['gbrt_plot_dir'] = os.path.join(self._cfg['plot_dir'],
-                                                  root_dir)
-        if not os.path.exists(self._cfg['gbrt_work_dir']):
-            os.makedirs(self._cfg['gbrt_work_dir'])
-            logger.info("Created %s", self._cfg['gbrt_work_dir'])
-        if not os.path.exists(self._cfg['gbrt_plot_dir']):
-            os.makedirs(self._cfg['gbrt_plot_dir'])
-            logger.info("Created %s", self._cfg['gbrt_plot_dir'])
+        self._cfg['mlr_work_dir'] = os.path.join(self._cfg['work_dir'],
+                                                 root_dir)
+        self._cfg['mlr_plot_dir'] = os.path.join(self._cfg['plot_dir'],
+                                                 root_dir)
+        if not os.path.exists(self._cfg['mlr_work_dir']):
+            os.makedirs(self._cfg['mlr_work_dir'])
+            logger.info("Created %s", self._cfg['mlr_work_dir'])
+        if not os.path.exists(self._cfg['mlr_plot_dir']):
+            os.makedirs(self._cfg['mlr_plot_dir'])
+            logger.info("Created %s", self._cfg['mlr_plot_dir'])
 
         # Load input datasets
         (training_datasets,
@@ -206,7 +209,7 @@ class GBRTModel():
             training_datasets)
         self._datasets['prediction'] = self._group_prediction_datasets(
             prediction_datasets)
-        logger.info("Initialized GBRT model with parameters %s",
+        logger.info("Initialized MRT model with parameters %s",
                     self.parameters)
         logger.debug("Found training data:")
         logger.debug(pformat(self._datasets['training']))
@@ -220,16 +223,16 @@ class GBRTModel():
                              "found".format(msg))
 
     def fit(self, **parameters):
-        """Build the GBRT model(s).
+        """Build the MLR model(s).
 
         Parameters
         ----------
         parameters : fit parameters, optional
-            Parameters to fit the GBRT model(s). Overwrites default and recipe
+            Parameters to fit the MLR model(s). Overwrites default and recipe
             settings.
 
         """
-        logger.info("Fitting GBRT model")
+        logger.info("Fitting MLR model")
 
         # Extract features and labels
         (self._data['x_data'], self._data['x_norm'], self._data['y_data'],
@@ -250,12 +253,12 @@ class GBRTModel():
              self._data[y_type]) = self._impute_missing_features(
                  self._data[x_type], self._data[y_type], text=data_type)
 
-        # Create GBRT model with desired parameters and fit it
+        # Create MLR model with desired parameters and fit it
         params = self.parameters
         params.update(parameters)
         self._clf = GradientBoostingRegressor(**params)
         self._clf.fit(self._data['x_train'], self._data['y_train'])
-        logger.info("Successfully fitted GBRT model with %i training point(s)",
+        logger.info("Successfully fitted MLR model with %i training point(s)",
                     len(self._data['y_train']))
 
     def plot_feature_importance(self, filename=None):
@@ -276,7 +279,7 @@ class GBRTModel():
         axes.set_yticks(pos)
         axes.set_yticklabels(np.array(self.classes['features'])[sorted_idx])
         new_filename = filename + '.' + self._cfg['output_file_type']
-        new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
+        new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
         plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
         logger.info("Wrote %s", new_path)
         axes.clear()
@@ -306,7 +309,7 @@ class GBRTModel():
                                                self.classes['label_units']))
             new_filename = (filename.format(feature=feature_name) + '.' +
                             self._cfg['output_file_type'])
-            new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
+            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
             plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
             logger.info("Wrote %s", new_path)
             plt.close()
@@ -340,7 +343,7 @@ class GBRTModel():
         axes.set_xlabel('Boosting Iterations')
         axes.set_ylabel('Deviance')
         new_filename = filename + '.' + self._cfg['output_file_type']
-        new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
+        new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
         plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
         logger.info("Wrote %s", new_path)
         axes.clear()
@@ -382,7 +385,7 @@ class GBRTModel():
                                              self.classes['label_units']))
             new_filename = (filename.format(feature=feature) + '.' +
                             self._cfg['output_file_type'])
-            new_path = os.path.join(self._cfg['gbrt_plot_dir'], new_filename)
+            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
             plt.savefig(
                 new_path,
                 orientation='landscape',
@@ -393,7 +396,7 @@ class GBRTModel():
         plt.close()
 
     def predict(self):
-        """Perform prediction using the GBRT model(s) and write netcdf."""
+        """Perform prediction using the MLR model(s) and write netcdf."""
         if not self._is_fitted():
             logger.error("Prediction not possible because the model is not "
                          "fitted yet, call fit() first")
@@ -426,7 +429,7 @@ class GBRTModel():
                         pred_cube.data, mask=cube.data.mask)
             self._set_prediction_cube_attributes(
                 pred_cube, prediction_name=pred_name)
-            new_path = os.path.join(self._cfg['gbrt_work_dir'], filename)
+            new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
             # TODO
             # save_iris_cube(pred_cube, new_path, self._cfg)
             iris.save(pred_cube, new_path)
@@ -685,7 +688,7 @@ class GBRTModel():
                     dataset_info['short_name'] = getattr(cube, 'var_name')
 
                     # Check if necessary keys are available
-                    if datasets_have_gbrt_attributes([dataset_info]):
+                    if datasets_have_mlr_attributes([dataset_info]):
                         datasets.append(dataset_info)
                     else:
                         logger.debug("Skipping %s", path)
@@ -791,10 +794,10 @@ class GBRTModel():
         training_datasets = feature_datasets + label_datasets
 
         # Check datasets
-        if not datasets_have_gbrt_attributes(
+        if not datasets_have_mlr_attributes(
                 training_datasets, log_level='error'):
             raise ValueError()
-        if not datasets_have_gbrt_attributes(
+        if not datasets_have_mlr_attributes(
                 prediction_datasets, log_level='error'):
             raise ValueError()
         return (training_datasets, prediction_datasets)
@@ -956,14 +959,14 @@ class GBRTModel():
         return (new_x_data, new_y_data)
 
     def _is_fitted(self):
-        """Check if the GBRT models are fitted."""
+        """Check if the MLR models are fitted."""
         return bool(self._data)
 
     def _is_ready_for_plotting(self):
         """Check if the class is ready for plotting."""
         if not self._is_fitted():
-            logger.error("Plotting not possible, the GBRT model is not fitted "
-                         "yet, call fit() first")
+            logger.error("Plotting not possible, MLR model is not fitted yet, "
+                         "call fit() first")
             return False
         if not self._cfg['write_plots']:
             logger.error("Plotting not possible, 'write_plots' is set to "
@@ -985,13 +988,13 @@ class GBRTModel():
         """Load parameters for classifier from recipe."""
         parameters = self._DEFAULT_PARAMETERS
         parameters.update(self._cfg.get('parameters', {}))
-        logger.debug("Use parameters %s for GBRT", parameters)
+        logger.debug("Use parameters %s for MLR", parameters)
         return parameters
 
     def _set_prediction_cube_attributes(self, cube, prediction_name=None):
         """Set the attributes of the prediction cube."""
         cube.attributes = {}
-        cube.attributes['description'] = 'GBRT model prediction'
+        cube.attributes['description'] = 'MLR model prediction'
         if prediction_name is not None:
             cube.attributes['prediction_name'] = prediction_name
         cube.attributes.update(self.parameters)
