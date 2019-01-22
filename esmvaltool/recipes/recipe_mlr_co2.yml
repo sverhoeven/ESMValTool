@@ -111,6 +111,7 @@ diagnostics:
           'diag_mlr_input_*/mean',
           'diag_mlr_input_*/trend',
         ]
+        model: gbr
         normalize_data:
           NBP: mean
           NBP-Glob_c: mean
@@ -123,8 +124,11 @@ diagnostics:
             project: CMIP5
           group: dataset
         parameters:
-          n_estimators: 5000
           learning_rate: 0.05
+          loss: ls
+          max_depth: 4
+          min_samples_split: 2
+          n_estimators: 2000
       # single_mlr_model:
       #   script: mlr/single_mlr_model.py
       #   use_coords_as_feature:

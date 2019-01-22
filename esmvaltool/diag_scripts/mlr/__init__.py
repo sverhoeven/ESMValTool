@@ -8,10 +8,14 @@ import cf_units
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.ensemble.partial_dependence import plot_partial_dependence
+from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.impute import SimpleImputer
+# from sklearn.kernel_ridge import KernelRidge
+# from sklearn.linear_model import Lasso, Ridge
 from sklearn.model_selection import train_test_split
+# from sklearn.svm import SVR
 
 from esmvaltool.diag_scripts.shared import (
     # TODO
@@ -126,17 +130,23 @@ class MLRModel():
         When imputation strategy is `constant`, replace missing values with
         this value. If `None`, replace numerical values by 0 and others by
         `missing_value`.
-    parameters : dict, optional
-        Parameters used in the classifier, more information is available here:
-        https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
+    model : str, optional (default: 'gbr')
+        Regression model which is used. Allowed are `gbr` (gradient boosting
+        regression), `gpr` (gaussian process regression), `krr` (kernel ridge
+        regression), `lasso` (lasso regression), `rfr` (random forest
+        regression), `ridge` (ridge regression) or `svr` (support vector
+        regression).
     normalize_data : dict, optional
         Specify tags (keys) and constants (`float` or `'mean'`, value) for
         normalization of data. This is done by dividing the data by the
         given constant and might be necessary when raw data is very small or
         large which leads to large errors due to finite machine precision.
+    parameters : dict, optional
+        Parameters used in the classifier, more information is available here:
+        https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
     test_size : float, optional (default: 0.25)
         Fraction of feature/label data which is used as test data and not for
-        training.
+        training (if desired).
     use_coords_as_feature : dict, optional
         Use coordinates (e.g. 'air_pressure' or 'latitude') as features,
         coordinate names are given by the dictionary keys, the associated index
@@ -146,12 +156,14 @@ class MLRModel():
 
     """
 
-    _DEFAULT_PARAMETERS = {
-        'n_estimators': 1000,
-        'max_depth': 4,
-        'min_samples_split': 2,
-        'learning_rate': 0.01,
-        'loss': 'ls',
+    _MODELS = {
+        'gbr': GradientBoostingRegressor,
+        'gpr': GaussianProcessRegressor,
+        # 'krr': KernelRidge,
+        # 'lasso': Lasso,
+        'rfr': RandomForestRegressor,
+        # 'ridge': Ridge,
+        # 'svr': SVR,
     }
 
     def __init__(self, cfg, root_dir=None, **metadata):
@@ -222,6 +234,9 @@ class MLRModel():
             raise ValueError("No training data (features/labels){} "
                              "found".format(msg))
 
+        # Load training data
+        self._load_training_data()
+
     def fit(self, **parameters):
         """Build the MLR model(s).
 
@@ -232,16 +247,8 @@ class MLRModel():
             settings.
 
         """
-        logger.info("Fitting MLR model")
-
-        # Extract features and labels
-        (self._data['x_data'], self._data['x_norm'], self._data['y_data'],
-         self._data['y_norm']) = self._extract_features_and_labels(
-             self._datasets['training'])
-
-        # Separate training and test data
-        (self._data['x_train'], self._data['x_test'], self._data['y_train'],
-         self._data['y_test']) = self._train_test_split()
+        model_type = self._MODELS[self._cfg.get('model', 'gbr')]
+        logger.info("Fitting MLR model (%s)", model_type.__name__)
 
         # Impute missing features
         if self._imputer is not None:
@@ -249,21 +256,42 @@ class MLRModel():
         for data_type in ('data', 'train', 'test'):
             x_type = 'x_' + data_type
             y_type = 'y_' + data_type
-            (self._data[x_type],
-             self._data[y_type]) = self._impute_missing_features(
-                 self._data[x_type], self._data[y_type], text=data_type)
+            if x_type in self._data:
+                (self._data[x_type],
+                 self._data[y_type]) = self._impute_missing_features(
+                     self._data[x_type], self._data[y_type], text=data_type)
 
         # Create MLR model with desired parameters and fit it
-        params = self.parameters
+        params = dict(self.parameters)
         params.update(parameters)
-        self._clf = GradientBoostingRegressor(**params)
+        self._clf = model_type(**params)
         self._clf.fit(self._data['x_train'], self._data['y_train'])
-        logger.info("Successfully fitted MLR model with %i training point(s)",
-                    len(self._data['y_train']))
+        logger.info(
+            "Successfully fitted %s model on %i training point(s) "
+            "with parameters %s", model_type.__name__,
+            len(self._data['y_train']), params)
 
     def plot_feature_importance(self, filename=None):
-        """Plot feature importance."""
+        """Plot feature importance.
+
+        Note
+        ----
+        Only possible for Gradient Boosting Regression or Random Forest
+        Regression models.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'feature_importance')
+            Name of the plot file.
+
+        """
         if not self._is_ready_for_plotting():
+            return
+        if not isinstance(self._clf,
+                          (GradientBoostingRegressor, RandomForestRegressor)):
+            logger.warning("'plot_feature_importance' is only possible for "
+                           "Gradient Boosting Regression or Random Forest "
+                           "Regression models")
             return
         if filename is None:
             filename = 'feature_importance'
@@ -286,8 +314,23 @@ class MLRModel():
         plt.close()
 
     def plot_partial_dependences(self, filename=None):
-        """Plot partial dependences for every feature."""
+        """Plot partial dependences for every feature.
+
+        Note
+        ----
+        Only possible for Gradient Boosting Regression models.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'partial_dependece_of_{feature}')
+            Name of the plot file.
+
+        """
         if not self._is_ready_for_plotting():
+            return
+        if not isinstance(self._clf, GradientBoostingRegressor):
+            logger.warning("'plot_partial_dependence' is only possible for "
+                           "Gradient Boosting Regression models")
             return
         if filename is None:
             filename = 'partial_dependece_of_{feature}'
@@ -315,29 +358,43 @@ class MLRModel():
             plt.close()
 
     def plot_prediction_error(self, filename=None):
-        """Plot prediction error for training and test data."""
+        """Plot prediction error for training and (if possible) test data.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'prediction_error')
+            Name of the plot file.
+
+        """
         if not self._is_ready_for_plotting():
+            return
+        if not isinstance(self._clf, GradientBoostingRegressor):
+            logger.warning("'plot_prediction_error' is only possible for "
+                           "Gradient Boosting Regression models")
             return
         if filename is None:
             filename = 'prediction_error'
         (_, axes) = plt.subplots()
 
-        # Plot
-        test_score = np.zeros((self.parameters['n_estimators'], ),
-                              dtype=np.float64)
-        for (idx, y_pred) in enumerate(
-                self._clf.staged_predict(self._data['x_test'])):
-            test_score[idx] = self._clf.loss_(self._data['y_test'], y_pred)
+        # Plot train score
         axes.plot(
             np.arange(len(self._clf.train_score_)) + 1,
             self._clf.train_score_,
             'b-',
             label='Training Set Deviance')
-        axes.plot(
-            np.arange(len(test_score)) + 1,
-            test_score,
-            'r-',
-            label='Test Set Deviance')
+
+        # Plot test score if possible
+        if 'x_test' in self._data:
+            test_score = np.zeros((len(self._clf.train_score_), ),
+                                  dtype=np.float64)
+            for (idx, y_pred) in enumerate(
+                    self._clf.staged_predict(self._data['x_test'])):
+                test_score[idx] = self._clf.loss_(self._data['y_test'], y_pred)
+            axes.plot(
+                np.arange(len(test_score)) + 1,
+                test_score,
+                'r-',
+                label='Test Set Deviance')
         axes.legend(loc='upper right')
         axes.set_title('Deviance')
         axes.set_xlabel('Boosting Iterations')
@@ -350,7 +407,14 @@ class MLRModel():
         plt.close()
 
     def plot_scatterplots(self, filename=None):
-        """Plot scatterplots label vs. feature for every feature."""
+        """Plot scatterplots label vs. feature for every feature.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'scatterplot_{feature}')
+            Name of the plot file.
+
+        """
         if not self._is_ready_for_plotting():
             return
         if filename is None:
@@ -396,7 +460,14 @@ class MLRModel():
         plt.close()
 
     def predict(self):
-        """Perform prediction using the MLR model(s) and write netcdf."""
+        """Perform prediction using the MLR model(s) and write netcdf.
+
+        Returns
+        -------
+        dict
+            Prediction names (keys) and data (values).
+
+        """
         if not self._is_fitted():
             logger.error("Prediction not possible because the model is not "
                          "fitted yet, call fit() first")
@@ -436,6 +507,24 @@ class MLRModel():
             logger.info("Successfully predicted %i point(s)", len(y_pred))
 
         return predictions
+
+    def simple_train_test_split(self, test_size=None):
+        """Split input data into training and test data.
+
+        Parameters
+        ----------
+        test_size : float, optional (default: 0.25)
+            Fraction of feature/label data which is used as test data and not
+            for training. Overwrites default and recipe settings.
+
+        """
+        if test_size is None:
+            test_size = self._cfg.get('test_size', 0.25)
+        (self._data['x_train'], self._data['x_test'], self._data['y_train'],
+         self._data['y_test']) = train_test_split(
+             self._data['x_data'], self._data['y_data'], test_size=test_size)
+        logger.info("Used %i%% of the input data as test data (%i point(s))",
+                    int(test_size * 100), len(self._data['x_test']))
 
     def _check_group_attributes(self, group_attributes):
         """Check if `group_attributes` match with already saved data."""
@@ -614,6 +703,7 @@ class MLRModel():
         y_data = self._extract_y_data(datasets)
 
         # Handle missing values in labels
+        logger.debug("Found %i input data point(s)", len(x_data))
         (x_data, y_data) = self._remove_missing_labels(x_data, y_data)
 
         # Check sizes
@@ -960,7 +1050,7 @@ class MLRModel():
 
     def _is_fitted(self):
         """Check if the MLR models are fitted."""
-        return bool(self._data)
+        return bool(self._clf is not None)
 
     def _is_ready_for_plotting(self):
         """Check if the class is ready for plotting."""
@@ -969,7 +1059,7 @@ class MLRModel():
                          "call fit() first")
             return False
         if not self._cfg['write_plots']:
-            logger.error("Plotting not possible, 'write_plots' is set to "
+            logger.debug("Plotting not possible, 'write_plots' is set to "
                          "'False' in user configuration file")
             return False
         return True
@@ -986,10 +1076,18 @@ class MLRModel():
 
     def _load_parameters(self):
         """Load parameters for classifier from recipe."""
-        parameters = self._DEFAULT_PARAMETERS
-        parameters.update(self._cfg.get('parameters', {}))
+        parameters = self._cfg.get('parameters', {})
         logger.debug("Use parameters %s for MLR", parameters)
         return parameters
+
+    def _load_training_data(self):
+        """Load training data (features/labels)."""
+        (self._data['x_data'], self._data['x_norm'], self._data['y_data'],
+         self._data['y_norm']) = self._extract_features_and_labels(
+             self._datasets['training'])
+        self._data['x_train'] = self._data['x_data']
+        self._data['y_train'] = self._data['y_data']
+        logger.info("Loaded %i input data point(s)", len(self._data['x_data']))
 
     def _set_prediction_cube_attributes(self, cube, prediction_name=None):
         """Set the attributes of the prediction cube."""
@@ -1003,10 +1101,3 @@ class MLRModel():
         label_cube = self._load_cube(label['filename'])
         for attr in ('var_name', 'standard_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
-
-    def _train_test_split(self):
-        """Split data into training and test data."""
-        return train_test_split(
-            self._data['x_data'],
-            self._data['y_data'],
-            test_size=self._cfg.get('test_size', 0.25))

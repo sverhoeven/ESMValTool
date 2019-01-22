@@ -47,6 +47,7 @@ def main(cfg):
         mlr_model = MLRModel(cfg, root_dir=attr, **metadata)
 
         # Fit and predict
+        mlr_model.simple_train_test_split()
         mlr_model.fit()
         mlr_model.predict()
 
