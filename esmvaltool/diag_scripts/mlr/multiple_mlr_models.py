@@ -48,6 +48,7 @@ def main(cfg):
 
         # Fit and predict
         mlr_model.simple_train_test_split()
+        mlr_model.export_training_data()
         mlr_model.fit()
         mlr_model.predict()
 

@@ -120,6 +120,7 @@ diagnostics:
         script: mlr/multiple_mlr_models.py
         ancestors: ['feature_*', 'prediction_input_*', 'label',
                     'diag_external_ua/*']
+        model: gbr
         imputation_strategy: mean
         use_coords_as_feature:
           air_pressure: 0
@@ -129,16 +130,24 @@ diagnostics:
           select:
             project: CMIP5
           group: dataset
+        parameters: &params
+          learning_rate: 0.01
+          loss: ls
+          max_depth: 4
+          min_samples_split: 2
+          n_estimators: 2000
       single_mlr_model:
         script: mlr/single_mlr_model.py
         ancestors: ['feature_*', 'prediction_input_*', 'label',
                     'diag_external_ua/*']
+        model: gbr
         imputation_strategy: mean
         use_coords_as_feature:
           air_pressure: 0
           latitude: 1
           longitude: 2
         group_datasets_by_attributes: ['dataset']
+        parameters: *params
 
   diag_austral_jet_position:
     description: Calculate Austral Jet position.

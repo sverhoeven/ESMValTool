@@ -37,6 +37,7 @@ def main(cfg):
 
     # Fit and predict
     mlr_model.simple_train_test_split()
+    mlr_model.export_training_data()
     mlr_model.fit()
     predictions = mlr_model.predict()
     logger.info("Predictions:")

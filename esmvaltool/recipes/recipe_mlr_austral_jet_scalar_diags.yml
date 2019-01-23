@@ -16,7 +16,7 @@ documentation:
     - crescendo
 
 
-datasets:
+DATASET_ANCHOR: &datasets
   - {dataset: ACCESS1-0,      ensemble: r1i1p1}
   - {dataset: ACCESS1-3,      ensemble: r1i1p1}
 
@@ -86,10 +86,9 @@ preprocessors:
   noop:
     {}
 
-  time_average:
-    time_average: null
-
-  sp50: &sp50
+  sp50:
+    extract_month:
+      month: [9, 10, 11, 12]
     extract_levels:
       levels: 5000
       scheme: linear
@@ -102,7 +101,9 @@ preprocessors:
       coord1: latitude
       coord2: longitude
 
-  sp100: &sp100
+  sp100:
+    extract_month:
+      month: [10, 11, 12, 1]
     extract_levels:
       levels: 10000
       scheme: linear
@@ -115,7 +116,7 @@ preprocessors:
       coord1: latitude
       coord2: longitude
 
-  ng50: &ng50
+  ng50:
     extract_levels:
       levels: 5000
       scheme: linear
@@ -128,7 +129,7 @@ preprocessors:
       coord1: latitude
       coord2: longitude
 
-  ng100: &ng100
+  ng100:
     extract_levels:
       levels: 10000
       scheme: linear
@@ -141,7 +142,9 @@ preprocessors:
       coord1: latitude
       coord2: longitude
 
-  trop250: &trop250
+  trop250:
+    extract_month:
+      month: [12, 1, 2]
     extract_levels:
       levels: 25000
       scheme: linear
@@ -153,6 +156,15 @@ preprocessors:
     average_region:
       coord1: latitude
       coord2: longitude
+
+  djf:
+    extract_month:
+      month: [12, 1, 2]
+
+  time_average_djf:
+    extract_month:
+      month: [12, 1, 2]
+    time_average: null
 
 
 diagnostics:
@@ -170,6 +182,7 @@ diagnostics:
         var_type: feature
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+    additional_datasets: *datasets
     scripts:
       mean: &mean
         script: mlr/single_var.py
@@ -185,6 +198,7 @@ diagnostics:
       ta:
         <<: *variable_settings
         preprocessor: ng100
+    additional_datasets: *datasets
     scripts:
       mean:
         <<: *mean
@@ -198,6 +212,7 @@ diagnostics:
       ta:
         <<: *variable_settings
         preprocessor: trop250
+    additional_datasets: *datasets
     scripts:
       mean:
         <<: *mean
@@ -206,13 +221,89 @@ diagnostics:
         <<: *trend
         tag: T-Trop_t
 
+  diag_mlr_input_tro3_sp50:
+    variables:
+      tro3:
+        <<: *variable_settings
+        preprocessor: sp50
+        additional_datasets:
+          - {dataset: BDBP, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+    additional_datasets: &tro3_datasets
+      - {dataset: ACCESS1-0,      project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: ACCESS1-3,      project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: CESM1-BGC,      project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: CMCC-CMS,       project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: HadGEM2-A0,     project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: inmcm4,         project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: MRI-CGCM3,      project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: NorESM1-M,      project: Ozone_CMIP5_ACC_SPARC}
+      # - {dataset: bcc-csm1-1,     ensemble: r1i1p1}
+      - {dataset: BNU-ESM,        ensemble: r1i1p1}
+      - {dataset: CanESM2,        ensemble: r1i1p1}
+      - {dataset: CanESM2,        ensemble: r2i1p1}
+      - {dataset: CanESM2,        ensemble: r3i1p1}
+      - {dataset: CanESM2,        ensemble: r4i1p1}
+      - {dataset: CanESM2,        ensemble: r5i1p1}
+      # - {dataset: CCSM4,          ensemble: r1i1p1}
+      # - {dataset: CCSM4,          ensemble: r2i1p1}
+      # - {dataset: CCSM4,          ensemble: r3i1p1}
+      # - {dataset: CCSM4,          ensemble: r4i1p1}
+      # - {dataset: CCSM4,          ensemble: r5i1p1}
+      # - {dataset: CCSM4,          ensemble: r6i1p1}
+      - {dataset: CNRM-CM5,       ensemble: r1i1p1}
+      - {dataset: GFDL-CM3,       ensemble: r1i1p1}
+      - {dataset: GFDL-ESM2G,     ensemble: r1i1p1}
+      - {dataset: GFDL-ESM2M,     ensemble: r1i1p1}
+      - {dataset: IPSL-CM5A-LR,   ensemble: r1i1p1}
+      - {dataset: IPSL-CM5A-LR,   ensemble: r2i1p1}
+      - {dataset: IPSL-CM5A-LR,   ensemble: r3i1p1}
+      - {dataset: IPSL-CM5A-LR,   ensemble: r4i1p1}
+      - {dataset: IPSL-CM5A-MR,   ensemble: r1i1p1}
+      - {dataset: IPSL-CM5B-LR,   ensemble: r1i1p1}
+      - {dataset: MIROC5,         ensemble: r1i1p1}
+      - {dataset: MIROC5,         ensemble: r2i1p1}
+      - {dataset: MIROC-ESM,      ensemble: r1i1p1}
+      - {dataset: MIROC-ESM-CHEM, ensemble: r1i1p1}
+      - {dataset: MPI-ESM-LR,     ensemble: r1i1p1}
+      - {dataset: MPI-ESM-LR,     ensemble: r2i1p1}
+      - {dataset: MPI-ESM-LR,     ensemble: r3i1p1}
+      - {dataset: MPI-ESM-MR,     ensemble: r1i1p1}
+      - {dataset: MPI-ESM-MR,     ensemble: r2i1p1}
+      - {dataset: MPI-ESM-MR,     ensemble: r3i1p1}
+    scripts:
+      mean:
+        <<: *mean
+        tag: O3-SP_c
+      trend:
+        <<: *trend
+        tag: O3-SP_t
+
+  diag_mlr_input_tro3_ng50:
+    variables:
+      tro3:
+        <<: *variable_settings
+        preprocessor: ng50
+        additional_datasets:
+          - {dataset: BDBP, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+    additional_datasets: *tro3_datasets
+    scripts:
+      mean:
+        <<: *mean
+        tag: O3-NGlob_c
+      trend:
+        <<: *trend
+        tag: O3-NGlob_t
+
   diag_mlr_input_uajet_sh850:
     variables:
       uajet:
         <<: *variable_settings
         field: T0M
-        preprocessor: noop
+        preprocessor: djf
         derive: True
+    additional_datasets: *datasets
     scripts:
       mean:
         <<: *mean
@@ -220,6 +311,25 @@ diagnostics:
       trend:
         <<: *trend
         tag: U-Jet_t
+
+  diag_mlr_input_tpp:
+    variables:
+      ta:
+        <<: *variable_settings
+        preprocessor: noop
+    additional_datasets: *datasets
+    scripts:
+      mean: &tpp
+        script: austral_jet/tpp.ncl
+        calc_type: mean
+        tag: P-SH_c
+        season: DJF
+        lat_range: [-90, -50]
+      trend:
+        <<: *tpp
+        calc_type: trend
+        yearly_trend: True
+        tag: P-SH_t
 
   diag_mlr_input_shhcb:
     variables:
@@ -230,6 +340,7 @@ diagnostics:
         <<: *variable_settings
         field: T2Ms
         preprocessor: noop
+    additional_datasets: *datasets
     scripts:
       mean: &shhcb
         script: austral_jet/shhcb.ncl
@@ -244,6 +355,23 @@ diagnostics:
         yearly_trend: True
         tag: H-SH_t
 
+  diag_mlr_input_asr:
+    variables:
+      asr:
+        <<: *variable_settings
+        preprocessor: noop
+        field: T2M
+        start_year: 2000
+        derive: True
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1, start_year: 2001, var_type: prediction_input}
+    additional_datasets: *datasets
+    scripts:
+      mean:
+        script: austral_jet/asr.ncl
+        tag: ASR-SH
+        season: monthlyclim
+
   diag_mlr:
     description: Perform MLR on input data.
     variables:
@@ -254,10 +382,11 @@ diagnostics:
         exp: rcp45
         start_year: 2015
         end_year: 2034
-        preprocessor: time_average
+        preprocessor: time_average_djf
         derive: True
         var_type: label
         tag: UAJET
+    additional_datasets: *datasets
     scripts:
       mlr:
         script: mlr/single_mlr_model.py
@@ -266,8 +395,12 @@ diagnostics:
           'diag_mlr_input_*/mean',
           'diag_mlr_input_*/trend',
         ]
+        model: gbr
         accept_only_scalar_data: True
         group_datasets_by_attributes: ['dataset', 'ensemble']
         parameters:
-          n_estimators: 2000
           learning_rate: 0.001
+          loss: ls
+          max_depth: 4
+          min_samples_split: 2
+          n_estimators: 2000

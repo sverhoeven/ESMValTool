@@ -12,10 +12,10 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.ensemble.partial_dependence import plot_partial_dependence
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.impute import SimpleImputer
-# from sklearn.kernel_ridge import KernelRidge
-# from sklearn.linear_model import Lasso, Ridge
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.linear_model import Lasso, Ridge
 from sklearn.model_selection import train_test_split
-# from sklearn.svm import SVR
+from sklearn.svm import SVR
 
 from esmvaltool.diag_scripts.shared import (
     # TODO
@@ -142,8 +142,7 @@ class MLRModel():
         given constant and might be necessary when raw data is very small or
         large which leads to large errors due to finite machine precision.
     parameters : dict, optional
-        Parameters used in the classifier, more information is available here:
-        https://scikit-learn.org/stable/modules/ensemble.html#gradient-boosting
+        Parameters used in the classifier.
     test_size : float, optional (default: 0.25)
         Fraction of feature/label data which is used as test data and not for
         training (if desired).
@@ -159,11 +158,11 @@ class MLRModel():
     _MODELS = {
         'gbr': GradientBoostingRegressor,
         'gpr': GaussianProcessRegressor,
-        # 'krr': KernelRidge,
-        # 'lasso': Lasso,
+        'krr': KernelRidge,
+        'lasso': Lasso,
         'rfr': RandomForestRegressor,
-        # 'ridge': Ridge,
-        # 'svr': SVR,
+        'ridge': Ridge,
+        'svr': SVR,
     }
 
     def __init__(self, cfg, root_dir=None, **metadata):
@@ -237,6 +236,29 @@ class MLRModel():
         # Load training data
         self._load_training_data()
 
+    def export_training_data(self, filename=None):
+        """Export training and (if possible) test data.
+
+        Parameters
+        ----------
+        filename : str, optional (default: '{data_type}.csv')
+            Name of the exported files.
+
+        """
+        if filename is None:
+            filename = '{data_type}.csv'
+        for data_type in ('x_data', 'x_train', 'x_test', 'y_data', 'y_train',
+                          'y_test'):
+            if data_type in self._data:
+                path = os.path.join(self._cfg['mlr_plot_dir'],
+                                    filename.format(data_type=data_type))
+                header = '{} with shape {} ({:i} observations)'.format(
+                    data_type, self._data[data_type].shape,
+                    self._data[data_type].shape[0])
+                np.savetxt(
+                    path, self._data[data_type], delimiter=',', header=header)
+                logger.info("Wrote %s", path)
+
     def fit(self, **parameters):
         """Build the MLR model(s).
 
@@ -247,7 +269,14 @@ class MLRModel():
             settings.
 
         """
-        model_type = self._MODELS[self._cfg.get('model', 'gbr')]
+        default_model = 'gbr'
+        model = self._cfg.get('model', default_model)
+        if model not in self._MODELS:
+            logger.warning(
+                "Model '%s' not available, using default model "
+                "'%s'", model, default_model)
+            model = default_model
+        model_type = self._MODELS[model]
         logger.info("Fitting MLR model (%s)", model_type.__name__)
 
         # Impute missing features
@@ -302,7 +331,8 @@ class MLRModel():
         sorted_idx = np.argsort(feature_importance)
         pos = np.arange(sorted_idx.shape[0]) + 0.5
         axes.barh(pos, feature_importance[sorted_idx], align='center')
-        axes.set_title('Variable Importance')
+        axes.set_title('Variable Importance ({} Model)'.format(
+            self._clf.__name__))
         axes.set_xlabel('Relative Importance')
         axes.set_yticks(pos)
         axes.set_yticklabels(np.array(self.classes['features'])[sorted_idx])
@@ -343,7 +373,8 @@ class MLRModel():
                             '{:.2E} '.format(self._data['x_norm'][idx]))
             y_label_norm = ('' if self._data['y_norm'] == 1.0 else
                             '{:.2E} '.format(self._data['y_norm']))
-            axes.set_title('Partial dependence')
+            axes.set_title('Partial dependence ({} Model)'.format(
+                self._clf.__name__))
             axes.set_xlabel('{} / {}{}'.format(
                 feature_name, x_label_norm,
                 self.classes['features_units'][idx]))
@@ -359,6 +390,10 @@ class MLRModel():
 
     def plot_prediction_error(self, filename=None):
         """Plot prediction error for training and (if possible) test data.
+
+        Note
+        ----
+        Only possible for Gradient Boosting Regression models.
 
         Parameters
         ----------
@@ -396,7 +431,7 @@ class MLRModel():
                 'r-',
                 label='Test Set Deviance')
         axes.legend(loc='upper right')
-        axes.set_title('Deviance')
+        axes.set_title('Deviance ({} Model)'.format(self._clf.__name__))
         axes.set_xlabel('Boosting Iterations')
         axes.set_ylabel('Deviance')
         new_filename = filename + '.' + self._cfg['output_file_type']

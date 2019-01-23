@@ -6,13 +6,14 @@
 ;
 ; Description:
 ;     Simple script to calculate and save the Hadley cell boundary in the
-;     southern hemisphere for the use in other diagnostics (e.g. GBRT models).
+;     southern hemisphere for the use in other diagnostics (e.g. MLR models).
 ;
 ; Required diag_script_info attributes:
 ;     calc_type : Calculation type (mean/trend)
 ;     tag : Tag for the diagnostic.
 ;     lev : Pressure level.
 ;     lat_range : Latitude range.
+;     season : Season which is considered.
 ;
 ; Optional diag_script_info attributes:
 ;     None
@@ -26,10 +27,9 @@
 ; #############################################################################
 
 load "interface_scripts/interface.ncl"
-delete([/variable_info, input_file_info/])
-load "interface_scripts/interface.ncl"
 
 load "./diag_scripts/shared/statistics.ncl"
+
 
 begin
 
@@ -78,6 +78,7 @@ begin
 
   ; Iterate over datasets
   do idat = 0, DIM_DAT - 1
+    log_info(DATASETS(idat))
     info := VA_INFO[idat]
     va = read_data(info)
     ps = read_data(PS_INFO[idat])
@@ -200,5 +201,7 @@ begin
     ncdf_outfile = ncdf_write(outvar, outvar@filename)
     delete([/mmstf, outvar, ncdf_outfile/])
   end do
+
+  leave_msg(DIAG_SCRIPT, "")
 
 end
