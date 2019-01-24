@@ -229,16 +229,27 @@ diagnostics:
         additional_datasets:
           - {dataset: BDBP, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
     additional_datasets: &tro3_datasets
-      - {dataset: ACCESS1-0,      project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: ACCESS1-3,      project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: CESM1-BGC,      project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: CMCC-CMS,       project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: HadGEM2-A0,     project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: inmcm4,         project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: MRI-CGCM3,      project: Ozone_CMIP5_ACC_SPARC}
-      - {dataset: NorESM1-M,      project: Ozone_CMIP5_ACC_SPARC}
+      - {dataset: ACCESS1-0,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: ACCESS1-3,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: CESM1-BGC,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r2i1p1}
+      - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r3i1p1}
+      - {dataset: CMCC-CMS,       project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r2i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r3i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r4i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r5i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r6i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r7i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r8i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r9i1p1}
+      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r10i1p1}
+      - {dataset: HadGEM2-AO,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: inmcm4,         project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: MRI-CGCM3,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+      - {dataset: NorESM1-M,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
       # - {dataset: bcc-csm1-1,     ensemble: r1i1p1}
       - {dataset: BNU-ESM,        ensemble: r1i1p1}
       - {dataset: CanESM2,        ensemble: r1i1p1}

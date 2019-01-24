@@ -250,11 +250,16 @@ class MLRModel():
         for data_type in ('x_data', 'x_train', 'x_test', 'y_data', 'y_train',
                           'y_test'):
             if data_type in self._data:
-                path = os.path.join(self._cfg['mlr_plot_dir'],
+                path = os.path.join(self._cfg['mlr_work_dir'],
                                     filename.format(data_type=data_type))
-                header = '{} with shape {} ({:i} observations)'.format(
-                    data_type, self._data[data_type].shape,
-                    self._data[data_type].shape[0])
+                if 'x_' in data_type:
+                    sub_txt = 'features: {}'.format(self.classes['features'])
+                else:
+                    sub_txt = 'label: {}'.format(self.classes['label'])
+                header = ('{} with shape {} ({:d}: number of '
+                          'observations)\n{}'.format(
+                              data_type, self._data[data_type].shape,
+                              self._data[data_type].shape[0], sub_txt))
                 np.savetxt(
                     path, self._data[data_type], delimiter=',', header=header)
                 logger.info("Wrote %s", path)
@@ -332,7 +337,7 @@ class MLRModel():
         pos = np.arange(sorted_idx.shape[0]) + 0.5
         axes.barh(pos, feature_importance[sorted_idx], align='center')
         axes.set_title('Variable Importance ({} Model)'.format(
-            self._clf.__name__))
+            type(self._clf).__name__))
         axes.set_xlabel('Relative Importance')
         axes.set_yticks(pos)
         axes.set_yticklabels(np.array(self.classes['features'])[sorted_idx])
@@ -374,7 +379,7 @@ class MLRModel():
             y_label_norm = ('' if self._data['y_norm'] == 1.0 else
                             '{:.2E} '.format(self._data['y_norm']))
             axes.set_title('Partial dependence ({} Model)'.format(
-                self._clf.__name__))
+                type(self._clf).__name__))
             axes.set_xlabel('{} / {}{}'.format(
                 feature_name, x_label_norm,
                 self.classes['features_units'][idx]))
@@ -431,7 +436,7 @@ class MLRModel():
                 'r-',
                 label='Test Set Deviance')
         axes.legend(loc='upper right')
-        axes.set_title('Deviance ({} Model)'.format(self._clf.__name__))
+        axes.set_title('Deviance ({} Model)'.format(type(self._clf).__name__))
         axes.set_xlabel('Boosting Iterations')
         axes.set_ylabel('Deviance')
         new_filename = filename + '.' + self._cfg['output_file_type']
