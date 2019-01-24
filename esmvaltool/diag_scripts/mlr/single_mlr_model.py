@@ -17,7 +17,7 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-See esmvaltool.mlr module.
+See :mod:`esmvaltool.mlr.models` module.
 
 """
 
@@ -25,7 +25,7 @@ import logging
 import os
 from pprint import pformat
 
-from esmvaltool.diag_scripts.mlr import MLRModel
+from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import run_diagnostic
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -33,7 +33,8 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 def main(cfg):
     """Run the diagnostic."""
-    mlr_model = MLRModel(cfg)
+    model_type = cfg.get('mlr_model', 'gbr')
+    mlr_model = MLRModel.create(model_type, cfg)
 
     # Fit and predict
     mlr_model.simple_train_test_split()

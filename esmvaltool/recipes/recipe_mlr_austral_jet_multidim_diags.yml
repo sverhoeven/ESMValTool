@@ -140,7 +140,7 @@ diagnostics:
         script: mlr/single_mlr_model.py
         ancestors: ['feature_*', 'prediction_input_*', 'label',
                     'diag_external_ua/*']
-        model: gbr
+        mlr_model: gbr
         imputation_strategy: mean
         use_coords_as_feature:
           air_pressure: 0
