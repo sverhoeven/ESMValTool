@@ -9,7 +9,7 @@ import iris
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 
 # TODO: remove VAR_KEYS
 from esmvaltool.diag_scripts.mlr import (
@@ -49,6 +49,13 @@ class MLRModel():
     accept_only_scalar_data : bool, optional (default: False)
         Only accept scalar diagnostic data, if set to True
         'group_datasets_by_attributes should be given.
+    grid_search_cv_param_grid : dict or list of dict, optional
+        Parameters (keys) and ranges (values) for exhaustive parameter search
+        using cross-validation.
+    grid_search_cv_kwargs : dict, optional
+        Keyword arguments for the grid search cross-validation, see
+        https://scikit-learn.org/stable/modules/generated/
+        sklearn.model_selection.GridSearchCV.html.
     group_datasets_by_attributes : list of str, optional
         List of dataset attributes which are used to group input data for
         `features` and `labels`, e.g. specify `dataset` to use the different
@@ -70,6 +77,8 @@ class MLRModel():
         large which leads to large errors due to finite machine precision.
     parameters : dict, optional
         Parameters used in the classifier.
+    predict_kwargs : dict, optional
+        Optional keyword arguments for the `clf.predict()` function.
     test_size : float, optional (default: 0.25)
         Fraction of feature/label data which is used as test data and not for
         training (if desired).
@@ -87,14 +96,13 @@ class MLRModel():
 
     @classmethod
     def register_mlr_model(cls, model):
-        """Add model (subclass of this class) to _MODEL dict (decorator)=."""
-
+        """Add model (subclass of this class) to _MODEL dict (decorator)."""
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
             return subclass
 
-        logger.info("Found available MLR model '%s'", model)
+        logger.debug("Found available MLR model '%s'", model)
         return decorator
 
     @classmethod
@@ -189,7 +197,7 @@ class MLRModel():
         self._load_training_data()
 
     def export_training_data(self, filename=None):
-        """Export training and (if possible) test data.
+        """Export all data contained in `self._data`.
 
         Parameters
         ----------
@@ -199,8 +207,8 @@ class MLRModel():
         """
         if filename is None:
             filename = '{data_type}.csv'
-        for data_type in ('x_data', 'x_train', 'x_test', 'y_data', 'y_train',
-                          'y_test'):
+        for data_type in ('x_raw', 'x_data', 'x_train', 'x_test', 'y_raw',
+                          'y_data', 'y_train', 'y_test'):
             if data_type in self._data:
                 path = os.path.join(self._cfg['mlr_work_dir'],
                                     filename.format(data_type=data_type))
@@ -217,13 +225,13 @@ class MLRModel():
                 logger.info("Wrote %s", path)
 
     def fit(self, **parameters):
-        """Build the MLR model(s).
+        """Initialize and fit the MLR model(s).
 
         Parameters
         ----------
         parameters : fit parameters, optional
-            Parameters to fit the MLR model(s). Overwrites default and recipe
-            settings.
+            Parameters to initialize and fit the MLR model(s). Overwrites
+            default and recipe settings.
 
         Raises
         ------
@@ -232,29 +240,13 @@ class MLRModel():
             called from base class or no MLR models were found.
 
         """
-        if self._CLF_TYPE is None:
-            raise ValueError("Fitting MLR model not possible: No MLR model "
-                             "specified, please use factory function "
-                             "'MLRModel.create()' to initialize this class or "
-                             "populate the module 'esmvaltool.diag_scripts."
-                             "mlr.models' if necessary")
+        self._check_clf_type(text='Fitting MLR model')
         logger.info("Fitting MLR model with classifier '%s'",
                     self._CLF_TYPE.__name__)
         if parameters:
             logger.info(
-                "Using additional paramters %s given in fit() "
-                "function", parameters)
-
-        # Impute missing features
-        if self._imputer is not None:
-            self._imputer.fit(self._data['x_train'].filled(np.nan))
-        for data_type in ('data', 'train', 'test'):
-            x_type = 'x_' + data_type
-            y_type = 'y_' + data_type
-            if x_type in self._data:
-                (self._data[x_type],
-                 self._data[y_type]) = self._impute_missing_features(
-                     self._data[x_type], self._data[y_type], text=data_type)
+                "Using additional parameters %s given in fit() function",
+                parameters)
 
         # Create MLR model with desired parameters and fit it
         params = dict(self.parameters)
@@ -262,6 +254,72 @@ class MLRModel():
         self._clf = self._CLF_TYPE(**params)  # noqa
         self._clf.fit(self._data['x_train'], self._data['y_train'])
         self.parameters = self._clf.get_params()
+        logger.info(
+            "Successfully fitted '%s' model on %i training point(s) "
+            "with parameters %s", self._CLF_TYPE.__name__,
+            len(self._data['y_train']), self.parameters)
+
+    def grid_search_cv(self, param_grid=None, **kwargs):
+        """Perform exhaustive parameter search using cross-validation.
+
+        Parameters
+        ----------
+        param_grid : dict or list of dict, optional
+            Parameter names (keys) and ranges (values) for the search.
+            Overwrites default and recipe settings.
+        **kwargs : keyword arguments, optional
+            Additional options for the `GridSearchCV` class. See
+            https://scikit-learn.org/stable/modules/generated/
+            sklearn.model_selection.GridSearchCV.html. Overwrites default and
+            recipe settings.
+
+        Raises
+        ------
+        ValueError
+            * If type of classifier is not specified, e.g. when this method is
+              called from base class or no MLR models were found.
+            * `param_grid` is not specified, neither in the recipe nor in this
+              function.
+
+        """
+        self._check_clf_type(text='GridSearchCV')
+        parameter_grid = dict(self._cfg.get('grid_search_cv_param_grid', {}))
+        if param_grid is not None:
+            parameter_grid = param_grid
+        if not parameter_grid:
+            raise ValueError("No parameter grid given (neither in recipe nor "
+                             "in grid_search_cv() function)")
+        logger.info(
+            "Performing exhaustive grid search cross-validation with "
+            "classifier '%s' and parameter grid %s", self._CLF_TYPE.__name__,
+            parameter_grid)
+        additional_args = dict(self._cfg.get('grid_search_cv_kwargs', {}))
+        additional_args.update(kwargs)
+        if additional_args:
+            logger.info(
+                "Using additional keyword arguments %s given in "
+                "recipe and grid_search_cv() function", additional_args)
+            if additional_args.get('cv', '').lower() == 'loo':
+                additional_args['cv'] = LeaveOneOut()
+
+        # Create MLR model with desired parameters and fit it
+        clf = GridSearchCV(
+            self._CLF_TYPE(**self.parameters),  # noqa
+            parameter_grid,
+            **additional_args)
+        clf.fit(self._data['x_train'], self._data['y_train'])
+        self.parameters.update(clf.best_params_)
+        if hasattr(clf, 'best_estimator_'):
+            self._clf = clf.best_estimator_
+        else:
+            self._clf = self._CLF_TYPE(**params)  # noqa
+            self._clf.fit(self._data['x_train'], self._data['y_train'])
+        self.parameters = self._clf.get_params()
+        logger.info(
+            "Exhaustive grid search successful, found best parameters %s",
+            clf.best_params_)
+        logger.debug("CV results:")
+        logger.debug(pformat(clf.cv_results_))
         logger.info(
             "Successfully fitted '%s' model on %i training point(s) "
             "with parameters %s", self._CLF_TYPE.__name__,
@@ -320,8 +378,14 @@ class MLRModel():
             axes.clear()
         plt.close()
 
-    def predict(self):
+    def predict(self, **kwargs):
         """Perform prediction using the MLR model(s) and write netcdf.
+
+        Parameters
+        ----------
+        **kwargs : keyword arguments, optional
+            Additional options for the `self._clf.predict()` function.
+            Overwrites default and recipe settings.
 
         Returns
         -------
@@ -333,6 +397,12 @@ class MLRModel():
             logger.error("Prediction not possible because the model is not "
                          "fitted yet, call fit() first")
             return None
+        predict_kwargs = dict(self._cfg.get('predict_kwargs', {}))
+        predict_kwargs.update(kwargs)
+        if predict_kwargs:
+            logger.info(
+                "Using additional keyword arguments %s for predict() function",
+                predict_kwargs)
 
         # Iterate over predictions
         predictions = {}
@@ -348,7 +418,7 @@ class MLRModel():
             if self._imputer is not None:
                 (x_pred, _) = self._impute_missing_features(
                     x_pred, y_data=None, text='prediction input')
-            y_pred = self._clf.predict(x_pred)
+            y_pred = self._clf.predict(x_pred, **kwargs)
             y_pred *= self._data['y_norm']
             self._data[pred_name] = y_pred
             predictions[pred_name] = y_pred
@@ -383,20 +453,22 @@ class MLRModel():
             test_size = self._cfg.get('test_size', 0.25)
         (self._data['x_train'], self._data['x_test'], self._data['y_train'],
          self._data['y_test']) = train_test_split(
-             self._data['x_data'], self._data['y_data'], test_size=test_size)
+             self._data['x_raw'], self._data['y_raw'], test_size=test_size)
+        self._data['x_data'] = np.ma.copy(self._data['x_raw'])
+        self._data['y_data'] = np.ma.copy(self._data['y_raw'])
         logger.info("Used %i%% of the input data as test data (%i point(s))",
-                    int(test_size * 100), len(self._data['x_test']))
+                    int(test_size * 100), len(self._data['y_test']))
+        self._impute_all_data()
 
-    def _check_group_attributes(self, group_attributes):
-        """Check if `group_attributes` match with already saved data."""
-        if self.classes.get('group_attributes') is None:
-            self.classes['group_attributes'] = group_attributes
-        else:
-            if group_attributes != self.classes['group_attributes']:
-                raise ValueError(
-                    "Expected identical group attributes for "
-                    "different var_types, got '{}' and '{}'".format(
-                        group_attributes, self.classes['group_attributes']))
+    def _check_clf_type(self, text=None):
+        """Check if valid classifier type is given."""
+        msg = '' if text is None else '{} not possible: '.format(text)
+        if self._CLF_TYPE is None:
+            raise ValueError(
+                "{}No MLR model specified, please use factory "
+                "function 'MLRModel.create()' to initialize this "
+                "class or populate the module 'esmvaltool."
+                "diag_scripts.mlr.models' if necessary".format(msg))
 
     def _check_cube_coords(self, cube, expected_coords, dataset):
         """Check shape and coordinates of a given cube."""
@@ -434,6 +506,17 @@ class MLRModel():
                                          dataset['tag'], dataset['dataset'],
                                          cube_coords))
         return cube.coords(dim_coords=True)
+
+    def _check_group_attributes(self, group_attributes):
+        """Check if `group_attributes` match with already saved data."""
+        if self.classes.get('group_attributes') is None:
+            self.classes['group_attributes'] = group_attributes
+        else:
+            if group_attributes != self.classes['group_attributes']:
+                raise ValueError(
+                    "Expected identical group attributes for "
+                    "different var_types, got '{}' and '{}'".format(
+                        group_attributes, self.classes['group_attributes']))
 
     def _check_features(self, features, units, text=None):
         """Check if `features` match with already saved data."""
@@ -870,15 +953,17 @@ class MLRModel():
         logger.info("Found groups %s", all_groups)
         return datasets
 
-    def _remove_missing_labels(self, x_data, y_data):  # noqa
-        """Remove missing values in the label data."""
-        new_x_data = x_data[~y_data.mask]
-        new_y_data = y_data[~y_data.mask]
-        diff = len(y_data) - len(new_y_data)
-        if diff:
-            logger.info("Removed %i data point(s) where labels were missing",
-                        diff)
-        return (new_x_data, new_y_data)
+    def _impute_all_data(self):
+        """Impute all data given in `self._data`."""
+        if self._imputer is not None:
+            self._imputer.fit(self._data['x_train'].filled(np.nan))
+        for data_type in ('data', 'train', 'test'):
+            x_type = 'x_' + data_type
+            y_type = 'y_' + data_type
+            if x_type in self._data:
+                (self._data[x_type],
+                 self._data[y_type]) = self._impute_missing_features(
+                     self._data[x_type], self._data[y_type], text=data_type)
 
     def _impute_missing_features(self, x_data, y_data=None, text=None):
         """Impute missing values in the feature data."""
@@ -943,17 +1028,34 @@ class MLRModel():
 
     def _load_training_data(self):
         """Load training data (features/labels)."""
-        (self._data['x_data'], self._data['x_norm'], self._data['y_data'],
+        (self._data['x_raw'], self._data['x_norm'], self._data['y_raw'],
          self._data['y_norm']) = self._extract_features_and_labels(
              self._datasets['training'])
-        self._data['x_train'] = self._data['x_data']
-        self._data['y_train'] = self._data['y_data']
-        logger.info("Loaded %i input data point(s)", len(self._data['x_data']))
+        self._data['x_data'] = np.ma.copy(self._data['x_raw'])
+        self._data['y_data'] = np.ma.copy(self._data['y_raw'])
+        self._data['x_train'] = np.ma.copy(self._data['x_raw'])
+        self._data['y_train'] = np.ma.copy(self._data['y_raw'])
+        logger.debug("Loaded %i raw input data point(s)",
+                     len(self._data['y_raw']))
+        self._impute_all_data()
+        logger.info("Loaded %i input data point(s)", len(self._data['y_data']))
+
+    def _remove_missing_labels(self, x_data, y_data):  # noqa
+        """Remove missing values in the label data."""
+        new_x_data = x_data[~y_data.mask]
+        new_y_data = y_data[~y_data.mask]
+        diff = len(y_data) - len(new_y_data)
+        if diff:
+            logger.info("Removed %i data point(s) where labels were missing",
+                        diff)
+        return (new_x_data, new_y_data)
 
     def _set_prediction_cube_attributes(self, cube, prediction_name=None):
         """Set the attributes of the prediction cube."""
         cube.attributes = {}
         cube.attributes['description'] = 'MLR model prediction'
+        if self._CLF_TYPE is not None:
+            cube.attributes['classifier'] = self._CLF_TYPE.__name__
         if prediction_name is not None:
             cube.attributes['prediction_name'] = prediction_name
         params = {}

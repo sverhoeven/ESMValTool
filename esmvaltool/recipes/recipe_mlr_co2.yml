@@ -123,12 +123,17 @@ diagnostics:
           select:
             project: CMIP5
           group: dataset
-        # parameters:
-        #   learning_rate: 0.05
-        #   loss: ls
-        #   max_depth: 4
-        #   min_samples_split: 2
-        #   n_estimators: 2000
+        parameters:
+          learning_rate: 0.05
+          loss: ls
+          max_depth: 4
+          min_samples_split: 2
+          n_estimators: 2000
+        grid_search_cv_param_grid:
+          n_estimators: [10, 20]
+          # learning_rate: [0.01, 0.005, 0.001]
+        grid_search_cv_kwargs:
+          cv: loo
       # single_mlr_model:
       #   script: mlr/single_mlr_model.py
       #   use_coords_as_feature:

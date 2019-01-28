@@ -39,16 +39,21 @@ def main(cfg):
     # Fit and predict
     mlr_model.simple_train_test_split()
     mlr_model.export_training_data()
-    mlr_model.fit()
+    if cfg.get('grid_search_cv_param_grid'):
+        mlr_model.grid_search_cv()
+    else:
+        mlr_model.fit()
     predictions = mlr_model.predict()
     logger.info("Predictions:")
     logger.info("%s", pformat(predictions))
 
     # Plots
     mlr_model.plot_scatterplots()
-    mlr_model.plot_feature_importance()
-    mlr_model.plot_partial_dependences()
-    mlr_model.plot_prediction_error()
+    if model_type in ('gbr' or 'rfr'):
+        mlr_model.plot_feature_importance()
+    if model_type == 'gbr':
+        mlr_model.plot_partial_dependences()
+        mlr_model.plot_prediction_error()
 
 
 # Run main function when this script is called
