@@ -48,12 +48,12 @@ def main(cfg):
         mlr_model = MLRModel.create(model_type, cfg, root_dir=attr, **metadata)
 
         # Fit and predict
-        mlr_model.simple_train_test_split()
-        mlr_model.export_training_data()
         if cfg.get('grid_search_cv_param_grid'):
             mlr_model.grid_search_cv()
         else:
+            mlr_model.simple_train_test_split()
             mlr_model.fit()
+        mlr_model.export_training_data()
         mlr_model.predict()
 
         # Plots

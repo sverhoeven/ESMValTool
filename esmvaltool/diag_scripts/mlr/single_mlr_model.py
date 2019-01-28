@@ -37,12 +37,12 @@ def main(cfg):
     mlr_model = MLRModel.create(model_type, cfg)
 
     # Fit and predict
-    mlr_model.simple_train_test_split()
-    mlr_model.export_training_data()
     if cfg.get('grid_search_cv_param_grid'):
         mlr_model.grid_search_cv()
     else:
+        mlr_model.simple_train_test_split()
         mlr_model.fit()
+    mlr_model.export_training_data()
     predictions = mlr_model.predict()
     logger.info("Predictions:")
     logger.info("%s", pformat(predictions))
