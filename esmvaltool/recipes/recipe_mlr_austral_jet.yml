@@ -1,10 +1,10 @@
-# recipe_mlr_austral_jet_multidim_diags.yml
+# recipe_mlr_austral_jet.yml
 ---
 documentation:
 
   description: |
     Use MLR (Machine Learning Regression) models to predict future austral jet
-    position multidimensional diagnostics.
+    position for multidimensional diagnostics.
 
   authors:
     - schl_ma

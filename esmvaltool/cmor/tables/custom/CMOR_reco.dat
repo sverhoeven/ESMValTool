@@ -1,0 +1,22 @@
+SOURCE: CMIP5
+!============
+variable_entry:    reco
+!============
+modeling_realm:    land
+!----------------------------------
+! Variable attributes:
+!----------------------------------
+standard_name:     plant_respiration_carbon_flux
+units:             kg m-2 s-1
+cell_methods:      time: mean area: mean
+cell_measures:     area: areacella
+long_name:         Ecosystem respiration (relative to grid cell area)
+!----------------------------------
+! Additional variable information:
+!----------------------------------
+dimensions:        longitude latitude time
+out_name:          reco
+type:              real
+positive:          up
+!----------------------------------
+!
