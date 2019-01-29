@@ -116,9 +116,7 @@ diagnostics:
           NBP: mean
           NBP-Glob_c: mean
           NBP-Glob_t: mean
-        use_coords_as_feature:
-          latitude: 0
-          longitude: 1
+        use_coords_as_feature: ['latitude', 'longitude']
         metadata_preselection:
           select:
             project: CMIP5
@@ -129,15 +127,7 @@ diagnostics:
           max_depth: 4
           min_samples_split: 2
           n_estimators: 2000
-        grid_search_cv_param_grid:
-          n_estimators: [10, 20]
-          # learning_rate: [0.01, 0.005, 0.001]
-        grid_search_cv_kwargs:
-          cv: loo
-      # single_mlr_model:
-      #   script: mlr/single_mlr_model.py
-      #   use_coords_as_feature:
-      #     air_pressure: 0
-      #     latitude: 1
-      #     longitude: 2
-      #   group_datasets_by_attributes: ['dataset']
+        # grid_search_cv_param_grid:
+        #   n_estimators: [10, 20]
+        # grid_search_cv_kwargs:
+        #   cv: loo

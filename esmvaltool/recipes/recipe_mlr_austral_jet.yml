@@ -122,10 +122,7 @@ diagnostics:
                     'diag_external_ua/*']
         mlr_model: gbr
         imputation_strategy: mean
-        use_coords_as_feature:
-          air_pressure: 0
-          latitude: 1
-          longitude: 2
+        use_coords_as_feature: ['air_pressure', 'latitude', 'longitude']
         metadata_preselection:
           select:
             project: CMIP5
@@ -142,10 +139,7 @@ diagnostics:
                     'diag_external_ua/*']
         mlr_model: gbr
         imputation_strategy: mean
-        use_coords_as_feature:
-          air_pressure: 0
-          latitude: 1
-          longitude: 2
+        use_coords_as_feature: ['air_pressure', 'latitude', 'longitude']
         group_datasets_by_attributes: ['dataset']
         parameters: *params
 
