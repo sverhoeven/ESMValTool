@@ -1,0 +1,906 @@
+# recipe_co2_mder.yml
+---
+documentation:
+
+  description: |
+    Calculates process oriented diagnostics from all model ensemble members and
+    compares results with future projections of carbon fluxes (land and ocean)
+    and performs a Multiple Linear Regression (MDER) analysis.
+
+  authors:
+    - schl_ma
+    - zech_sa
+
+  projects:
+    - esmval
+    - crescendo
+
+
+preprocessors:
+
+  noop:
+    {}
+
+  landmask:
+    mask_landsea:
+      mask_out: sea
+
+  regrid:
+    regrid:
+      target_grid: 2x2
+      scheme: linear
+
+  landmask_and_regrid:
+    mask_landsea:
+      mask_out: sea
+    regrid:
+      target_grid: 2x2
+      scheme: linear
+
+
+diagnostics:
+
+  diag_tas:
+    description: Calculate temperature trends and climatological means of tas.
+    themes:
+      - phys
+    realms:
+      - atmos
+    variables:
+      tas: &landmaskregrid_Amon_1901_2005_refCRU
+        preprocessor: landmask_and_regrid
+        project: CMIP5
+        mip: Amon
+        field: T2Ms
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 1901
+        end_year: 2005
+        reference_dataset: CRU
+        plot_units: degC
+    additional_datasets: &tas_datasets
+      - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
+      # No data
+      # - {dataset: bcc-csm1-1}
+      # - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      global_mean: &global_mean_tas
+        script: mder/single_var.ncl
+        calc_type: mean
+        time_oper: average
+        time_opt: annualclim
+        area_oper: average
+        styleset: CMIP5
+        region: Global
+        ref_dataset: CRU
+        wdiag: T-Glob_c
+      global_trend: &global_trend_tas
+        <<: *global_mean_tas
+        calc_type: trend
+        time_opt: yearly
+        wdiag: T-Glob_t
+      select_mean:
+        <<: *global_mean_tas
+        script: mder/select_for_mder.ncl
+        ancestors: ['tas', 'global_mean']
+      select_trend:
+        <<: *global_trend_tas
+        script: mder/select_for_mder.ncl
+        ancestors: ['tas', 'global_trend']
+
+  diag_pr:
+    description: Calculate temperature trends and climatological means of pr.
+    themes:
+      - phys
+    realms:
+      - atmos
+    variables:
+      pr:
+        <<: *landmaskregrid_Amon_1901_2005_refCRU
+        plot_units: mm day-1
+    additional_datasets: *tas_datasets
+    scripts:
+      global_mean: &global_mean_pr
+        <<: *global_mean_tas
+        wdiag: Pr-Glob_c
+      global_trend: &global_trend_pr
+        <<: *global_trend_tas
+        wdiag: Pr-Glob_t
+      select_mean:
+        <<: *global_mean_pr
+        script: mder/select_for_mder.ncl
+        ancestors: ['pr', 'global_mean']
+      select_trend:
+        <<: *global_trend_pr
+        script: mder/select_for_mder.ncl
+        ancestors: ['pr', 'global_trend']
+
+  diag_rsds:
+    description: Calculate temperature trends and climatological means of rsds.
+    themes:
+      - phys
+    realms:
+      - atmos
+    variables:
+      rsds: &regrid_Amon_2001_2005_refCERES-EBAF
+        preprocessor: regrid
+        project: CMIP5
+        mip: Amon
+        field: T2Ms
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 2001
+        end_year: 2005
+        reference_dataset: CERES-EBAF
+    additional_datasets: &rsds_datasets
+      - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+      - {dataset: bcc-csm1-1}
+      - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      global_mean: &global_mean_rsds
+        <<: *global_mean_tas
+        ref_dataset: CERES-EBAF
+        wdiag: SSRd-Glob_c
+      global_trend: &global_trend_rsds
+        <<: *global_trend_tas
+        ref_dataset: CERES-EBAF
+        wdiag: SSRd-Glob_t
+      select_mean:
+        <<: *global_mean_rsds
+        script: mder/select_for_mder.ncl
+        ancestors: ['rsds', 'global_mean']
+      select_trend:
+        <<: *global_trend_rsds
+        script: mder/select_for_mder.ncl
+        ancestors: ['rsds', 'global_trend']
+
+  diag_rsus:
+    description: Calculate temperature trends and climatological means of rsus.
+    themes:
+      - phys
+    realms:
+      - atmos
+    variables:
+      rsus:
+        <<: *regrid_Amon_2001_2005_refCERES-EBAF
+    additional_datasets: *rsds_datasets
+    scripts:
+      global_mean: &global_mean_rsus
+        <<: *global_mean_tas
+        ref_dataset: CERES-EBAF
+        wdiag: SSRu-Glob_c
+      global_trend: &global_trend_rsus
+        <<: *global_trend_tas
+        ref_dataset: CERES-EBAF
+        wdiag: SSRu-Glob_t
+      select_mean:
+        <<: *global_mean_rsus
+        script: mder/select_for_mder.ncl
+        ancestors: ['rsus', 'global_mean']
+      select_trend:
+        <<: *global_trend_rsus
+        script: mder/select_for_mder.ncl
+        ancestors: ['rsus', 'global_trend']
+
+  diag_rlds:
+    description: Calculate temperature trends and climatological means of rlds.
+    themes:
+      - phys
+    realms:
+      - atmos
+    variables:
+      rlds:
+        <<: *regrid_Amon_2001_2005_refCERES-EBAF
+    additional_datasets: *rsds_datasets
+    scripts:
+      global_mean: &global_mean_rlds
+        <<: *global_mean_tas
+        ref_dataset: CERES-EBAF
+        wdiag: SLRd-Glob_c
+      global_trend: &global_trend_rlds
+        <<: *global_trend_tas
+        ref_dataset: CERES-EBAF
+        wdiag: SLRd-Glob_t
+      select_mean:
+        <<: *global_mean_rlds
+        script: mder/select_for_mder.ncl
+        ancestors: ['rlds', 'global_mean']
+      select_trend:
+        <<: *global_trend_rlds
+        script: mder/select_for_mder.ncl
+        ancestors: ['rlds', 'global_trend']
+
+  diag_rlus:
+    description: Calculate temperature trends and climatological means of rlus.
+    themes:
+      - phys
+    realms:
+      - atmos
+    variables:
+      rlus:
+        <<: *regrid_Amon_2001_2005_refCERES-EBAF
+    additional_datasets: *rsds_datasets
+    scripts:
+      global_mean: &global_mean_rlus
+        <<: *global_mean_tas
+        ref_dataset: CERES-EBAF
+        wdiag: SLRu-Glob_c
+      global_trend: &global_trend_rlus
+        <<: *global_trend_tas
+        ref_dataset: CERES-EBAF
+        wdiag: SLRu-Glob_t
+      select_mean:
+        <<: *global_mean_rlus
+        script: mder/select_for_mder.ncl
+        ancestors: ['rlus', 'global_mean']
+      select_trend:
+        <<: *global_trend_rlus
+        script: mder/select_for_mder.ncl
+        ancestors: ['rlus', 'global_trend']
+
+  diag_et:
+    description: Calculate temperature trends and climatological means of et.
+    themes:
+      - phys
+    realms:
+      - atmos
+    variables:
+      et:
+        <<: *regrid_Amon_2001_2005_refCERES-EBAF
+        start_year: 2000
+        reference_dataset: LandFlux-EVAL
+        derive: True
+    additional_datasets: &et_datasets
+      - {dataset: LandFlux-EVAL, project: OBS, type: ground, version: 1, tier: 3, end_year: 2004}
+      - {dataset: bcc-csm1-1}
+      - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      global_mean: &global_mean_et
+        <<: *global_mean_tas
+        ref_dataset: LandFlux-EVAL
+        wdiag: ET-Glob_c
+      global_trend: &global_trend_et
+        <<: *global_trend_tas
+        ref_dataset: LandFlux-EVAL
+        wdiag: ET-Glob_t
+      select_mean:
+        <<: *global_mean_et
+        script: mder/select_for_mder.ncl
+        ancestors: ['et', 'global_mean']
+      select_trend:
+        <<: *global_trend_et
+        script: mder/select_for_mder.ncl
+        ancestors: ['et', 'global_trend']
+
+  diag_cVeg:
+    description: Calculate climatological mean of cVeg.
+    themes:
+      - biochem
+    realms:
+      - land
+    variables:
+      cVeg_grid:
+        <<: *landmaskregrid_Amon_1901_2005_refCRU
+        preprocessor: noop
+        mip: Lmon
+        reference_dataset: NDP
+        plot_units: PgC
+        derive: True
+    additional_datasets:
+      - {dataset: NDP, project: OBS, type: ground, version: 017b, tier: 2, start_year: 2000, end_year: 2000}
+      # No data
+      # - {dataset: bcc-csm1-1}
+      # - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      # No data
+      # - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      # No data
+      # - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      global_mean: &global_mean_cVeg
+        <<: *global_mean_tas
+        ref_dataset: NDP
+        area_oper: sum
+        wdiag: cVeg-Glob_c
+      select_mean:
+        <<: *global_mean_cVeg
+        script: mder/select_for_mder.ncl
+        ancestors: ['cVeg_grid', 'global_mean']
+
+  diag_cSoil:
+    description: Calculate climatological mean of cSoil.
+    themes:
+      - biochem
+    realms:
+      - land
+    variables:
+      cSoil_grid:
+        <<: *landmaskregrid_Amon_1901_2005_refCRU
+        preprocessor: noop
+        mip: Lmon
+        reference_dataset: HWSD
+        plot_units: PgC
+        derive: True
+    additional_datasets:
+      - {dataset: HWSD, project: OBS, type: ground, version: 1, tier: 2, start_year: 2000, end_year: 2000}
+      # No data
+      # - {dataset: bcc-csm1-1}
+      # - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      # No data
+      # - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      # No data
+      # - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      global_mean: &global_mean_cSoil
+        <<: *global_mean_tas
+        ref_dataset: HWSD
+        area_oper: sum
+        wdiag: cSoil-Glob_c
+      select_mean:
+        <<: *global_mean_cSoil
+        script: mder/select_for_mder.ncl
+        ancestors: ['cSoil_grid', 'global_mean']
+
+  diag_nbp:
+    description: Calculate climatological mean of nbp.
+    themes:
+      - biochem
+      - carbon
+    realms:
+      - land
+    variables:
+      nbp_grid:
+        <<: *landmaskregrid_Amon_1901_2005_refCRU
+        preprocessor: noop
+        mip: Lmon
+        start_year: 1986
+        reference_dataset: JMA-TRANSCOM
+        plot_units: PgC y-1
+        derive: True
+    additional_datasets: &nbp_datasets
+      - {dataset: GCP,          project: OBS, type: reanaly, version: 1, tier: 2}
+      - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
+      # No data
+      # - {dataset: bcc-csm1-1}
+      # - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      main_global: &nbp_main_global
+        script: carbon_cycle/main.ncl
+        ref_dataset: JMA-TRANSCOM
+        legend_year_outside: False
+        legend_outside: False
+        sort: True
+        seasonal_cycle_plot: True
+        errorbar_plot: True
+        mean_IAV_plot: True
+        styleset: CMIP5
+        region: Global
+        evolution_plot: True
+        evolution_plot_volcanoes: True
+        evolution_plot_ref_dataset: GCP
+        wdiag: NBP-Glob_c
+        wdiag_title: NBP-Glob
+      select_for_mder:
+        <<: *nbp_main_global
+        script: mder/select_for_mder.ncl
+        ancestors: ['nbp_grid', 'main_global']
+
+  diag_gpp:
+    description: Calculate temperature trends and climatological means of gpp.
+    themes:
+      - biochem
+      - carbon
+    realms:
+      - land
+    variables:
+      gpp_grid:
+        <<: *landmaskregrid_Amon_1901_2005_refCRU
+        preprocessor: regrid
+        mip: Lmon
+        start_year: 1986
+        reference_dataset: MTE
+        plot_units: PgC y-1
+        derive: True
+    additional_datasets:
+      - {dataset: MTE, project: OBS, type: reanaly, version: 1, tier: 2}
+      # No data
+      - {dataset: bcc-csm1-1}
+      - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      global_mean: &global_mean_gpp
+        <<: *global_mean_tas
+        ref_dataset: MTE
+        area_oper: sum
+        wdiag: GPP-Glob_c
+      global_trend: &global_trend_gpp
+        <<: *global_trend_tas
+        ref_dataset: MTE
+        area_oper: sum
+        wdiag: GPP-Glob_t
+      select_mean:
+        <<: *global_mean_gpp
+        script: mder/select_for_mder.ncl
+        ancestors: ['gpp_grid', 'global_mean']
+      select_trend:
+        <<: *global_trend_gpp
+        script: mder/select_for_mder.ncl
+        ancestors: ['gpp_grid', 'global_trend']
+
+  diag_lai:
+    description: Calculate temperature trends and climatological means of lai.
+    themes:
+      - biochem
+      - carbon
+    realms:
+      - land
+    variables:
+      lai_grid:
+        preprocessor: regrid
+        project: CMIP5
+        mip: Lmon
+        field: T2Ms
+        exp: historical
+        ensemble: r1i1p1
+        start_year: 1986
+        end_year: 2005
+        reference_dataset: LAI3g
+        derive: True
+    additional_datasets:
+      - {dataset: LAI3g, project: OBS, type: reanaly, version: 1, tier: 3}
+      # No data
+      - {dataset: bcc-csm1-1}
+      - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      global_mean: &global_mean_lai
+        <<: *global_mean_tas
+        ref_dataset: LAI3g
+        wdiag: LAI-Glob_c
+      global_trend: &global_trend_lai
+        <<: *global_trend_tas
+        ref_dataset: LAI3g
+        wdiag: LAI-Glob_t
+      select_mean:
+        <<: *global_mean_lai
+        script: mder/select_for_mder.ncl
+        ancestors: ['lai_grid', 'global_mean']
+      select_trend:
+        <<: *global_trend_lai
+        script: mder/select_for_mder.ncl
+        ancestors: ['lai_grid', 'global_trend']
+
+  diag_reco:
+    description: Calculate climatological mean of reco.
+    themes:
+      - biochem
+      - carbon
+    realms:
+      - land
+    variables:
+      reco:
+        <<: *landmaskregrid_Amon_1901_2005_refCRU
+        preprocessor: noop
+        mip: Lmon
+        reference_dataset: FLUXNET
+        plot_units: PgC y-1
+        derive: True
+    additional_datasets: &reco_datasets
+      - {dataset: FLUXNET, project: OBS, type: ground, version: 1, tier: 2, start_year: 1991}
+      - {dataset: bcc-csm1-1}
+      - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+    scripts:
+      main_global: &reco_main_global
+        <<: *nbp_main_global
+        ref_dataset: FLUXNET
+        evolution_plot_ref_dataset: FLUXNET
+        wdiag: RECO-Glob_c
+        wdiag_title: RECO-Glob_c
+      select_for_mder:
+        <<: *reco_main_global
+        script: mder/select_for_mder.ncl
+        ancestors: ['reco', 'main_global']
+
+  mder_rcp26:
+    description: Performs Multiple Diagnostic Ensemble Regression (MDER) for RCP2.6.
+    variables:
+      nbp_grid: &noop_Lmon_1861_2005_refJMA
+        <<: *landmaskregrid_Amon_1901_2005_refCRU
+        preprocessor: noop
+        mip: Lmon
+        start_year: 1861
+        reference_dataset: JMA-TRANSCOM
+        plot_units: PgC y-1
+        derive: True
+    additional_datasets:
+      # OBS
+      - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3, start_year: 1986}
+      # HISTORICAL
+      # No data
+      # - {dataset: bcc-csm1-1}
+      # - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+      # RCP 2.6
+      # No data
+      # - {dataset: bcc-csm1-1,     exp: rcp26, start_year: 2006, end_year: 2100}
+      # - {dataset: bcc-csm1-1-m,   exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: BNU-ESM,        exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: CanESM2,        exp: rcp26, start_year: 2006, end_year: 2100}
+      # Concatenation issues
+      # - {dataset: CCSM4,          exp: rcp26, start_year: 2006, end_year: 2100}
+      # No data
+      # - {dataset: CESM1-BGC,      exp: rcp26, start_year: 2006, end_year: 2100}
+      # - {dataset: CESM1-FASTCHEM, exp: rcp26, start_year: 2006, end_year: 2100}
+      # - {dataset: CESM1-WACCM,    exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: GFDL-ESM2G,     exp: rcp26, start_year: 2006, end_year: 2100}
+      # - {dataset: GFDL-ESM2M,     exp: rcp26, start_year: 2006, end_year: 2100}
+      # - {dataset: HadGEM2-CC,     exp: rcp26, start_year: 2006, end_year: 2099}
+      # Concatenation issues
+      # - {dataset: HadGEM2-ES,     exp: rcp26, start_year: 2006, end_year: 2099}
+      # No data
+      # - {dataset: inmcm4,         exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: IPSL-CM5A-LR,   exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: IPSL-CM5A-MR,   exp: rcp26, start_year: 2006, end_year: 2100}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR,   exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: MIROC-ESM,      exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: MIROC-ESM-CHEM, exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: MPI-ESM-LR,     exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: MPI-ESM-MR,     exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: NorESM1-M,      exp: rcp26, start_year: 2006, end_year: 2100}
+      - {dataset: NorESM1-ME,     exp: rcp26, start_year: 2006, end_year: 2100}
+    scripts:
+      absolute_correlation: &absolute_correlation
+        script: mder/absolute_correlation.ncl
+        ancestors: ['nbp_grid', '*/select_*']
+        styleset: CMIP5
+        region: Global
+        time_opt: yearly
+        time_oper: average
+        area_oper: sum
+        calc_type: int
+        p_time: [2045, 2080]
+        p_step: 19
+        scal_time: [1979, 2014]
+      regression_stepwise: &regression_stepwise
+        <<: *absolute_correlation
+        script: mder/regression_stepwise.ncl
+        p_value: 0.05
+        wregr: True
+        wexit: True
+        smooth: True
+        iter: 29
+        cross_validation_mode: False
+
+  mder_rcp45:
+    description: Performs Multiple Diagnostic Ensemble Regression (MDER) for RCP4.5
+    variables:
+      nbp_grid:
+        <<: *noop_Lmon_1861_2005_refJMA
+    additional_datasets:
+      # OBS
+      - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3, start_year: 1986}
+      # HISTORICAL
+      # No data
+      # - {dataset: bcc-csm1-1}
+      # - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+      # RCP 4.5
+      # No data
+      # - {dataset: bcc-csm1-1,     exp: rcp45, start_year: 2006, end_year: 2100}
+      # - {dataset: bcc-csm1-1-m,   exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: BNU-ESM,        exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: CanESM2,        exp: rcp45, start_year: 2006, end_year: 2100}
+      # Concatenation issues
+      # - {dataset: CCSM4,          exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: CESM1-BGC,      exp: rcp45, start_year: 2006, end_year: 2100}
+      # No data
+      # - {dataset: CESM1-FASTCHEM, exp: rcp45, start_year: 2006, end_year: 2100}
+      # - {dataset: CESM1-WACCM,    exp: rcp45, start_year: 2006, end_year: 2100}
+      # - {dataset: GFDL-ESM2G,     exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: GFDL-ESM2M,     exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: HadGEM2-CC,     exp: rcp45, start_year: 2006, end_year: 2099}
+      # Concatenation issues
+      # - {dataset: HadGEM2-ES,     exp: rcp45, start_year: 2006, end_year: 2099}
+      - {dataset: inmcm4,         exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: IPSL-CM5A-LR,   exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: IPSL-CM5A-MR,   exp: rcp45, start_year: 2006, end_year: 2100}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR,   exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: MIROC-ESM,      exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: MIROC-ESM-CHEM, exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: MPI-ESM-LR,     exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: MPI-ESM-MR,     exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: NorESM1-M,      exp: rcp45, start_year: 2006, end_year: 2100}
+      - {dataset: NorESM1-ME,     exp: rcp45, start_year: 2006, end_year: 2100}
+    scripts:
+      absolute_correlation:
+        <<: *absolute_correlation
+      regression_stepwise:
+        <<: *regression_stepwise
+
+  mder_rcp85:
+    description: Performs Multiple Diagnostic Ensemble Regression (MDER) for RCP8.5
+    variables:
+      nbp_grid:
+        <<: *noop_Lmon_1861_2005_refJMA
+    additional_datasets:
+      # OBS
+      - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3, start_year: 1986}
+      # HISTORICAL
+      # No data
+      # - {dataset: bcc-csm1-1}
+      # - {dataset: bcc-csm1-1-m}
+      - {dataset: BNU-ESM}
+      - {dataset: CanESM2}
+      - {dataset: CCSM4}
+      - {dataset: CESM1-BGC}
+      - {dataset: CESM1-FASTCHEM}
+      - {dataset: CESM1-WACCM}
+      - {dataset: GFDL-ESM2G}
+      - {dataset: GFDL-ESM2M}
+      - {dataset: HadGEM2-CC}
+      - {dataset: HadGEM2-ES}
+      - {dataset: inmcm4}
+      - {dataset: IPSL-CM5A-LR}
+      - {dataset: IPSL-CM5A-MR}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR}
+      - {dataset: MIROC-ESM}
+      - {dataset: MIROC-ESM-CHEM}
+      - {dataset: MPI-ESM-LR}
+      - {dataset: MPI-ESM-MR}
+      - {dataset: NorESM1-M}
+      - {dataset: NorESM1-ME}
+      # RCP 8.5
+      # No data
+      # - {dataset: bcc-csm1-1,     exp: rcp85, start_year: 2006, end_year: 2100}
+      # - {dataset: bcc-csm1-1-m,   exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: BNU-ESM,        exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: CanESM2,        exp: rcp85, start_year: 2006, end_year: 2100}
+      # Concatenation issues
+      # - {dataset: CCSM4,          exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: CESM1-BGC,      exp: rcp85, start_year: 2006, end_year: 2100}
+      # No data
+      # - {dataset: CESM1-FASTCHEM, exp: rcp85, start_year: 2006, end_year: 2100}
+      # - {dataset: CESM1-WACCM,    exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: GFDL-ESM2G,     exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: GFDL-ESM2M,     exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: HadGEM2-CC,     exp: rcp85, start_year: 2006, end_year: 2099}
+      # Concatenation issues
+      # - {dataset: HadGEM2-ES,     exp: rcp85, start_year: 2006, end_year: 2099}
+      - {dataset: inmcm4,         exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: IPSL-CM5A-LR,   exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: IPSL-CM5A-MR,   exp: rcp85, start_year: 2006, end_year: 2100}
+      # Concatenation issues
+      # - {dataset: IPSL-CM5B-LR,   exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: MIROC-ESM,      exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: MIROC-ESM-CHEM, exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: MPI-ESM-LR,     exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: MPI-ESM-MR,     exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: NorESM1-M,      exp: rcp85, start_year: 2006, end_year: 2100}
+      - {dataset: NorESM1-ME,     exp: rcp85, start_year: 2006, end_year: 2100}
+    scripts:
+      absolute_correlation:
+        <<: *absolute_correlation
+      regression_stepwise:
+        <<: *regression_stepwise

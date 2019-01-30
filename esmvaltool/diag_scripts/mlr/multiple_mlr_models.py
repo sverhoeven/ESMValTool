@@ -17,7 +17,7 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-See :mod:`esmvaltool.mlr.models` module.
+See :mod:`esmvaltool.diag_scripts.mlr.models` module.
 
 """
 

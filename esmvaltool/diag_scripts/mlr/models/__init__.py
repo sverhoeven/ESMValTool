@@ -89,9 +89,9 @@ class MLRModel():
         When imputation strategy is `constant`, replace missing values with
         this value. If `None`, replace numerical values by 0 and others by
         `missing_value`.
-    model : str, optional (default: 'gbr')
+    mlr_model : str, optional (default: 'gbr')
         Regression model which is used. Allowed models are child classes of
-        this base class given in `esmvaltool.diag_scripts.mlr`.
+        this base class given in :mod:`esmvaltool.diag_scripts.mlr.models`.
     normalize_data : dict, optional
         Specify tags (keys) and constants (`float` or `'mean'`, value) for
         normalization of data. This is done by dividing the data by the
@@ -116,12 +116,11 @@ class MLRModel():
 
     @classmethod
     def register_mlr_model(cls, model):
-        """Add model (subclass of this class) to _MODEL dict (decorator)."""
+        """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
             return subclass
-
         logger.debug("Found available MLR model '%s'", model)
         return decorator
 
@@ -162,10 +161,10 @@ class MLRModel():
         plt.style.use(plot.get_path_to_mpl_style())
 
         # Private members
+        self._cfg = cfg
         self._clf = None
         self._data = {}
         self._datasets = {}
-        self._cfg = cfg
         imputation_strategy = self._cfg.get('imputation_strategy', 'remove')
         if imputation_strategy == 'remove':
             self._imputer = None
