@@ -1,8 +1,5 @@
-# Configuration for tests of the module `esmvaltool.diag_scripts.mlr.models`.
+# Configuration file for general tests.
 ---
-
-# General settings
-
 base_cfg: &base_cfg
   input_data: {}
   input_files: []

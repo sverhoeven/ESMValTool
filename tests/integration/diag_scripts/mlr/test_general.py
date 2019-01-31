@@ -1,4 +1,4 @@
-"""Tests for the module :mod:`esmvaltool.diag_scripts.mlr.models`."""
+"""General tests for the module :mod:`esmvaltool.diag_scripts.mlr.models`."""
 import os
 
 import mock
@@ -9,7 +9,8 @@ from esmvaltool.diag_scripts.mlr.models import MLRModel
 
 
 # Load test configuration
-with open(os.path.join(os.path.dirname(__file__), 'config.yml')) as file_:
+with open(os.path.join(
+    os.path.dirname(__file__), 'configs', 'test_general.yml')) as file_:
     CONFIG = yaml.safe_load(file_)
 
 
@@ -74,38 +75,3 @@ class TestMLRModel():
         mock_mlr_model_init.assert_called_with(mock.ANY, *self.args,
                                                **self.kwargs)
         MLRModel._MODELS = {}
-
-
-# Tests for data processing
-
-EXCEPTIONS = {
-    'ValueError': ValueError,
-    'TypeError': TypeError,
-}
-
-
-class SimplifiedMLRModel(MLRModel):
-    """Test class to avoid calling the base class `__init__` method."""
-
-    def __init__(self, cfg):
-        """Very simplified constructor of the base class."""
-        self._cfg = cfg
-        self._data = {}
-        self._datasets = {}
-        self.classes = {}
-
-
-@pytest.mark.parametrize('data', CONFIG['test_load_input_datasets'])
-def test_load_input_datasets(data):
-    """Test loading of input datasets."""
-    cfg = data['cfg']
-    output = data['output']
-    mlr_model = SimplifiedMLRModel(cfg)
-
-    # Load input datasets
-    if isinstance(output, str):
-        with pytest.raises(EXCEPTIONS[output]):
-            mlr_model._load_input_datasets(**cfg.get('metadata', {}))
-    else:
-        mlr_model._load_input_datasets(**cfg.get('metadata', {}))
-        assert mlr_model._datasets == output
