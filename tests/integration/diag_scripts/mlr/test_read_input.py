@@ -7,11 +7,24 @@ import yaml
 
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 
-
 EXCEPTIONS = {
     'ValueError': ValueError,
     'TypeError': TypeError,
 }
+
+
+def get_call_name(call):
+    """Get name of a `mock.call` function."""
+    call_str = str(call)
+    call_str = call_str[call_str.find('call.') + len('call.'):]
+    call_str = call_str[:call_str.find('(')]
+    return call_str
+
+
+def get_logger_msg(method_calls):
+    """Get all important logger calls."""
+    all_calls = [get_call_name(call) for call in method_calls]
+    return [call for call in all_calls if call in ('warning', 'error')]
 
 
 class SimplifiedMLRModel(MLRModel):
@@ -25,12 +38,18 @@ class SimplifiedMLRModel(MLRModel):
         self.classes = {}
 
 
-with open(os.path.join(os.path.dirname(__file__), 'configs',
-                       'test_load_input_datasets.yml')) as file_:
+with open(
+        os.path.join(
+            os.path.dirname(__file__), 'configs',
+            'test_load_input_datasets.yml')) as file_:
     CONFIG = yaml.safe_load(file_)
 
-@pytest.mark.parametrize('data', CONFIG['test_load_input_datasets'])
-def test_load_input_datasets(data):
+
+# TODO: Add tests for ancestors
+@pytest.mark.parametrize('data', CONFIG)
+@mock.patch('esmvaltool.diag_scripts.mlr.logger', autospec=True)
+@mock.patch('esmvaltool.diag_scripts.mlr.models.logger', autospec=True)
+def test_load_input_datasets(models_logger, mlr_logger, data):
     """Test loading of input datasets."""
     cfg = data['cfg']
     output = data['output']
@@ -41,7 +60,12 @@ def test_load_input_datasets(data):
         exc = output['EXCEPTION']
         with pytest.raises(EXCEPTIONS[exc['type']]) as exc_info:
             mlr_model._load_input_datasets(**cfg.get('metadata', {}))
-        assert exc.get('value', '') in exc_info.value
+            assert exc.get('value', '') in str(exc_info.value)
     else:
         mlr_model._load_input_datasets(**cfg.get('metadata', {}))
         assert mlr_model._datasets == output
+
+    # Logger calls
+    logger_calls = models_logger.method_calls
+    logger_calls.extend(mlr_logger.method_calls)
+    assert get_logger_msg(logger_calls) == data['logger']

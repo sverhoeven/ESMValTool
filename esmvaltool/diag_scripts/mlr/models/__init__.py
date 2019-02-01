@@ -3,6 +3,7 @@
 # TODO
 # handle noqa
 
+import copy
 import logging
 import os
 from pprint import pformat
@@ -121,6 +122,7 @@ class MLRModel():
             """Decorate subclass."""
             cls._MODELS[model] = subclass
             return subclass
+
         logger.debug("Found available MLR model '%s'", model)
         return decorator
 
@@ -411,6 +413,9 @@ class MLRModel():
 
         # Iterate over predictions
         predictions = {}
+        if not self._datasets['prediction']:
+            logger.error("Prediction not possible, no 'prediction_input' "
+                         "datasets given")
         for (pred_name, datasets) in self._datasets['prediction'].items():
             if pred_name is None:
                 logger.info("Started prediction")
@@ -475,7 +480,7 @@ class MLRModel():
                 "class or populate the module 'esmvaltool."
                 "diag_scripts.mlr.models' if necessary".format(msg))
 
-    def _check_cube_coords(self, cube, expected_coords, var_type, tag,  # noqa
+    def _check_cube_coords(self, cube, expected_coords, var_type, tag,
                            text=None):
         """Check shape and coordinates of a given cube."""
         msg = '' if text is None else text
@@ -669,7 +674,7 @@ class MLRModel():
 
         return datasets
 
-    def _get_broadcasted_cube(self, dataset, ref_cube, var_type, tag,  # noqa
+    def _get_broadcasted_cube(self, dataset, ref_cube, var_type, tag,
                               text=None):
         """Get broadcasted cube."""
         msg = '' if text is None else text
@@ -1028,8 +1033,10 @@ class MLRModel():
 
     def _load_input_datasets(self, **metadata):
         """Load input datasets (including ancestors)."""
-        input_datasets = list(self._cfg['input_data'].values())
+        input_datasets = copy.deepcopy(list(self._cfg['input_data'].values()))
         input_datasets.extend(self._get_ancestor_datasets())
+        datasets_have_mlr_attributes(
+            input_datasets, log_level='warning', mode='only_var_type')
 
         # Extract features and labels
         feature_datasets = select_metadata(input_datasets, var_type='feature')
@@ -1046,12 +1053,14 @@ class MLRModel():
         training_datasets = feature_datasets + label_datasets
 
         # Check datasets
+        msg = ("At least one '{}' dataset does not have necessary MLR "
+               "attributes")
         if not datasets_have_mlr_attributes(
                 training_datasets, log_level='error'):
-            raise ValueError()
+            raise ValueError(msg.format('training'))
         if not datasets_have_mlr_attributes(
                 prediction_datasets, log_level='error'):
-            raise ValueError()
+            raise ValueError(msg.format('prediction'))
 
         # Check if data was found
         if not training_datasets:

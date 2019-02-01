@@ -27,8 +27,8 @@ NECESSARY_KEYS = VAR_KEYS + [
 ]
 
 
-def datasets_have_mlr_attributes(datasets, log_level='debug'):
-    """Check if necessary dataset attributes are given.
+def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
+    """Check (MLR) attributes of `datasets`.
 
     Parameters
     ----------
@@ -36,6 +36,10 @@ def datasets_have_mlr_attributes(datasets, log_level='debug'):
         Datasets to check.
     log_level : str, optional (default: 'debug')
         Verbosity level of the logger.
+    mode : str, optional (default: None)
+        Checking mode, possible values: `'only_missing'` (only check if
+        attributes are missing), `'only_var_type'` (check only `var_type`) or
+        `None` (check both).
 
     Returns
     -------
@@ -43,18 +47,21 @@ def datasets_have_mlr_attributes(datasets, log_level='debug'):
         `True` if all required attributes are available, `False` if not.
 
     """
+    output = True
     for dataset in datasets:
-        for key in NECESSARY_KEYS:
-            if key not in dataset:
-                getattr(logger, log_level)("Dataset '%s' does not have "
-                                           "necessary attribute '%s'", dataset,
-                                           key)
-                return False
-        if dataset['var_type'] not in VAR_TYPES:
-            getattr(logger, log_level)("Dataset '%s' has invalid var_type "
-                                       "'%s', must be one of '%s'", dataset,
-                                       dataset['var_type'], VAR_TYPES)
-    return True
+        if mode != 'only_var_type':
+            for key in NECESSARY_KEYS:
+                if key not in dataset:
+                    getattr(logger, log_level)(
+                        "Dataset %s does not have necessary attribute '%s'",
+                        dataset, key)
+                    output = False
+        if mode != 'only_missing' and dataset.get('var_type') not in VAR_TYPES:
+            getattr(logger, log_level)(
+                "Dataset %s has invalid var_type '%s', must be one of %s",
+                dataset, dataset.get('var_type'), VAR_TYPES)
+            output = False
+    return output
 
 
 def write_cube(cube, attributes, path):
