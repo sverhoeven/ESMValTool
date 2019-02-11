@@ -105,12 +105,14 @@ def _load_mlr_models():
     """Load MLR models from :mod:`esmvaltool.diag_scripts.mlr.models`."""
     current_path = os.path.dirname(os.path.realpath(__file__))
     models_path = os.path.join(current_path, 'models')
-    for model_file in os.listdir(models_path):
-        model_name = os.path.splitext(model_file)[0]
-        if model_name in ('__init__', '__pycache__'):
-            continue
-        try:
-            importlib.import_module(
-                'esmvaltool.diag_scripts.mlr.models.{}'.format(model_name))
-        except ImportError:
-            pass
+    for (root, _, model_files) in os.walk(models_path):
+        for model_file in model_files:
+            rel_path = ('' if root == models_path else os.path.relpath(
+                root, models_path))
+            module = os.path.join(rel_path, os.path.splitext(model_file)[0])
+            try:
+                importlib.import_module(
+                    'esmvaltool.diag_scripts.mlr.models.{}'.format(
+                        module.replace(os.sep, '.')))
+            except ImportError:
+                pass

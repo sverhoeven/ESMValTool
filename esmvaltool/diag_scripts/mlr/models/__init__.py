@@ -118,6 +118,7 @@ class MLRModel():
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
+
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
@@ -141,8 +142,9 @@ class MLRModel():
                 "MLR model '%s' not found in 'esmvaltool."
                 "diag_scripts.mlr.models', using default model "
                 "'%s'", model, default_model)
-            return cls._MODELS[default_model](*args, **kwargs)
-        logger.info("Created MLR model '%s'", model)
+            model = default_model
+        logger.info("Created MLR model '%s' with classifier %s", model,
+                    cls._MODELS[model]._CLF_TYPE)
         return cls._MODELS[model](*args, **kwargs)
 
     def __init__(self, cfg, root_dir=None, **metadata):
@@ -480,7 +482,11 @@ class MLRModel():
                 "class or populate the module 'esmvaltool."
                 "diag_scripts.mlr.models' if necessary".format(msg))
 
-    def _check_cube_coords(self, cube, expected_coords, var_type, tag,
+    def _check_cube_coords(self,
+                           cube,
+                           expected_coords,
+                           var_type,
+                           tag,
                            text=None):
         """Check shape and coordinates of a given cube."""
         msg = '' if text is None else text
@@ -674,7 +680,11 @@ class MLRModel():
 
         return datasets
 
-    def _get_broadcasted_cube(self, dataset, ref_cube, var_type, tag,
+    def _get_broadcasted_cube(self,
+                              dataset,
+                              ref_cube,
+                              var_type,
+                              tag,
                               text=None):
         """Get broadcasted cube."""
         msg = '' if text is None else text
