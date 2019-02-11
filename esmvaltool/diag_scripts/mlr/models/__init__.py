@@ -15,15 +15,9 @@ import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 
-# TODO: remove VAR_KEYS
-from esmvaltool.diag_scripts.mlr import (
-    VAR_KEYS,
-    datasets_have_mlr_attributes,
-    _load_mlr_models,
-)
+from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (
-    # TODO
-    # group_metadata, plot, select_metadata, save_iris_cube)
+    io,
     group_metadata,
     plot,
     select_metadata,
@@ -130,7 +124,7 @@ class MLRModel():
     @classmethod
     def create(cls, model, *args, **kwargs):
         """Create desired MLR model subclass (factory method)."""
-        _load_mlr_models()
+        mlr._load_mlr_models()
         if not cls._MODELS:
             logger.error("No MLR models found, please add subclasses to "
                          "'esmvaltool.diag_scripts.mlr.models' decorated by "
@@ -444,9 +438,7 @@ class MLRModel():
             self._set_prediction_cube_attributes(
                 pred_cube, prediction_name=pred_name)
             new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
-            # TODO
-            # save_iris_cube(pred_cube, new_path, self._cfg)
-            iris.save(pred_cube, new_path)
+            io.save_iris_cube(pred_cube, new_path)
             logger.info("Successfully predicted %i point(s)", len(y_pred))
 
         return predictions
@@ -647,38 +639,21 @@ class MLRModel():
 
     def _get_ancestor_datasets(self):
         """Get ancestor datasets."""
-        input_dirs = [
-            d for d in self._cfg['input_files']
-            if not d.endswith('metadata.yml')
-        ]
-        if not input_dirs:
-            logger.debug("Skipping loading ancestor datasets, 'ancestors' key "
-                         "not given")
+        datasets = io.netcdf_to_metadata(self._cfg)
+        if not datasets:
+            logger.debug("Skipping loading ancestor datasets, no files found")
             return []
-        logger.debug("Found ancestor directories:")
-        logger.debug(pformat(input_dirs))
+        logger.debug("Found ancestor files:")
+        logger.debug(pformat([d['filename'] for d in datasets]))
 
-        # Extract datasets
-        datasets = []
-        for input_dir in input_dirs:
-            for (root, _, files) in os.walk(input_dir):
-                for filename in files:
-                    if '.nc' not in filename:
-                        continue
-                    path = os.path.join(root, filename)
-                    cube = iris.load_cube(path)
-                    dataset_info = dict(cube.attributes)
-                    for var_key in VAR_KEYS:
-                        dataset_info[var_key] = getattr(cube, var_key)
-                    dataset_info['short_name'] = getattr(cube, 'var_name')
-
-                    # Check if necessary keys are available
-                    if datasets_have_mlr_attributes([dataset_info]):
-                        datasets.append(dataset_info)
-                    else:
-                        logger.debug("Skipping %s", path)
-
-        return datasets
+        # Check MLR attributes
+        valid_datasets = []
+        for dataset in datasets:
+            if mlr.datasets_have_mlr_attributes([dataset]):
+                valid_datasets.append(dataset)
+            else:
+                logger.debug("Skipping %s", dataset['filename'])
+        return valid_datasets
 
     def _get_broadcasted_cube(self,
                               dataset,
@@ -1045,7 +1020,7 @@ class MLRModel():
         """Load input datasets (including ancestors)."""
         input_datasets = copy.deepcopy(list(self._cfg['input_data'].values()))
         input_datasets.extend(self._get_ancestor_datasets())
-        datasets_have_mlr_attributes(
+        mlr.datasets_have_mlr_attributes(
             input_datasets, log_level='warning', mode='only_var_type')
 
         # Extract features and labels
@@ -1065,10 +1040,10 @@ class MLRModel():
         # Check datasets
         msg = ("At least one '{}' dataset does not have necessary MLR "
                "attributes")
-        if not datasets_have_mlr_attributes(
+        if not mlr.datasets_have_mlr_attributes(
                 training_datasets, log_level='error'):
             raise ValueError(msg.format('training'))
-        if not datasets_have_mlr_attributes(
+        if not mlr.datasets_have_mlr_attributes(
                 prediction_datasets, log_level='error'):
             raise ValueError(msg.format('prediction'))
 
@@ -1132,5 +1107,7 @@ class MLRModel():
         label = select_metadata(
             self._datasets['training'], var_type='label')[0]
         label_cube = self._load_cube(label['filename'])
-        for attr in ('var_name', 'standard_name', 'long_name', 'units'):
+        for attr in ('var_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
+        if 'standard_name' in label_cube:
+            cube.standard_name = label_cube.standard_name

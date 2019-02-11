@@ -2085,6 +2085,8 @@
   - warning
   - warning
   - error
+  - error
+  - error
   output:
     EXCEPTION:
       type: ValueError

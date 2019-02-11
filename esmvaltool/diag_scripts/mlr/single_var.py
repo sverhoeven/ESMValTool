@@ -132,6 +132,7 @@ def main(cfg):
     if cfg['write_netcdf']:
         for (path, data) in cfg['input_data'].items():
             logger.info("Processing %s", path)
+            data = dict(data)
             cube = iris.load_cube(path)
 
             # Sum and mean

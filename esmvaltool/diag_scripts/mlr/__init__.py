@@ -4,26 +4,18 @@ import importlib
 import logging
 import os
 
-import iris
+from esmvaltool.diag_scripts.shared import io
 
 logger = logging.getLogger(os.path.basename(__file__))
 
-VAR_KEYS = [
-    'long_name',
-    'standard_name',
-    'units',
+NECESSARY_KEYS = io.NECESSARY_KEYS + [
+    'tag',
+    'var_type',
 ]
 VAR_TYPES = [
     'feature',
     'label',
     'prediction_input',
-]
-NECESSARY_KEYS = VAR_KEYS + [
-    'dataset',
-    'filename',
-    'tag',
-    'short_name',
-    'var_type',
 ]
 
 
@@ -53,8 +45,8 @@ def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
             for key in NECESSARY_KEYS:
                 if key not in dataset:
                     getattr(logger, log_level)(
-                        "Dataset %s does not have necessary attribute '%s'",
-                        dataset, key)
+                        "Dataset %s does not have necessary (MLR) attribute "
+                        "'%s'", dataset, key)
                     output = False
         if mode != 'only_missing' and dataset.get('var_type') not in VAR_TYPES:
             getattr(logger, log_level)(
@@ -79,26 +71,10 @@ def write_cube(cube, attributes, path):
         Diagnostic script configuration.
 
     """
-    for key in NECESSARY_KEYS:
-        if key not in attributes:
-            logger.warning(
-                "Cannot save cube to %s, attribute '%s' "
-                "not given", path, key)
-            return
-    if attributes['standard_name'] not in iris.std_names.STD_NAMES:
-        iris.std_names.STD_NAMES[attributes['standard_name']] = {
-            'canonical_units': attributes['units'],
-        }
-    for var_key in VAR_KEYS:
-        setattr(cube, var_key, attributes.pop(var_key))
-    setattr(cube, 'var_name', attributes.pop('short_name'))
-    for (key, attr) in attributes.items():
-        if isinstance(attr, bool):
-            attributes[key] = str(attr)
-    cube.attributes.update(attributes)
-    # TODO
-    # save_iris_cube(cube, path, cfg)
-    iris.save(cube, path)
+    if not datasets_have_mlr_attributes([attributes], log_level='warning'):
+        logger.warning("Cannot write %s", path)
+        return
+    io.metadata_to_netcdf(cube, attributes)
 
 
 def _load_mlr_models():
