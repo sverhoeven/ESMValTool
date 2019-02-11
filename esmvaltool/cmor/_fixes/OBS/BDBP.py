@@ -31,7 +31,7 @@ class tro3(Fix):
         plev.long_name = 'Pressure '
         plev.units = cf_units.Unit('Pa')
         cube.add_dim_coord(plev, dims)
-        return cube
+        return [cube]
 
     def fix_data(self, cube):
         """Fix data.
