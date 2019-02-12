@@ -155,7 +155,6 @@ begin
     if (calc_type .eq. "mean") then
       outvar := avg(outvar)
       outvar@var = "shhcb"
-      outvar@standard_name = "southern_hemisphere_hadley_cell_boundary"
       outvar@long_name = "Boundary of Hadley cell in southern hemisphere"
       outvar@units = "degrees_north"
     else if (calc_type .eq. "trend") then
@@ -172,7 +171,6 @@ begin
       rc = regline(time, outvar)
       outvar := rc
       outvar@var = "shhcb_trend"
-      outvar@standard_name = "southern_hemisphere_hadley_cell_boundary_trend"
       outvar@long_name = "Boundary of Hadley cell in southern hemisphere " + \
         "(trend)"
       outvar@units = "degrees_north" + units_suffix
@@ -193,6 +191,7 @@ begin
     end if
     outvar@tag = diag_script_info@tag
     outvar@var_type = info@var_type
+    outvar@project = info@project
     filename = systemfunc("basename " + info@filename)
     outvar@filename = config_user_info@work_dir + filename + "." + \
       outvar@var + ".nc"

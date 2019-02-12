@@ -86,7 +86,6 @@ begin
     outvar!0 = "time"
     outvar&time = avg((/info@start_year, info@end_year/))
     outvar@var = "asr_grad"
-    outvar@standard_name = "absorbed_shortwave_radiation_gradient"
     outvar@long_name = "Absorbed shortwave radiation gradient"
     outvar@units = "(index)"
     outvar@diag_script = DIAG_SCRIPT
@@ -96,6 +95,7 @@ begin
     end if
     outvar@tag = diag_script_info@tag
     outvar@var_type = info@var_type
+    outvar@project = info@project
     filename = systemfunc("basename " + info@filename)
     outvar@filename = config_user_info@work_dir + filename + "." + \
       outvar@var + ".nc"

@@ -112,7 +112,6 @@ class MLRModel():
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
-
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
@@ -244,8 +243,7 @@ class MLRModel():
 
         """
         self._check_clf_type(text='Fitting MLR model')
-        logger.info("Fitting MLR model with classifier '%s'",
-                    self._CLF_TYPE.__name__)
+        logger.info("Fitting MLR model with classifier %s", self._CLF_TYPE)
         if parameters:
             logger.info(
                 "Using additional parameters %s given in fit() function",
@@ -294,7 +292,7 @@ class MLRModel():
                              "in grid_search_cv() function)")
         logger.info(
             "Performing exhaustive grid search cross-validation with "
-            "classifier '%s' and parameter grid %s", self._CLF_TYPE.__name__,
+            "classifier %s and parameter grid %s", self._CLF_TYPE,
             parameter_grid)
         additional_args = dict(self._cfg.get('grid_search_cv_kwargs', {}))
         additional_args.update(kwargs)
@@ -881,7 +879,8 @@ class MLRModel():
         """Get x data for a group of datasets."""
         msg = '' if group_attr is None else " for '{}'".format(group_attr)
         ref_cube = self._get_reference_cube(datasets, var_type, msg)
-        shape = (np.prod(ref_cube.shape), len(self.classes['features']))
+        shape = (np.prod(ref_cube.shape, dtype=np.int),
+                 len(self.classes['features']))
         attr_data = np.ma.empty(shape)
 
         # Iterate over all features
@@ -1097,7 +1096,7 @@ class MLRModel():
         cube.attributes = {}
         cube.attributes['description'] = 'MLR model prediction'
         if self._CLF_TYPE is not None:
-            cube.attributes['classifier'] = self._CLF_TYPE.__name__
+            cube.attributes['classifier'] = str(self._CLF_TYPE)
         if prediction_name is not None:
             cube.attributes['prediction_name'] = prediction_name
         params = {}
@@ -1107,7 +1106,5 @@ class MLRModel():
         label = select_metadata(
             self._datasets['training'], var_type='label')[0]
         label_cube = self._load_cube(label['filename'])
-        for attr in ('var_name', 'long_name', 'units'):
+        for attr in ('standard_name', 'var_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
-        if 'standard_name' in label_cube:
-            cube.standard_name = label_cube.standard_name
