@@ -30,24 +30,26 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 def main(cfg):
     """Run the diagnostic."""
-    files = io.netcdf_to_metadata(cfg)
-    if not files:
+    datasets = io.netcdf_to_metadata(cfg)
+    if not datasets:
         logging.error("No input files given, use 'ancestors' key in recipe")
         return
 
     # Iterate over all files
-    for filename in files:
+    for data in datasets:
         cubes = iris.load(
-            filename, constraints=iris.Constraint(name='eastward_wind'))
+            data['filename'],
+            constraints=iris.Constraint(name='eastward_wind'))
         if not cubes:
             continue
 
         # Calculate jet position via preprocessor function
         uajet = Uajet('ua')
         jet_position_cube = uajet.calculate(cubes)
-        description = cubes[0].attributes.get('description', filename)
         units = jet_position_cube.units.name
-        logger.info("%s: %.2f %s", description, jet_position_cube.data, units)
+        logger.info("Found file '%s'", data['filename'])
+        logger.info("%s: %.2f %s", data['dataset'], jet_position_cube.data,
+                    units)
 
 
 if __name__ == '__main__':

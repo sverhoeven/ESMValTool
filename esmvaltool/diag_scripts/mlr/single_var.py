@@ -39,7 +39,8 @@ import numpy as np
 from scipy import stats
 
 from esmvaltool.diag_scripts.mlr import write_cube
-from esmvaltool.diag_scripts.shared import run_diagnostic
+from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
+                                            run_diagnostic)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -107,8 +108,8 @@ def calculate_trend(cfg, cube, data):
         else:
             temp_units = (data['frequency']
                           if data['frequency'] != 'mon' else 'month')
-        temp_units += '-1'
         logger.info("Calculating %sly trend", temp_units)
+        temp_units += '-1'
 
         # Use x-axis with incremental differences of 1
         x_data = np.arange(cube.coord('time').shape[0])
@@ -142,7 +143,8 @@ def main(cfg):
             (cube, data) = calculate_trend(cfg, cube, data)
 
             # Save new cube
-            new_path = os.path.join(cfg['work_dir'], os.path.basename(path))
+            basename = os.path.splitext(os.path.basename(path))[0]
+            new_path = get_diagnostic_filename(basename, cfg)
             data['filename'] = new_path
             if 'tag' in cfg:
                 data['tag'] = cfg['tag']

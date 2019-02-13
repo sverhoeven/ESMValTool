@@ -2,8 +2,8 @@
 
 import cf_units
 import iris
-from iris import Constraint
 import numpy as np
+from iris import Constraint
 
 from ._derived_variable_base import DerivedVariableBase
 
@@ -27,10 +27,12 @@ class DerivedVariable(DerivedVariableBase):
         """Compute latitude of maximum meridional wind speed."""
         # Load cube, extract correct region and perform zonal mean
         ua_cube = cubes.extract_strict(Constraint(name='eastward_wind'))
-        ua_cube = ua_cube.interpolate(
-            [('air_pressure', PLEV)], scheme=iris.analysis.Linear())
+        ua_cube = ua_cube.interpolate([('air_pressure', PLEV)],
+                                      scheme=iris.analysis.Linear())
         ua_cube = ua_cube.extract(
             iris.Constraint(latitude=lambda cell: LAT[0] <= cell <= LAT[1]))
+        if not ua_cube.coord('longitude').has_bounds():
+            ua_cube.coord('longitude').guess_bounds()
         ua_cube = ua_cube.collapsed('longitude', iris.analysis.MEAN)
 
         # Calculate maximum jet position
