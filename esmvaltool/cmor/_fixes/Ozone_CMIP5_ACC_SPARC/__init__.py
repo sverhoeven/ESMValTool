@@ -1,4 +1,8 @@
 """General fix for all models of project Ozone_CMIP5_ACC_SPARC."""
+import warnings
+
+import iris
+
 import cf_units
 import numpy as np
 
@@ -34,4 +38,33 @@ def fix_time_coordinate(cube):
             new_array[idx] = cf_units.date2num(new_time, time.units.name,
                                                time.units.calendar)
     time.points = new_array
+    cube.var_name = 'tro3'
     return cube
+
+
+def remove_cell_method(infile, outfile):
+    """Apply fixes to the files prior to creating the cube.
+
+    Removes invalid cell method without a warning.
+
+    Parameters
+    ----------
+    infile : str
+        Path to the input file.
+    outfile : str
+        Path to the output file.
+
+    Returns
+    -------
+    str
+        Path to the output file.
+
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            'ignore',
+            category=iris.fileformats.netcdf.UnknownCellMethodWarning)
+        cube = iris.load_cube(infile)
+    cube.cell_methods = ()
+    iris.save(cube, outfile)
+    return outfile
