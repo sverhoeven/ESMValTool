@@ -1,6 +1,5 @@
 """Convenience functions for MLR diagnostics."""
 
-import importlib
 import logging
 import os
 
@@ -75,20 +74,3 @@ def write_cube(cube, attributes, path):
         logger.warning("Cannot write %s", path)
         return
     io.metadata_to_netcdf(cube, attributes)
-
-
-def _load_mlr_models():
-    """Load MLR models from :mod:`esmvaltool.diag_scripts.mlr.models`."""
-    current_path = os.path.dirname(os.path.realpath(__file__))
-    models_path = os.path.join(current_path, 'models')
-    for (root, _, model_files) in os.walk(models_path):
-        for model_file in model_files:
-            rel_path = ('' if root == models_path else os.path.relpath(
-                root, models_path))
-            module = os.path.join(rel_path, os.path.splitext(model_file)[0])
-            try:
-                importlib.import_module(
-                    'esmvaltool.diag_scripts.mlr.models.{}'.format(
-                        module.replace(os.sep, '.')))
-            except ImportError:
-                pass

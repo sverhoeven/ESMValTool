@@ -4,6 +4,7 @@
 # handle noqa
 
 import copy
+import importlib
 import logging
 import os
 from pprint import pformat
@@ -109,6 +110,24 @@ class MLRModel():
     _CLF_TYPE = None
     _MODELS = {}
 
+    @staticmethod
+    def _load_mlr_models():
+        """Load MLR models from :mod:`esmvaltool.diag_scripts.mlr.models`."""
+        current_path = os.path.dirname(os.path.realpath(__file__))
+        models_path = os.path.join(current_path)
+        for (root, _, model_files) in os.walk(models_path):
+            for model_file in model_files:
+                rel_path = ('' if root == models_path else os.path.relpath(
+                    root, models_path))
+                module = os.path.join(rel_path,
+                                      os.path.splitext(model_file)[0])
+                try:
+                    importlib.import_module(
+                        'esmvaltool.diag_scripts.mlr.models.{}'.format(
+                            module.replace(os.sep, '.')))
+                except ImportError:
+                    pass
+
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
@@ -123,7 +142,7 @@ class MLRModel():
     @classmethod
     def create(cls, model, *args, **kwargs):
         """Create desired MLR model subclass (factory method)."""
-        mlr._load_mlr_models()
+        cls._load_mlr_models()
         if not cls._MODELS:
             logger.error("No MLR models found, please add subclasses to "
                          "'esmvaltool.diag_scripts.mlr.models' decorated by "
@@ -235,14 +254,9 @@ class MLRModel():
             Parameters to initialize and fit the MLR model(s). Overwrites
             default and recipe settings.
 
-        Raises
-        ------
-        ValueError
-            If type of classifier is not specified, e.g. when this method is
-            called from base class or no MLR models were found.
-
         """
-        self._check_clf_type(text='Fitting MLR model')
+        if not self._clf_is_valid(text='Fitting MLR model'):
+            return
         logger.info("Fitting MLR model with classifier %s", self._CLF_TYPE)
         if parameters:
             logger.info(
@@ -274,22 +288,17 @@ class MLRModel():
             sklearn.model_selection.GridSearchCV.html. Overwrites default and
             recipe settings.
 
-        Raises
-        ------
-        ValueError
-            * If type of classifier is not specified, e.g. when this method is
-              called from base class or no MLR models were found.
-            * `param_grid` is not specified, neither in the recipe nor in this
-              function.
-
         """
-        self._check_clf_type(text='GridSearchCV')
+        if not self._clf_is_valid(text='GridSearchCV'):
+            return
         parameter_grid = dict(self._cfg.get('grid_search_cv_param_grid', {}))
         if param_grid is not None:
             parameter_grid = param_grid
         if not parameter_grid:
-            raise ValueError("No parameter grid given (neither in recipe nor "
-                             "in grid_search_cv() function)")
+            logger.error(
+                "No parameter grid given (neither in recipe nor in grid_"
+                "search_cv() function)")
+            return
         logger.info(
             "Performing exhaustive grid search cross-validation with "
             "classifier %s and parameter grid %s", self._CLF_TYPE,
@@ -433,9 +442,9 @@ class MLRModel():
                 if np.ma.is_masked(cube.data):
                     pred_cube.data = np.ma.array(
                         pred_cube.data, mask=cube.data.mask)
-            self._set_prediction_cube_attributes(
-                pred_cube, prediction_name=pred_name)
             new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
+            self._set_prediction_cube_attributes(
+                pred_cube, new_path, prediction_name=pred_name)
             io.save_iris_cube(pred_cube, new_path)
             logger.info("Successfully predicted %i point(s)", len(y_pred))
 
@@ -461,16 +470,6 @@ class MLRModel():
         logger.info("Used %i%% of the input data as test data (%i point(s))",
                     int(test_size * 100), len(self._data['y_test']))
         self._impute_all_data()
-
-    def _check_clf_type(self, text=None):
-        """Check if valid classifier type is given."""
-        msg = '' if text is None else '{} not possible: '.format(text)
-        if self._CLF_TYPE is None:
-            raise ValueError(
-                "{}No MLR model specified, please use factory "
-                "function 'MLRModel.create()' to initialize this "
-                "class or populate the module 'esmvaltool."
-                "diag_scripts.mlr.models' if necessary".format(msg))
 
     def _check_cube_coords(self,
                            cube,
@@ -518,6 +517,9 @@ class MLRModel():
                 raise ValueError(
                     "{} '{}'{} not found, use 'allow_missing_features' to "
                     "ignore this".format(var_type, tag, msg))
+            logger.info(
+                "Ignored missing %s '%s'%s since 'allow_missing_features' is "
+                "set to 'True'", var_type, tag, msg)
             return None
         if len(datasets) > 1:
             raise ValueError(
@@ -543,14 +545,26 @@ class MLRModel():
             self.classes['label_units'] = units
         else:
             if label != self.classes['label']:
-                raise ValueError("Expected unique entries for var_type "
-                                 "'label', got '{}' and '{}'".format(
-                                     label, self.classes['label']))
+                raise ValueError(
+                    "Expected unique entries for var_type label', got '{}' "
+                    "and '{}'".format(label, self.classes['label']))
             if units != self.classes['label_units']:
-                raise ValueError("Expected unique units for the label '{}', "
-                                 "got '{}' and '{}'".format(
-                                     self.classes['label'], units,
-                                     self.classes['label_units']))
+                raise ValueError(
+                    "Expected unique units for the label '{}', got '{}' and "
+                    "'{}'".format(self.classes['label'], units,
+                                  self.classes['label_units']))
+
+    def _clf_is_valid(self, text=None):
+        """Check if valid classifier type is given."""
+        msg = '' if text is None else '{} not possible: '.format(text)
+        if self._CLF_TYPE is None:
+            logger.error(
+                "%sNo MLR model specified, please use factory function "
+                "'MLRModel.create()' to initialize this class or populate the "
+                "module 'esmvaltool.diag_scripts.mlr.models' if necessary",
+                msg)
+            return False
+        return True
 
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
@@ -872,8 +886,9 @@ class MLRModel():
                 logger.debug("For %s%s, use reference cube", var_type, msg)
                 logger.debug(ref_cube)
                 return ref_cube
-        raise ValueError("No {} data{} without the option 'broadcast_from' "
-                         "found".format(var_type, msg))
+        raise ValueError(
+            "No {} data{} without the option 'broadcast_from' found".format(
+                var_type, msg))
 
     def _get_x_data_for_group(self, datasets, var_type, group_attr=None):
         """Get x data for a group of datasets."""
@@ -1091,12 +1106,15 @@ class MLRModel():
                         diff)
         return (new_x_data, new_y_data)
 
-    def _set_prediction_cube_attributes(self, cube, prediction_name=None):
+    def _set_prediction_cube_attributes(self, cube, path,
+                                        prediction_name=None):
         """Set the attributes of the prediction cube."""
-        cube.attributes = {}
-        cube.attributes['description'] = 'MLR model prediction'
-        if self._CLF_TYPE is not None:
-            cube.attributes['classifier'] = str(self._CLF_TYPE)
+        cube.attributes = {
+            'classifier': str(self._CLF_TYPE),
+            'dataset': 'MLR model prediction',
+            'filename': path,
+            'project': 'MLR',
+        }
         if prediction_name is not None:
             cube.attributes['prediction_name'] = prediction_name
         params = {}

@@ -2,15 +2,14 @@
 import os
 
 import mock
-import pytest
 import yaml
 
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 
-
 # Load test configuration
-with open(os.path.join(
-    os.path.dirname(__file__), 'configs', 'test_general.yml')) as file_:
+with open(
+        os.path.join(os.path.dirname(__file__), 'configs',
+                     'test_general.yml')) as file_:
     CONFIG = yaml.safe_load(file_)
 
 
@@ -35,9 +34,9 @@ class TestMLRModel():
         mock_logger.debug.assert_called_once()
         MLRModel._MODELS = {}
 
-    @mock.patch('esmvaltool.diag_scripts.mlr.models._load_mlr_models')
-    @mock.patch('esmvaltool.diag_scripts.mlr.models.MLRModel.__init__',
-                autospec=True)
+    @mock.patch('esmvaltool.diag_scripts.mlr.models.MLRModel._load_mlr_models')
+    @mock.patch(
+        'esmvaltool.diag_scripts.mlr.models.MLRModel.__init__', autospec=True)
     def test_create(self, mock_mlr_model_init, mock_load_mlr_models,
                     mock_logger):
         """Test creating subclasses."""
@@ -56,6 +55,7 @@ class TestMLRModel():
             """Subclass of `MLRModel`."""
 
             pass
+
         MLRModel.create('another_test_model', *self.args, **self.kwargs)
         mock_load_mlr_models.assert_called()
         mock_logger.warning.assert_called()
@@ -69,6 +69,7 @@ class TestMLRModel():
             """Subclass of `MLRModel`."""
 
             pass
+
         MLRModel.create('test_model', *self.args, **self.kwargs)
         mock_load_mlr_models.assert_called()
         mock_logger.info.assert_called()

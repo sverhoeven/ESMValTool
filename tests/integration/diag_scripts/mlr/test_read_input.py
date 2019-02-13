@@ -49,7 +49,7 @@ with open(
 @pytest.mark.parametrize('data', CONFIG)
 @mock.patch('esmvaltool.diag_scripts.mlr.logger', autospec=True)
 @mock.patch('esmvaltool.diag_scripts.mlr.models.logger', autospec=True)
-def test_load_input_datasets(models_logger, mlr_logger, data):
+def test_load_input_datasets(mock_models_logger, mock_mlr_logger, data):
     """Test loading of input datasets."""
     cfg = data['cfg']
     output = data['output']
@@ -66,6 +66,6 @@ def test_load_input_datasets(models_logger, mlr_logger, data):
         assert mlr_model._datasets == output
 
     # Logger calls
-    logger_calls = models_logger.method_calls
-    logger_calls.extend(mlr_logger.method_calls)
+    logger_calls = mock_models_logger.method_calls
+    logger_calls.extend(mock_mlr_logger.method_calls)
     assert get_logger_msg(logger_calls) == data['logger']
