@@ -331,7 +331,7 @@ diagnostics:
     additional_datasets: *datasets
     scripts:
       mean: &tpp
-        script: austral_jet/tpp.ncl
+        script: austral_jet/calc_tpp.ncl
         calc_type: mean
         tag: P-SH_c
         season: DJF
@@ -354,7 +354,7 @@ diagnostics:
     additional_datasets: *datasets
     scripts:
       mean: &shhcb
-        script: austral_jet/shhcb.ncl
+        script: austral_jet/calc_shhcb.ncl
         calc_type: mean
         tag: H-SH_c
         season: DJF
@@ -379,7 +379,7 @@ diagnostics:
     additional_datasets: *datasets
     scripts:
       mean:
-        script: austral_jet/asr.ncl
+        script: austral_jet/calc_asr.ncl
         tag: ASR-SH
         season: monthlyclim
 

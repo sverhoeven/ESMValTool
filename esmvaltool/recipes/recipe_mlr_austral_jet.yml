@@ -147,7 +147,7 @@ diagnostics:
     description: Calculate Austral Jet position.
     scripts:
       austral_jet_position:
-        script: austral_jet/jet_position.py
+        script: austral_jet/calc_jet_position.py
         ancestors: [
           'diag_mlr/multiple_mlr_models',
           'diag_mlr/single_mlr_model',

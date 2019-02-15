@@ -1,5 +1,5 @@
 ; #############################################################################
-; austral_jet/asr.ncl
+; austral_jet/calc_asr.ncl
 ; #############################################################################
 ; Author: Manuel Schlund (DLR, Germany)
 ; #############################################################################
@@ -87,7 +87,7 @@ begin
     outvar&time = avg((/info@start_year, info@end_year/))
     outvar@var = "asr_grad"
     outvar@long_name = "Absorbed shortwave radiation gradient"
-    outvar@units = "(index)"
+    outvar@units = "W m-2"
     outvar@diag_script = DIAG_SCRIPT
     outvar@dataset = DATASETS(idat)
     if (isatt(info, "ensemble")) then
