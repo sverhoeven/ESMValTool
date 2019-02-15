@@ -23,9 +23,9 @@
 ;
 ; #############################################################################
 
-load "interface_scripts/interface.ncl"
+load "$diag_scripts/../interface_scripts/interface.ncl"
 
-load "./diag_scripts/shared/statistics.ncl"
+load "$diag_scripts/shared/statistics.ncl"
 
 
 begin
