@@ -6,7 +6,7 @@ modeling_realm:    atmos
 !----------------------------------
 ! Variable attributes:
 !----------------------------------
-standard_name:     surface_upward_latent_heat_flux
+standard_name:
 units:             mm day-1
 cell_methods:      time: mean
 cell_measures:     area: areacella
