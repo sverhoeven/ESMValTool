@@ -313,7 +313,7 @@ diagnostics:
         <<: *variable_settings
         field: T0M
         preprocessor: djf
-        derive: True
+        derive: true
     additional_datasets: *datasets
     scripts:
       mean:
@@ -339,7 +339,7 @@ diagnostics:
       trend:
         <<: *tpp
         calc_type: trend
-        yearly_trend: True
+        yearly_trend: true
         tag: P-SH_t
 
   diag_mlr_input_shhcb:
@@ -363,7 +363,7 @@ diagnostics:
       trend:
         <<: *shhcb
         calc_type: trend
-        yearly_trend: True
+        yearly_trend: true
         tag: H-SH_t
 
   diag_mlr_input_asr:
@@ -373,7 +373,7 @@ diagnostics:
         preprocessor: noop
         field: T2M
         start_year: 2000
-        derive: True
+        derive: true
         additional_datasets:
           - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1, start_year: 2001, var_type: prediction_input}
     additional_datasets: *datasets
@@ -394,7 +394,7 @@ diagnostics:
         start_year: 2015
         end_year: 2034
         preprocessor: time_average_djf
-        derive: True
+        derive: true
         var_type: label
         tag: UAJET
     additional_datasets: *datasets
@@ -407,7 +407,7 @@ diagnostics:
           'diag_mlr_input_*/trend',
         ]
         mlr_model: gbr
-        accept_only_scalar_data: True
+        accept_only_scalar_data: true
         group_datasets_by_attributes: ['dataset', 'ensemble']
         parameters:
           learning_rate: 0.001
