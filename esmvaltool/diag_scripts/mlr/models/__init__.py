@@ -180,6 +180,8 @@ class MLRModel():
         self._cfg = cfg
         self._clf = None
         self._data = {}
+        self._data['x_pred'] = {}
+        self._data['y_pred'] = {}
         self._datasets = {}
         imputation_strategy = self._cfg.get('imputation_strategy', 'remove')
         if imputation_strategy == 'remove':
@@ -217,8 +219,44 @@ class MLRModel():
                'recipe'.format(self.parameters))
         logger.info("Initialized MRT model%s", msg)
 
+    def export_prediction_data(self, filename=None):
+        """Export all prediction data contained in `self._data`.
+
+        Parameters
+        ----------
+        filename : str, optional (default: '{data_type}_{pred_name}.csv')
+            Name of the exported files.
+
+        """
+        if filename is None:
+            filename = '{data_type}_{pred_name}.csv'
+        for data_type in ('x_pred', 'y_pred'):
+            for pred_name in self._data[data_type]:
+                path = os.path.join(
+                    self._cfg['mlr_work_dir'],
+                    filename.format(data_type=data_type, pred_name=pred_name))
+                if 'x_' in data_type:
+                    sub_txt = 'features: {}'.format(self.classes['features'])
+                    norm = self._data['x_norm']
+                else:
+                    sub_txt = 'label: {}'.format(self.classes['label'])
+                    norm = self._data['y_norm']
+                header = (
+                    '{} with shape {} ({:d}: number of observations)\n{}\n'
+                    'Note: values have to be multiplied by {} to get real '
+                    'data'.format(data_type,
+                                  self._data[data_type][pred_name].shape,
+                                  self._data[data_type][pred_name].shape[0],
+                                  sub_txt, norm))
+                np.savetxt(
+                    path,
+                    self._data[data_type][pred_name],
+                    delimiter=',',
+                    header=header)
+                logger.info("Wrote %s", path)
+
     def export_training_data(self, filename=None):
-        """Export all data contained in `self._data`.
+        """Export all training data contained in `self._data`.
 
         Parameters
         ----------
@@ -235,12 +273,16 @@ class MLRModel():
                                     filename.format(data_type=data_type))
                 if 'x_' in data_type:
                     sub_txt = 'features: {}'.format(self.classes['features'])
+                    norm = self._data['x_norm']
                 else:
                     sub_txt = 'label: {}'.format(self.classes['label'])
-                header = ('{} with shape {} ({:d}: number of '
-                          'observations)\n{}'.format(
-                              data_type, self._data[data_type].shape,
-                              self._data[data_type].shape[0], sub_txt))
+                    norm = self._data['y_norm']
+                header = (
+                    '{} with shape {} ({:d}: number of observations)\n{}\n'
+                    'Note: values have to be multiplied by {} to get real '
+                    'data'.format(data_type, self._data[data_type].shape,
+                                  self._data[data_type].shape[0], sub_txt,
+                                  norm))
                 np.savetxt(
                     path, self._data[data_type], delimiter=',', header=header)
                 logger.info("Wrote %s", path)
@@ -260,7 +302,7 @@ class MLRModel():
         logger.info("Fitting MLR model with classifier %s", self._CLF_TYPE)
         if parameters:
             logger.info(
-                "Using additional parameters %s given in fit() function",
+                "Using additional parameter(s) %s given in fit() function",
                 parameters)
 
         # Create MLR model with desired parameters and fit it
@@ -271,7 +313,7 @@ class MLRModel():
         self.parameters = self._clf.get_params()
         logger.info(
             "Successfully fitted '%s' model on %i training point(s) "
-            "with parameters %s", self._CLF_TYPE.__name__,
+            "with parameter(s) %s", self._CLF_TYPE.__name__,
             len(self._data['y_train']), self.parameters)
 
     def grid_search_cv(self, param_grid=None, **kwargs):
@@ -307,7 +349,7 @@ class MLRModel():
         additional_args.update(kwargs)
         if additional_args:
             logger.info(
-                "Using additional keyword arguments %s given in "
+                "Using additional keyword argument(s) %s given in "
                 "recipe and grid_search_cv() function", additional_args)
             if additional_args.get('cv', '').lower() == 'loo':
                 additional_args['cv'] = LeaveOneOut()
@@ -326,7 +368,7 @@ class MLRModel():
             self._clf.fit(self._data['x_train'], self._data['y_train'])
         self.parameters = self._clf.get_params()
         logger.info(
-            "Exhaustive grid search successful, found best parameters %s",
+            "Exhaustive grid search successful, found best parameter(s) %s",
             clf.best_params_)
         logger.debug("CV results:")
         logger.debug(pformat(clf.cv_results_))
@@ -360,11 +402,14 @@ class MLRModel():
                     y_data = (
                         self._data['y_data'][g_idx] * self._data['y_norm'])
                     axes.scatter(x_data, y_data, label=group_attr)
-                    legend = axes.legend(
-                        loc='center left',
-                        ncol=2,
-                        bbox_to_anchor=[1.05, 0.5],
-                        borderaxespad=0.0)
+                for (pred_name, x_pred) in self._data['x_pred'].items():
+                    axes.axvline(
+                        x_pred[0, f_idx], linestyle='--', label=pred_name)
+                legend = axes.legend(
+                    loc='center left',
+                    ncol=2,
+                    bbox_to_anchor=[1.05, 0.5],
+                    borderaxespad=0.0)
             else:
                 x_data = (self._data['x_data'][:, f_idx] *
                           self._data['x_norm'][f_idx])
@@ -376,9 +421,9 @@ class MLRModel():
                 feature, self.classes['features_units'][f_idx]))
             axes.set_ylabel('{} / {}'.format(self.classes['label'],
                                              self.classes['label_units']))
-            new_filename = (filename.format(feature=feature) + '.' +
-                            self._cfg['output_file_type'])
-            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+            new_path = os.path.join(self._cfg['mlr_plot_dir'],
+                                    filename.format(feature=feature) + '.' +
+                                    self._cfg['output_file_type'])
             plt.savefig(
                 new_path,
                 orientation='landscape',
@@ -411,8 +456,8 @@ class MLRModel():
         predict_kwargs.update(kwargs)
         if predict_kwargs:
             logger.info(
-                "Using additional keyword arguments %s for predict() function",
-                predict_kwargs)
+                "Using additional keyword argument(s) %s for predict() "
+                "function", predict_kwargs)
 
         # Iterate over predictions
         predictions = {}
@@ -432,8 +477,11 @@ class MLRModel():
                 (x_pred, _) = self._impute_missing_features(
                     x_pred, y_data=None, text='prediction input')
             y_pred = self._clf.predict(x_pred, **kwargs)
+
+            # Save data in arrays
+            self._data['x_pred'][pred_name] = x_pred
+            self._data['y_pred'][pred_name] = y_pred
             y_pred *= self._data['y_norm']
-            self._data[pred_name] = y_pred
             predictions[pred_name] = y_pred
 
             # Save data into cubes
@@ -467,6 +515,8 @@ class MLRModel():
              self._data['x_raw'], self._data['y_raw'], test_size=test_size)
         self._data['x_data'] = np.ma.copy(self._data['x_raw'])
         self._data['y_data'] = np.ma.copy(self._data['y_raw'])
+        self.classes['group_attributes'] = np.copy(
+            self.classes['group_attributes'])
         logger.info("Used %i%% of the input data as test data (%i point(s))",
                     int(test_size * 100), len(self._data['y_test']))
         self._impute_all_data()
@@ -655,7 +705,7 @@ class MLRModel():
         if not datasets:
             logger.debug("Skipping loading ancestor datasets, no files found")
             return []
-        logger.debug("Found ancestor files:")
+        logger.debug("Found ancestor file(s):")
         logger.debug(pformat([d['filename'] for d in datasets]))
 
         # Check MLR attributes
@@ -760,10 +810,12 @@ class MLRModel():
         types = np.array(types)[sort_idx]
 
         # Return features
-        logger.info("Found features %s", features)
-        logger.info("with units %s", units)
-        logger.info("and types %s", types)
-        logger.info("(Defined in 'prediction_input' data%s)", msg)
+        logger.info(
+            "Found %i feature(s) (defined in 'prediction_input' data%s):",
+            len(features), msg)
+        for (idx, feature) in enumerate(features):
+            logger.info("'%s' with units '%s' and type '%s'", feature,
+                        units[idx], types[idx])
         return (features, units, types)
 
     def _get_features_of_datasets(self, datasets, var_type, msg):
@@ -818,8 +870,10 @@ class MLRModel():
             datasets, 'group_attribute', sort=True)
         group_attributes = list(grouped_datasets.keys())
         if group_attributes != [None]:
-            logger.info("Found group attributes %s (defined in 'label' data)",
-                        group_attributes)
+            logger.info(
+                "Found %i group attribute(s) (defined in 'label' data):",
+                len(group_attributes))
+            logger.info(pformat(group_attributes))
         return group_attributes
 
     def _get_label(self):
@@ -843,7 +897,15 @@ class MLRModel():
         """Get normalization constants for features and labels."""
         x_norm = np.ones(x_data.shape[1])
         y_norm = 1.0
-        for (tag, constant) in self._cfg.get('normalize_data', {}).items():
+        if self._cfg.get('normalize_data') == 'all':
+            tags_to_normalize = {
+                tag: 'mean'
+                for tag in self.classes['features']
+            }
+            logger.info("Normalizing all features and labels")
+        else:
+            tags_to_normalize = self._cfg.get('normalize_data', {})
+        for (tag, constant) in tags_to_normalize.items():
             found_tag = False
             if tag in self.classes['features']:
                 idx = np.where(self.classes['features'] == tag)[0]
@@ -959,18 +1021,28 @@ class MLRModel():
         """Impute all data given in `self._data`."""
         if self._imputer is not None:
             self._imputer.fit(self._data['x_train'].filled(np.nan))
-        for data_type in ('data', 'train', 'test'):
+        for data_type in ('train', 'test'):
             x_type = 'x_' + data_type
             y_type = 'y_' + data_type
             if x_type in self._data:
                 (self._data[x_type],
                  self._data[y_type]) = self._impute_missing_features(
                      self._data[x_type], self._data[y_type], text=data_type)
+        (self._data['x_data'],
+         self._data['y_data']) = self._impute_missing_features(
+             self._data['x_data'],
+             self._data['y_data'],
+             text='all',
+             impute_group_attrs=True)
 
-    def _impute_missing_features(self, x_data, y_data=None, text=None):
+    def _impute_missing_features(self,
+                                 x_data,
+                                 y_data=None,
+                                 text=None,
+                                 impute_group_attrs=False):
         """Impute missing values in the feature data."""
         if self._imputer is None:
-            strategy = 'removing them'
+            strategy = 'removing point(s)'
             if x_data.mask.shape == ():
                 mask = np.full(x_data.shape[0], False)
             else:
@@ -980,6 +1052,13 @@ class MLRModel():
                 new_y_data = y_data.filled()[~mask]
             else:
                 new_y_data = None
+            if self._cfg.get('accept_only_scalar_data'):
+                removed_groups = self.classes['group_attributes'][mask]
+                if removed_groups:
+                    strategy += ' {}'.format(removed_groups)
+                if impute_group_attrs:
+                    self.classes['group_attributes'] = (
+                        self.classes['group_attributes'][~mask])
             n_imputes = x_data.shape[0] - new_x_data.shape[0]
         else:
             strategy = 'setting them to {} ({})'.format(
@@ -991,9 +1070,9 @@ class MLRModel():
                 new_y_data = None
             n_imputes = np.count_nonzero(x_data != new_x_data)
         if n_imputes:
-            msg = '' if text is None else ' for {}'.format(text)
-            logger.info("Imputed %i missing features%s by %s", n_imputes, msg,
-                        strategy)
+            msg = '' if text is None else ' for {} data'.format(text)
+            logger.info("Imputed %i missing feature(s)%s by %s", n_imputes,
+                        msg, strategy)
         return (new_x_data, new_y_data)
 
     def _is_fitted(self):
@@ -1015,6 +1094,8 @@ class MLRModel():
     def _load_classes(self):
         """Populate self.classes and check for errors."""
         self.classes['group_attributes'] = self._get_group_attributes()
+        self.classes['group_attributes_raw'] = np.copy(
+            self.classes['group_attributes'])
         (self.classes['features'], self.classes['features_units'],
          self.classes['features_types']) = self._get_features()
         (self.classes['label'],
@@ -1080,7 +1161,7 @@ class MLRModel():
     def _load_parameters(self):
         """Load parameters for classifier from recipe."""
         parameters = self._cfg.get('parameters', {})
-        logger.debug("Found parameters %s in recipe", parameters)
+        logger.debug("Found parameter(s) %s in recipe", parameters)
         return parameters
 
     def _load_training_data(self):
@@ -1091,6 +1172,8 @@ class MLRModel():
         self._data['y_data'] = np.ma.copy(self._data['y_raw'])
         self._data['x_train'] = np.ma.copy(self._data['x_raw'])
         self._data['y_train'] = np.ma.copy(self._data['y_raw'])
+        self.classes['group_attributes'] = np.copy(
+            self.classes['group_attributes'])
         logger.debug("Loaded %i raw input data point(s)",
                      len(self._data['y_raw']))
         self._impute_all_data()

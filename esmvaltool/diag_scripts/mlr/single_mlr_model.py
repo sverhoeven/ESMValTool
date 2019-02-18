@@ -46,6 +46,7 @@ def main(cfg):
     predictions = mlr_model.predict()
     logger.info("Predictions:")
     logger.info("%s", pformat(predictions))
+    mlr_model.export_prediction_data()
 
     # Plots
     mlr_model.plot_scatterplots()

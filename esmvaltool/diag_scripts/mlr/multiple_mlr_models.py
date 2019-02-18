@@ -55,6 +55,7 @@ def main(cfg):
             mlr_model.fit()
         mlr_model.export_training_data()
         mlr_model.predict()
+        mlr_model.export_prediction_data()
 
         # Plots
         mlr_model.plot_scatterplots()

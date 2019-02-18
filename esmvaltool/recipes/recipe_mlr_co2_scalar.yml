@@ -341,3 +341,4 @@ diagnostics:
         allow_missing_features: true
         group_datasets_by_attributes: ['dataset', 'ensemble']
         imputation_strategy: mean
+        normalize_data: all
