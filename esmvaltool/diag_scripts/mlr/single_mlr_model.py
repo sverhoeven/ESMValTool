@@ -40,7 +40,7 @@ def main(cfg):
     if cfg.get('grid_search_cv_param_grid'):
         mlr_model.grid_search_cv()
     else:
-        mlr_model.simple_train_test_split()
+        # mlr_model.simple_train_test_split()
         mlr_model.fit()
     mlr_model.export_training_data()
     predictions = mlr_model.predict()

@@ -28,9 +28,12 @@ weighted : bool, optional (default: True)
     Calculate weighted averages/sums (using grid cell boundaries).
 tag : str, optional
     Tag for the variable used in the MLR model.
+convert_units : str, optional
+    Convert units of the cube.
 
 """
 
+import copy
 import logging
 import os
 
@@ -45,6 +48,18 @@ from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
 logger = logging.getLogger(os.path.basename(__file__))
 
 
+def _has_valid_coords(cube, coord_names):
+    """Check if a cube has valid coordinates (length > 1)."""
+    for coord_name in coord_names:
+        try:
+            coord = cube.coord(coord_name)
+        except iris.exceptions.CoordinateNotFoundError:
+            return False
+        if coord.shape[0] <= 1:
+            return False
+    return True
+
+
 def _get_slope(x_arr, y_arr):
     """Get slope of linear regression of two (masked) arrays."""
     if np.ma.is_masked(y_arr):
@@ -56,16 +71,35 @@ def _get_slope(x_arr, y_arr):
     return reg.slope
 
 
-def _get_weights(cfg, cube):
-    """Calculate weights."""
+def _get_area_weights(cfg, cube):
+    """Calculate area weights."""
     area_weights = None
-    time_weights = None
-    if cfg.get('weighted'):
-        coords = [c.name() for c in cube.coords()]
-        if 'latitude' in coords and 'longitude' in coords:
+    if cfg.get('weighted', True):
+        # TODO: Remove after correctly formatted OBS data
+        for coord in cube.coords(dim_coords=True):
+            if not coord.has_bounds():
+                logger.debug("Guessing bounds of coordinate '%s' of cube",
+                             coord.name)
+                logger.debug(cube)
+                coord.guess_bounds()
+        if _has_valid_coords(cube, ['latitude', 'longitude']):
             logger.debug("Calculating area weights")
             area_weights = iris.analysis.cartography.area_weights(cube)
-        if 'time' in coords:
+    return area_weights
+
+
+def _get_time_weights(cfg, cube):
+    """Calculate time weights."""
+    time_weights = None
+    if cfg.get('weighted', True):
+        # TODO: Remove after correctly formatted OBS data
+        for coord in cube.coords(dim_coords=True):
+            if not coord.has_bounds():
+                logger.debug("Guessing bounds of coordinate '%s' of cube",
+                             coord.name)
+                logger.debug(cube)
+                coord.guess_bounds()
+        if _has_valid_coords(cube, ['time']):
             logger.debug("Calculating time weights")
             time = cube.coord('time')
             time_weights = time.bounds[:, 1] - time.bounds[:, 0]
@@ -73,25 +107,37 @@ def _get_weights(cfg, cube):
             for idx in new_axis_pos:
                 time_weights = np.expand_dims(time_weights, idx)
             time_weights = np.broadcast_to(time_weights, cube.shape)
-    return (area_weights, time_weights)
+    return time_weights
 
 
 def calculate_sum_and_mean(cfg, cube):
     """Calculate sum and mean."""
-    (area_weights, time_weights) = _get_weights(cfg, cube)
+    cfg = copy.deepcopy(cfg)
     ops = {'sum': iris.analysis.SUM, 'mean': iris.analysis.MEAN}
     for (oper, iris_op) in ops.items():
         if cfg.get(oper):
             logger.info("Calculating %s over %s", oper, cfg[oper])
-            if area_weights is not None:
+
+            # Latitude and longitude (weighted)
+            area_weights = _get_area_weights(cfg, cube)
+            if all([
+                    area_weights is not None,
+                    'latitude' in cfg[oper],
+                    'longitude' in cfg[oper],
+            ]):
                 cube = cube.collapsed(['latitude', 'longitude'],
                                       iris_op,
                                       weights=area_weights)
                 cfg[oper].remove('latitude')
                 cfg[oper].remove('longitude')
-            if time_weights is not None:
+
+            # Time (weighted)
+            time_weights = _get_time_weights(cfg, cube)
+            if all([time_weights is not None, 'time' in cfg[oper]]):
                 cube = cube.collapsed(['time'], iris_op, weights=time_weights)
                 cfg[oper].remove('time')
+
+            # Remaining operations
             if cfg[oper]:
                 cube = cube.collapsed(cfg[oper], iris_op)
     return cube
@@ -148,6 +194,8 @@ def main(cfg):
             data['filename'] = new_path
             if 'tag' in cfg:
                 data['tag'] = cfg['tag']
+            if cfg.get('convert_units'):
+                cube.convert_units(cfg['convert_units'])
             write_cube(cube, data, new_path)
     else:
         logger.warning("Cannot save netcdf files because 'write_netcdf' is "
