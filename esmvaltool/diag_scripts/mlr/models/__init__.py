@@ -228,32 +228,13 @@ class MLRModel():
             Name of the exported files.
 
         """
-        if filename is None:
-            filename = '{data_type}_{pred_name}.csv'
         for data_type in ('x_pred', 'y_pred'):
             for pred_name in self._data[data_type]:
-                path = os.path.join(
-                    self._cfg['mlr_work_dir'],
-                    filename.format(data_type=data_type, pred_name=pred_name))
-                if 'x_' in data_type:
-                    sub_txt = 'features: {}'.format(self.classes['features'])
-                    norm = self._data['x_norm']
-                else:
-                    sub_txt = 'label: {}'.format(self.classes['label'])
-                    norm = self._data['y_norm']
-                header = (
-                    '{} with shape {} ({:d}: number of observations)\n{}\n'
-                    'Note: values have to be multiplied by {} to get real '
-                    'data'.format(data_type,
-                                  self._data[data_type][pred_name].shape,
-                                  self._data[data_type][pred_name].shape[0],
-                                  sub_txt, norm))
-                np.savetxt(
-                    path,
-                    self._data[data_type][pred_name],
-                    delimiter=',',
-                    header=header)
-                logger.info("Wrote %s", path)
+                self._save_csv_file(
+                    data_type,
+                    filename,
+                    is_prediction=True,
+                    pred_name=pred_name)
 
     def export_training_data(self, filename=None):
         """Export all training data contained in `self._data`.
@@ -264,28 +245,9 @@ class MLRModel():
             Name of the exported files.
 
         """
-        if filename is None:
-            filename = '{data_type}.csv'
         for data_type in ('x_raw', 'x_data', 'x_train', 'x_test', 'y_raw',
                           'y_data', 'y_train', 'y_test'):
-            if data_type in self._data:
-                path = os.path.join(self._cfg['mlr_work_dir'],
-                                    filename.format(data_type=data_type))
-                if 'x_' in data_type:
-                    sub_txt = 'features: {}'.format(self.classes['features'])
-                    norm = self._data['x_norm']
-                else:
-                    sub_txt = 'label: {}'.format(self.classes['label'])
-                    norm = self._data['y_norm']
-                header = (
-                    '{} with shape {} ({:d}: number of observations)\n{}\n'
-                    'Note: values have to be multiplied by {} to get real '
-                    'data'.format(data_type, self._data[data_type].shape,
-                                  self._data[data_type].shape[0], sub_txt,
-                                  norm))
-                np.savetxt(
-                    path, self._data[data_type], delimiter=',', header=header)
-                logger.info("Wrote %s", path)
+            self._save_csv_file(data_type, filename)
 
     def fit(self, **parameters):
         """Initialize and fit the MLR model(s).
@@ -404,7 +366,12 @@ class MLRModel():
                     axes.scatter(x_data, y_data, label=group_attr)
                 for (pred_name, x_pred) in self._data['x_pred'].items():
                     axes.axvline(
-                        x_pred[0, f_idx], linestyle='--', label=pred_name)
+                        x_pred[0, f_idx] * self._data['x_norm'][f_idx],
+                        linestyle='--',
+                        color='black',
+                        label=('Observation'
+                               if pred_name is None else pred_name),
+                    )
                 legend = axes.legend(
                     loc='center left',
                     ncol=2,
@@ -421,9 +388,10 @@ class MLRModel():
                 feature, self.classes['features_units'][f_idx]))
             axes.set_ylabel('{} / {}'.format(self.classes['label'],
                                              self.classes['label_units']))
-            new_path = os.path.join(self._cfg['mlr_plot_dir'],
-                                    filename.format(feature=feature) + '.' +
-                                    self._cfg['output_file_type'])
+            new_path = os.path.join(
+                self._cfg['mlr_plot_dir'],
+                filename.format(feature=feature) + '.' +
+                self._cfg['output_file_type'])
             plt.savefig(
                 new_path,
                 orientation='landscape',
@@ -479,10 +447,10 @@ class MLRModel():
             y_pred = self._clf.predict(x_pred, **kwargs)
 
             # Save data in arrays
-            self._data['x_pred'][pred_name] = x_pred
-            self._data['y_pred'][pred_name] = y_pred
+            self._data['x_pred'][pred_name] = np.copy(x_pred)
+            self._data['y_pred'][pred_name] = np.copy(y_pred)
             y_pred *= self._data['y_norm']
-            predictions[pred_name] = y_pred
+            predictions[pred_name] = np.copy(y_pred)
 
             # Save data into cubes
             pred_cube = cube.copy(data=y_pred.reshape(cube.shape))
@@ -1188,6 +1156,43 @@ class MLRModel():
             logger.info("Removed %i data point(s) where labels were missing",
                         diff)
         return (new_x_data, new_y_data)
+
+    def _save_csv_file(self,
+                       data_type,
+                       filename,
+                       is_prediction=False,
+                       pred_name=None):
+        """Save CSV file."""
+        if data_type not in self._data:
+            return
+        if is_prediction:
+            if pred_name not in self._data[data_type]:
+                return
+            csv_data = self._data[data_type][pred_name]
+        else:
+            csv_data = self._data[data_type]
+
+        # Filename and path
+        if filename is None:
+            if pred_name is None:
+                filename = '{}.csv'.format(data_type)
+            else:
+                filename = '{}_{}.csv'.format(data_type, pred_name)
+        path = os.path.join(self._cfg['mlr_work_dir'], filename)
+
+        # Save file
+        if 'x_' in data_type:
+            sub_txt = 'features: {}'.format(self.classes['features'])
+            norm = self._data['x_norm']
+        else:
+            sub_txt = 'label: {}'.format(self.classes['label'])
+            norm = self._data['y_norm']
+        header = ('{} with shape {} ({:d}: number of observations)\n{}\nNote: '
+                  'values have to be multiplied by {} to get real data'.format(
+                      data_type, csv_data.shape, csv_data.shape[0], sub_txt,
+                      norm))
+        np.savetxt(path, csv_data, delimiter=',', header=header)
+        logger.info("Wrote %s", path)
 
     def _set_prediction_cube_attributes(self, cube, path,
                                         prediction_name=None):
