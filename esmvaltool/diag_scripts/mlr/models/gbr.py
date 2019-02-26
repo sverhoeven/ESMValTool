@@ -75,18 +75,10 @@ class GBRModel(MLRModel):
         for (idx, feature_name) in enumerate(self.classes['features']):
             (_, [axes]) = plot_partial_dependence(self._clf,
                                                   self._data['x_train'], [idx])
-            x_label_norm = ('' if self._data['x_norm'][idx] == 1.0 else
-                            '{:.2E} '.format(self._data['x_norm'][idx]))
-            y_label_norm = ('' if self._data['y_norm'] == 1.0 else
-                            '{:.2E} '.format(self._data['y_norm']))
             axes.set_title('Partial dependence ({} Model)'.format(
                 type(self._clf).__name__))
-            axes.set_xlabel('{} / {}{}'.format(
-                feature_name, x_label_norm,
-                self.classes['features_units'][idx]))
-            axes.set_ylabel('{} / {}{}'.format(self.classes['label'],
-                                               y_label_norm,
-                                               self.classes['label_units']))
+            axes.set_xlabel('(Scaled) {}'.format(feature_name))
+            axes.set_ylabel('(Scaled) {}'.format(self.classes['label']))
             new_filename = (filename.format(feature=feature_name) + '.' +
                             self._cfg['output_file_type'])
             new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)

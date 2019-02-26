@@ -3,6 +3,9 @@
 import logging
 import os
 
+import numpy as np
+from sklearn.impute import SimpleImputer
+
 from esmvaltool.diag_scripts.shared import io
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -16,6 +19,56 @@ VAR_TYPES = [
     'label',
     'prediction_input',
 ]
+
+
+class Imputer():
+    """Expand `sklearn.impute.SimpleImputer` class to remove missing data."""
+
+    def __init__(self, *args, **kwargs):
+        """Initialize imputer."""
+        self.imputer = SimpleImputer(*args, **kwargs)
+        self.missing_values = self.imputer.missing_values
+        self.strategy = self.imputer.strategy
+        self.fill_value = self.imputer.fill_value
+        self.statistics_ = None
+        self.mask_ = None
+
+    def fit(self, x_data):
+        """Fit imputer."""
+        self._check_array_types(x_data)
+        if self.strategy == 'remove':
+            return
+        self.imputer.fit(x_data.filled(np.nan))
+
+    def transform(self, x_data, y_data=None):
+        """Transform data."""
+        self._check_array_types(x_data, y_data)
+        if self.strategy == 'remove':
+            if x_data.mask.shape == ():
+                mask = np.full(x_data.shape[0], False)
+            else:
+                mask = np.any(x_data.mask, axis=1)
+            new_x_data = x_data.filled()[~mask]
+            new_y_data = None if y_data is None else y_data.filled()[~mask]
+            n_imputes = x_data.shape[0] - new_x_data.shape[0]
+            self.mask_ = mask
+        else:
+            new_x_data = self.imputer.transform(x_data.filled(np.nan))
+            new_y_data = None if y_data is None else y_data.filled()
+            n_imputes = np.count_nonzero(x_data != new_x_data)
+            self.statistics_ = self.imputer.statistics_
+        return (new_x_data, new_y_data, n_imputes)
+
+    def _check_array_types(self, x_data, y_data=None):
+        """Check types of input arrays."""
+        if y_data is None:
+            arrays_to_check = (x_data, )
+        else:
+            arrays_to_check = (x_data, y_data)
+        for array in arrays_to_check:
+            if not np.ma.isMaskedArray(array):
+                raise TypeError("Class {} only accepts masked arrays".format(
+                    self.__class__.__name__))
 
 
 def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):

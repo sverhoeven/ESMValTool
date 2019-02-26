@@ -1,8 +1,5 @@
 """Base class for MLR models."""
 
-# TODO
-# handle noqa
-
 import copy
 import importlib
 import logging
@@ -13,8 +10,8 @@ import cf_units
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
+from sklearn.preprocessing import StandardScaler
 
 from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (
@@ -88,6 +85,7 @@ class MLRModel():
     mlr_model : str, optional (default: 'gbr')
         Regression model which is used. Allowed models are child classes of
         this base class given in :mod:`esmvaltool.diag_scripts.mlr.models`.
+
     normalize_data : dict, optional
         Specify tags (keys) and constants (`float` or `'mean'`, value) for
         normalization of data. This is done by dividing the data by the
@@ -97,6 +95,9 @@ class MLRModel():
         Parameters used in the classifier.
     predict_kwargs : dict, optional
         Optional keyword arguments for the `clf.predict()` function.
+    standardize_data : bool, optional (default: True)
+        Linearly standardize input data by removing mean and scaling to unit
+        variance.
     test_size : float, optional (default: 0.25)
         Fraction of feature/label data which is used as test data and not for
         training (if desired).
@@ -183,13 +184,14 @@ class MLRModel():
         self._data['x_pred'] = {}
         self._data['y_pred'] = {}
         self._datasets = {}
-        imputation_strategy = self._cfg.get('imputation_strategy', 'remove')
-        if imputation_strategy == 'remove':
-            self._imputer = None
-        else:
-            self._imputer = SimpleImputer(
-                strategy=imputation_strategy,
-                fill_value=self._cfg.get('imputation_constant'))
+        self._transformer = {}
+        self._transformer['imputer'] = mlr.Imputer(
+            strategy=self._cfg.get('imputation_strategy', 'remove'),
+            fill_value=self._cfg.get('imputation_constant'))
+        for scaler in ('x_scaler', 'y_scaler'):
+            self._transformer[scaler] = StandardScaler(
+                with_mean=self._cfg.get('standardize_data', True),
+                with_std=self._cfg.get('standardize_data', True))
 
         # Public members
         self.classes = {}
@@ -276,7 +278,7 @@ class MLRModel():
         logger.info(
             "Successfully fitted '%s' model on %i training point(s) "
             "with parameter(s) %s", self._CLF_TYPE.__name__,
-            len(self._data['y_train']), self.parameters)
+            self._data['y_train'].size, self.parameters)
 
     def grid_search_cv(self, param_grid=None, **kwargs):
         """Perform exhaustive parameter search using cross-validation.
@@ -318,15 +320,14 @@ class MLRModel():
 
         # Create MLR model with desired parameters and fit it
         clf = GridSearchCV(
-            self._CLF_TYPE(**self.parameters),  # noqa
-            parameter_grid,
+            self._CLF_TYPE(**self.parameters), parameter_grid,
             **additional_args)
         clf.fit(self._data['x_train'], self._data['y_train'])
         self.parameters.update(clf.best_params_)
         if hasattr(clf, 'best_estimator_'):
             self._clf = clf.best_estimator_
         else:
-            self._clf = self._CLF_TYPE(**params)  # noqa
+            self._clf = self._CLF_TYPE(**self.parameters)
             self._clf.fit(self._data['x_train'], self._data['y_train'])
         self.parameters = self._clf.get_params()
         logger.info(
@@ -337,7 +338,7 @@ class MLRModel():
         logger.info(
             "Successfully fitted '%s' model on %i training point(s) "
             "with parameters %s", self._CLF_TYPE.__name__,
-            len(self._data['y_train']), self.parameters)
+            self._data['y_train'].size, self.parameters)
 
     def plot_scatterplots(self, filename=None):
         """Plot scatterplots label vs. feature for every feature.
@@ -355,33 +356,33 @@ class MLRModel():
         (_, axes) = plt.subplots()
 
         # Plot scatterplot for every feature
+        x_data = self._transformer['x_scaler'].inverse_transform(
+            self._data['x_data'])
+        y_data = self._transformer['y_scaler'].inverse_transform(
+            np.expand_dims(self._data['y_data'], axis=-1))
+        y_data = np.squeeze(y_data)
         for (f_idx, feature) in enumerate(self.classes['features']):
             if self._cfg.get('accept_only_scalar_data'):
                 for (g_idx, group_attr) in enumerate(
                         self.classes['group_attributes']):
-                    x_data = (self._data['x_data'][g_idx, f_idx] *
-                              self._data['x_norm'][f_idx])
-                    y_data = (
-                        self._data['y_data'][g_idx] * self._data['y_norm'])
-                    axes.scatter(x_data, y_data, label=group_attr)
+                    axes.scatter(
+                        x_data[g_idx, f_idx], y_data[g_idx], label=group_attr)
                 for (pred_name, x_pred) in self._data['x_pred'].items():
+                    x_pred = self._transformer['x_scaler'].inverse_transform(
+                        x_pred)
                     axes.axvline(
-                        x_pred[0, f_idx] * self._data['x_norm'][f_idx],
+                        x_pred[0, f_idx],
                         linestyle='--',
                         color='black',
                         label=('Observation'
-                               if pred_name is None else pred_name),
-                    )
+                               if pred_name is None else pred_name))
                 legend = axes.legend(
                     loc='center left',
                     ncol=2,
                     bbox_to_anchor=[1.05, 0.5],
                     borderaxespad=0.0)
             else:
-                x_data = (self._data['x_data'][:, f_idx] *
-                          self._data['x_norm'][f_idx])
-                y_data = self._data['y_data'] * self._data['y_norm']
-                axes.plot(x_data, y_data, '.')
+                axes.plot(x_data[:, f_idx], y_data, '.')
                 legend = None
             axes.set_title(feature)
             axes.set_xlabel('{} / {}'.format(
@@ -440,21 +441,19 @@ class MLRModel():
                 logger.info("Started prediction for prediction %s", pred_name)
                 filename = 'prediction_{}.nc'.format(pred_name)
             (x_pred, cube) = self._extract_prediction_input(datasets)
-            x_pred /= self._data['x_norm']
-            if self._imputer is not None:
-                (x_pred, _) = self._impute_missing_features(
-                    x_pred, y_data=None, text='prediction input')
             y_pred = self._clf.predict(x_pred, **kwargs)
 
             # Save data in arrays
             self._data['x_pred'][pred_name] = np.copy(x_pred)
             self._data['y_pred'][pred_name] = np.copy(y_pred)
-            y_pred *= self._data['y_norm']
+            y_pred = self._transformer['y_scaler'].inverse_transform(
+                np.expand_dims(y_pred, axis=-1))
+            y_pred = np.squeeze(y_pred)
             predictions[pred_name] = np.copy(y_pred)
 
             # Save data into cubes
             pred_cube = cube.copy(data=y_pred.reshape(cube.shape))
-            if self._imputer is None:
+            if self._transformer['imputer'].strategy == 'remove':
                 if np.ma.is_masked(cube.data):
                     pred_cube.data = np.ma.array(
                         pred_cube.data, mask=cube.data.mask)
@@ -462,7 +461,7 @@ class MLRModel():
             self._set_prediction_cube_attributes(
                 pred_cube, new_path, prediction_name=pred_name)
             io.save_iris_cube(pred_cube, new_path)
-            logger.info("Successfully predicted %i point(s)", len(y_pred))
+            logger.info("Successfully predicted %i point(s)", y_pred.size)
 
         return predictions
 
@@ -478,33 +477,24 @@ class MLRModel():
         """
         if test_size is None:
             test_size = self._cfg.get('test_size', 0.25)
+        self._reset_input_data()
         (self._data['x_train'], self._data['x_test'], self._data['y_train'],
          self._data['y_test']) = train_test_split(
              self._data['x_raw'], self._data['y_raw'], test_size=test_size)
-        self._data['x_data'] = np.ma.copy(self._data['x_raw'])
-        self._data['y_data'] = np.ma.copy(self._data['y_raw'])
-        self.classes['group_attributes'] = np.copy(
-            self.classes['group_attributes'])
+        self._preprocess_data()
         logger.info("Used %i%% of the input data as test data (%i point(s))",
-                    int(test_size * 100), len(self._data['y_test']))
-        self._impute_all_data()
+                    int(test_size * 100), self._data['y_test'].size)
 
-    def _check_cube_coords(self,
-                           cube,
-                           expected_coords,
-                           var_type,
-                           tag,
-                           text=None):
+    def _check_cube_coords(self, cube, expected_coords, text=None):
         """Check shape and coordinates of a given cube."""
-        msg = '' if text is None else text
+        msg = '' if text is None else ' for {}'.format(text)
         if self._cfg.get('accept_only_scalar_data'):
             allowed_shapes = [(), (1, )]
             if cube.shape not in allowed_shapes:
                 raise ValueError(
-                    "Expected only cubes with shapes {}, got {} from {} "
-                    "'{}'{} when option 'accept_only_scalar_data' is set to "
-                    "'True'".format(allowed_shapes, cube.shape, var_type, tag,
-                                    msg))
+                    "Expected only cubes with shapes {} when option 'accept_"
+                    "only_scalar_data' is set to 'True', got {}{}".format(
+                        allowed_shapes, cube.shape, msg))
         else:
             if expected_coords is not None:
                 if cube.coords(dim_coords=True) != expected_coords:
@@ -517,12 +507,11 @@ class MLRModel():
                         for coord in expected_coords
                     ]
                     raise ValueError(
-                        "Expected field with coordinates {} for {} '{}'{}, "
-                        "got {}. Consider regridding, pre-selecting data at "
-                        "class initialization using '**metadata' or the "
-                        "options 'broadcast_from' or 'group_datasets_by_"
-                        "attributes'".format(coords, var_type, tag, msg,
-                                             cube_coords))
+                        "Expected field with coordinates {}{}, got {}. "
+                        "Consider regridding, pre-selecting data at class "
+                        "initialization using '**metadata' or the options "
+                        "'broadcast_from' or 'group_datasets_by_attributes'".
+                        format(coords, msg, cube_coords))
 
     def _check_dataset(self, datasets, var_type, tag, text=None):
         """Check if `tag` of datasets exists."""
@@ -591,27 +580,32 @@ class MLRModel():
         y_data = self._extract_y_data(datasets)
 
         # Handle missing values in labels
-        logger.debug("Found %i input data point(s)", len(x_data))
+        logger.debug("Found %i input data point(s)", x_data.shape[0])
         (x_data, y_data) = self._remove_missing_labels(x_data, y_data)
 
         # Check sizes
-        if len(x_data) != len(y_data):
+        if x_data.shape[0] != y_data.size:
             raise ValueError(
                 "Sizes of features and labels do not match, got {:d} points "
                 "for the features and {:d} points for the label".format(
-                    len(x_data), len(y_data)))
+                    x_data.shape[0], y_data.size))
 
-        # Normalize data
-        (x_norm, y_norm) = self._get_normalization_constants(x_data, y_data)
-        x_data /= x_norm
-        y_data /= y_norm
-
-        return (x_data, x_norm, y_data, y_norm)
+        return (x_data, y_data)
 
     def _extract_prediction_input(self, datasets):
         """Extract prediction input data points `datasets`."""
         (x_data, prediction_input_cube) = self._extract_x_data(
             datasets, 'prediction_input')
+
+        # Impute data (point removing is done later in cube mask)
+        if self._transformer['imputer'].strategy == 'remove':
+            x_data = x_data.filled(np.ma.mean(x_data))
+        else:
+            (x_data, _) = self._impute_data(x_data, text='prediction input')
+
+        # Scale data
+        (x_data, _) = self._scale_data(x_data, text='prediction_input')
+
         return (x_data, prediction_input_cube)
 
     def _extract_x_data(self, datasets, var_type):
@@ -662,8 +656,8 @@ class MLRModel():
             dataset = self._check_dataset(datasets_, 'label',
                                           self.classes['label'], msg)
             cube = self._load_cube(dataset['filename'])
-            self._check_cube_coords(cube, None, 'label', self.classes['label'],
-                                    msg)
+            text = "label '{}'{}".format(self.classes['label'], msg)
+            self._check_cube_coords(cube, None, text)
             y_data = np.ma.hstack((y_data, self._get_cube_data(cube)))
         return y_data
 
@@ -685,14 +679,9 @@ class MLRModel():
                 logger.debug("Skipping %s", dataset['filename'])
         return valid_datasets
 
-    def _get_broadcasted_cube(self,
-                              dataset,
-                              ref_cube,
-                              var_type,
-                              tag,
-                              text=None):
+    def _get_broadcasted_cube(self, dataset, ref_cube, text=None):
         """Get broadcasted cube."""
-        msg = '' if text is None else text
+        msg = 'data' if text is None else text
         target_shape = ref_cube.shape
         cube_to_broadcast = self._load_cube(dataset['filename'])
         data_to_broadcast = np.ma.array(cube_to_broadcast.data)
@@ -701,24 +690,24 @@ class MLRModel():
                 np.arange(len(target_shape)), dataset['broadcast_from'])
         except IndexError:
             raise ValueError(
-                "Broadcasting to shape {} failed for {} '{}'{}, index out of "
-                "bounds".format(target_shape, var_type, tag, msg))
-        logger.info("Broadcasting %s '%s'%s from %s to %s", var_type, tag, msg,
+                "Broadcasting to shape {} failed{}, index out of bounds".
+                format(target_shape, msg))
+        logger.info("Broadcasting %s from %s to %s", msg,
                     data_to_broadcast.shape, target_shape)
         for idx in new_axis_pos:
             data_to_broadcast = np.ma.expand_dims(data_to_broadcast, idx)
+        mask = data_to_broadcast.mask
         data_to_broadcast = np.broadcast_to(
             data_to_broadcast, target_shape, subok=True)
-        data_to_broadcast.mask = np.broadcast_to(data_to_broadcast.mask,
-                                                 target_shape)
+        data_to_broadcast.mask = np.broadcast_to(mask, target_shape)
         new_cube = ref_cube.copy(data_to_broadcast)
         for idx in dataset['broadcast_from']:
             new_coord = new_cube.coord(dimensions=idx)
             new_coord.points = cube_to_broadcast.coord(new_coord).points
-        logger.debug("Added broadcasted data %s '%s'%s", var_type, tag, msg)
+        logger.debug("Added broadcasted %s", msg)
         return new_cube
 
-    def _get_coordinate_data(self, ref_cube, var_type, tag, text=None):  # noqa
+    def _get_coordinate_data(self, ref_cube, var_type, tag, text=None):
         """Get coordinate variable `ref_cube` which can be used as x data."""
         msg = '' if text is None else text
         try:
@@ -738,7 +727,7 @@ class MLRModel():
         logger.debug("Added coordinate %s '%s'%s", var_type, tag, msg)
         return coord_array.ravel()
 
-    def _get_cube_data(self, cube):  # noqa
+    def _get_cube_data(self, cube):
         """Get data from cube."""
         if cube.shape == ():
             return cube.data
@@ -779,11 +768,11 @@ class MLRModel():
 
         # Return features
         logger.info(
-            "Found %i feature(s) (defined in 'prediction_input' data%s):",
+            "Found %i feature(s) (defined in 'prediction_input' data%s)",
             len(features), msg)
         for (idx, feature) in enumerate(features):
-            logger.info("'%s' with units '%s' and type '%s'", feature,
-                        units[idx], types[idx])
+            logger.debug("'%s' with units '%s' and type '%s'", feature,
+                         units[idx], types[idx])
         return (features, units, types)
 
     def _get_features_of_datasets(self, datasets, var_type, msg):
@@ -839,9 +828,9 @@ class MLRModel():
         group_attributes = list(grouped_datasets.keys())
         if group_attributes != [None]:
             logger.info(
-                "Found %i group attribute(s) (defined in 'label' data):",
+                "Found %i group attribute(s) (defined in 'label' data)",
                 len(group_attributes))
-            logger.info(pformat(group_attributes))
+            logger.debug(pformat(group_attributes))
         return group_attributes
 
     def _get_label(self):
@@ -860,49 +849,6 @@ class MLRModel():
             "Found label '%s' with units '%s' (defined in 'label' "
             "data)", labels[0], cube.units)
         return (labels[0], cube.units)
-
-    def _get_normalization_constants(self, x_data, y_data):
-        """Get normalization constants for features and labels."""
-        x_norm = np.ones(x_data.shape[1])
-        y_norm = 1.0
-        if self._cfg.get('normalize_data') == 'all':
-            tags_to_normalize = {
-                tag: 'mean'
-                for tag in self.classes['features']
-            }
-            logger.info("Normalizing all features and labels")
-        else:
-            tags_to_normalize = self._cfg.get('normalize_data', {})
-        for (tag, constant) in tags_to_normalize.items():
-            found_tag = False
-            if tag in self.classes['features']:
-                idx = np.where(self.classes['features'] == tag)[0]
-                if isinstance(constant, str):
-                    constant = np.ma.mean(x_data[:, idx])
-                if constant == 0.0:
-                    logger.warning(
-                        "Constant for normalization of feature '%s' is 0.0, "
-                        "specify another constant in recipe", tag)
-                else:
-                    x_norm[idx] = constant
-                    logger.info("Normalized feature '%s' with %.2E %s", tag,
-                                constant, self.classes['features_units'][idx])
-                found_tag = True
-            if tag == self.classes['label']:
-                if isinstance(constant, str):
-                    constant = np.ma.mean(y_data)
-                if constant == 0.0:
-                    logger.warning(
-                        "Constant for normalization of label '%s' is 0.0, "
-                        "specify another constant in recipe", tag)
-                else:
-                    y_norm = constant
-                    logger.info("Normalized label '%s' with %.2E %s", tag,
-                                constant, self.classes['label_units'])
-                found_tag = True
-            if not found_tag:
-                logger.warning("Tag for normalization '%s' not found", tag)
-        return (x_norm, y_norm)
 
     def _get_reference_cube(self, datasets, var_type, text=None):
         """Get reference cube for `datasets`."""
@@ -930,20 +876,20 @@ class MLRModel():
 
         # Iterate over all features
         for (idx, tag) in enumerate(self.classes['features']):
-            type_ = self.classes['features_types'][idx]
-            if type_ != 'coordinate':
+            if self.classes['features_types'][idx] != 'coordinate':
                 dataset = self._check_dataset(datasets, var_type, tag, msg)
                 if dataset is None:
                     new_data = np.ma.masked
                 else:
+                    text = "{} '{}'{}".format(var_type, tag, msg)
                     if 'broadcast_from' in dataset:
                         cube = self._get_broadcasted_cube(
-                            dataset, ref_cube, var_type, tag, msg)
+                            dataset, ref_cube, text)
                     else:
                         cube = self._load_cube(dataset['filename'])
                     self._check_cube_coords(cube,
                                             ref_cube.coords(dim_coords=True),
-                                            var_type, tag, msg)
+                                            text)
                     new_data = self._get_cube_data(cube)
             else:
                 new_data = self._get_coordinate_data(ref_cube, var_type, tag,
@@ -953,7 +899,7 @@ class MLRModel():
         # Return data and reference cube
         return (attr_data, ref_cube)
 
-    def _group_prediction_datasets(self, datasets):  # noqa
+    def _group_prediction_datasets(self, datasets):
         """Group prediction datasets (use `prediction_name` key)."""
         for dataset in datasets:
             dataset['group_attribute'] = None
@@ -985,62 +931,27 @@ class MLRModel():
         logger.info("Grouped feature and label datasets by %s", attributes)
         return datasets
 
-    def _impute_all_data(self):
-        """Impute all data given in `self._data`."""
-        if self._imputer is not None:
-            self._imputer.fit(self._data['x_train'].filled(np.nan))
-        for data_type in ('train', 'test'):
-            x_type = 'x_' + data_type
-            y_type = 'y_' + data_type
-            if x_type in self._data:
-                (self._data[x_type],
-                 self._data[y_type]) = self._impute_missing_features(
-                     self._data[x_type], self._data[y_type], text=data_type)
-        (self._data['x_data'],
-         self._data['y_data']) = self._impute_missing_features(
-             self._data['x_data'],
-             self._data['y_data'],
-             text='all',
-             impute_group_attrs=True)
-
-    def _impute_missing_features(self,
-                                 x_data,
-                                 y_data=None,
-                                 text=None,
-                                 impute_group_attrs=False):
+    def _impute_data(self, x_data, y_data=None, text=None):
         """Impute missing values in the feature data."""
-        if self._imputer is None:
-            strategy = 'removing point(s)'
-            if x_data.mask.shape == ():
-                mask = np.full(x_data.shape[0], False)
-            else:
-                mask = np.any(x_data.mask, axis=1)
-            new_x_data = x_data.filled()[~mask]
-            if y_data is not None:
-                new_y_data = y_data.filled()[~mask]
-            else:
-                new_y_data = None
+        (new_x_data, new_y_data,
+         n_imputes) = self._transformer['imputer'].transform(x_data, y_data)
+        strategy = self._transformer['imputer'].strategy
+        if strategy == 'remove':
+            strategy_str = 'removing point(s)'
             if self._cfg.get('accept_only_scalar_data'):
-                removed_groups = self.classes['group_attributes'][mask]
+                mask = self._transformer['imputer'].mask_
+                removed_groups = self.classes['group_attributes_raw'][mask]
                 if removed_groups:
                     strategy += ' {}'.format(removed_groups)
-                if impute_group_attrs:
-                    self.classes['group_attributes'] = (
-                        self.classes['group_attributes'][~mask])
-            n_imputes = x_data.shape[0] - new_x_data.shape[0]
+                self.classes['group_attributes'] = np.copy(
+                    self.classes['group_attributes_raw'][~mask])
         else:
-            strategy = 'setting them to {} ({})'.format(
-                self._cfg['imputation_strategy'], self._imputer.statistics_)
-            new_x_data = self._imputer.transform(x_data.filled(np.nan))
-            if y_data is not None:
-                new_y_data = y_data.filled()
-            else:
-                new_y_data = None
-            n_imputes = np.count_nonzero(x_data != new_x_data)
+            strategy_str = 'setting them to {} ({})'.format(
+                strategy, self._transformer['imputer'].statistics_)
         if n_imputes:
             msg = '' if text is None else ' for {} data'.format(text)
-            logger.info("Imputed %i missing feature(s)%s by %s", n_imputes,
-                        msg, strategy)
+            logger.info("Imputed %i missing feature(s)%s", n_imputes, msg)
+            logger.debug("by %s", strategy_str)
         return (new_x_data, new_y_data)
 
     def _is_fitted(self):
@@ -1069,7 +980,7 @@ class MLRModel():
         (self.classes['label'],
          self.classes['label_units']) = self._get_label()
 
-    def _load_cube(self, path):  # noqa
+    def _load_cube(self, path):
         """Load iris cube and check data type."""
         cube = iris.load_cube(path)
         if not np.issubdtype(cube.dtype, np.number):
@@ -1134,28 +1045,57 @@ class MLRModel():
 
     def _load_training_data(self):
         """Load training data (features/labels)."""
-        (self._data['x_raw'], self._data['x_norm'], self._data['y_raw'],
-         self._data['y_norm']) = self._extract_features_and_labels()
-        self._data['x_data'] = np.ma.copy(self._data['x_raw'])
-        self._data['y_data'] = np.ma.copy(self._data['y_raw'])
-        self._data['x_train'] = np.ma.copy(self._data['x_raw'])
-        self._data['y_train'] = np.ma.copy(self._data['y_raw'])
-        self.classes['group_attributes'] = np.copy(
-            self.classes['group_attributes'])
+        (self._data['x_raw'],
+         self._data['y_raw']) = self._extract_features_and_labels()
+        self._reset_input_data()
+        self._data['x_train'] = np.ma.copy(self._data['x_data'])
+        self._data['y_train'] = np.ma.copy(self._data['y_data'])
         logger.debug("Loaded %i raw input data point(s)",
-                     len(self._data['y_raw']))
-        self._impute_all_data()
-        logger.info("Loaded %i input data point(s)", len(self._data['y_data']))
+                     self._data['y_raw'].size)
+        self._preprocess_data()
+        logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
 
-    def _remove_missing_labels(self, x_data, y_data):  # noqa
+    def _map_to_data(self, function):
+        """Map a function to all elements of `self._data` (ignore `raw`)."""
+        for data_type in ('data', 'train', 'test'):
+            x_type = 'x_' + data_type
+            y_type = 'y_' + data_type
+            if x_type in self._data:
+                (self._data[x_type], self._data[y_type]) = function(
+                    self._data[x_type], self._data[y_type], text=data_type)
+
+    def _preprocess_data(self):
+        """Preprocess input data."""
+        logger.info("Preprocessing training data")
+
+        # Imputing
+        self._transformer['imputer'].fit(self._data['x_train'])
+        self._map_to_data(self._impute_data)
+
+        # Scaling
+        self._transformer['x_scaler'].fit(self._data['x_train'])
+        self._transformer['y_scaler'].fit(
+            np.expand_dims(self._data['y_train'], axis=-1))
+        self._map_to_data(self._scale_data)
+
+    def _remove_missing_labels(self, x_data, y_data):
         """Remove missing values in the label data."""
         new_x_data = x_data[~y_data.mask]
         new_y_data = y_data[~y_data.mask]
-        diff = len(y_data) - len(new_y_data)
+        diff = y_data.size - new_y_data.size
         if diff:
             logger.info("Removed %i data point(s) where labels were missing",
                         diff)
         return (new_x_data, new_y_data)
+
+    def _reset_input_data(self):
+        """Reset self._data."""
+        self._data['x_data'] = np.ma.copy(self._data['x_raw'])
+        self._data['y_data'] = np.ma.copy(self._data['y_raw'])
+        for data_type in ('x_train', 'x_test', 'y_train', 'y_test'):
+            self._data.pop(data_type, None)
+        self.classes['group_attributes'] = np.copy(
+            self.classes['group_attributes_raw'])
 
     def _save_csv_file(self,
                        data_type,
@@ -1183,16 +1123,40 @@ class MLRModel():
         # Save file
         if 'x_' in data_type:
             sub_txt = 'features: {}'.format(self.classes['features'])
-            norm = self._data['x_norm']
+            scaler = 'x_scaler'
         else:
             sub_txt = 'label: {}'.format(self.classes['label'])
-            norm = self._data['y_norm']
-        header = ('{} with shape {} ({:d}: number of observations)\n{}\nNote: '
-                  'values have to be multiplied by {} to get real data'.format(
-                      data_type, csv_data.shape, csv_data.shape[0], sub_txt,
-                      norm))
+            scaler = 'y_scaler'
+        mean = self._transformer[scaler].mean_
+        std = self._transformer[scaler].scale_
+        header = '{} with shape {} ({:d}: number of observations)\n{}'.format(
+            data_type, csv_data.shape, csv_data.shape[0], sub_txt)
+        if 'raw' not in data_type:
+            header += ('\nNote: values x have to be transformed by std * x + '
+                       'mean to get real data\nmean = {}\nstd = {}'.format(
+                           mean, std))
         np.savetxt(path, csv_data, delimiter=',', header=header)
         logger.info("Wrote %s", path)
+
+    def _scale_data(self, x_data, y_data=None, text=None):
+        """Scale values in the feature data."""
+        msg = '' if text is None else " for data '{}'".format(text)
+        new_x_data = self._transformer['x_scaler'].transform(x_data)
+        logger.info("Scaled x%s", msg)
+        logger.debug("by means %s and standard deviations %s",
+                     self._transformer['x_scaler'].mean_,
+                     self._transformer['x_scaler'].scale_)
+        if y_data is None:
+            new_y_data = None
+        else:
+            new_y_data = self._transformer['y_scaler'].transform(
+                np.expand_dims(y_data, axis=-1))
+            new_y_data = np.squeeze(new_y_data)
+            logger.info("Scaled y%s", msg)
+            logger.debug("by means %.3e and standard deviations %.3e",
+                         self._transformer['y_scaler'].mean_[0],
+                         self._transformer['y_scaler'].scale_[0])
+        return (new_x_data, new_y_data)
 
     def _set_prediction_cube_attributes(self, cube, path,
                                         prediction_name=None):

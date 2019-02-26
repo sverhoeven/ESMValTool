@@ -70,17 +70,6 @@ CFG = {
     'imputation_strategy': [None, None, 'remove', 'mean'],
     'imputation_constant': [None, 0.0, 1],
     'mlr_model': [None, None, 'gbr', 'gpr'],
-    'normalize_data': [
-        None,
-        None,
-        {
-            'tag_1': 'mean'
-        },
-        {
-            'tag_1': 3.14,
-            'tag_2': 'mean'
-        },
-    ],
     'parameters': [
         None,
         None,

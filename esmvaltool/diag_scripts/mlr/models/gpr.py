@@ -21,3 +21,19 @@ class GPRModel(MLRModel):
     """
 
     _CLF_TYPE = GaussianProcessRegressor
+
+    def print_kernel_info(self):
+        """Print information of the fitted kernel of the GPR model."""
+        if not self._is_fitted():
+            logger.error("Printing kernel not possible because the model is "
+                         "not fitted yet, call fit() first")
+            return
+        kernel = self._clf.kernel_
+        logger.info("Fitted kernel: %s (%i hyperparameters)", kernel,
+                    kernel.n_dims)
+        logger.info("Hyperparameters:")
+        for hyper_param in kernel.hyperparameters:
+            logger.info(hyper_param)
+        logger.info("Theta:")
+        for elem in kernel.theta:
+            logger.info(elem)
