@@ -51,19 +51,21 @@ def main(cfg):
         if cfg.get('grid_search_cv_param_grid'):
             mlr_model.grid_search_cv()
         else:
-            # mlr_model.simple_train_test_split()
+            mlr_model.simple_train_test_split()
             mlr_model.fit()
         mlr_model.export_training_data()
         mlr_model.predict()
         mlr_model.export_prediction_data()
 
-        # Plots
+        # Output
         mlr_model.plot_scatterplots()
         if model_type in ('gbr' or 'rfr'):
             mlr_model.plot_feature_importance()
         if model_type == 'gbr':
             mlr_model.plot_partial_dependences()
             mlr_model.plot_prediction_error()
+        if model_type == 'gpr':
+            mlr_model.print_kernel_info()
 
 
 # Run main function when this script is called

@@ -112,10 +112,6 @@ diagnostics:
           'diag_mlr_input_*/trend',
         ]
         mlr_model: gbr
-        normalize_data:
-          NBP: mean
-          NBP-Glob_c: mean
-          NBP-Glob_t: mean
         use_coords_as_feature: ['latitude', 'longitude']
         metadata_preselection:
           select:
