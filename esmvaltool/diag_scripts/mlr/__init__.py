@@ -5,6 +5,7 @@ import os
 
 import numpy as np
 from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
 
 from esmvaltool.diag_scripts.shared import io
 
@@ -69,6 +70,13 @@ class Imputer():
             if not np.ma.isMaskedArray(array):
                 raise TypeError("Class {} only accepts masked arrays".format(
                     self.__class__.__name__))
+
+
+class AdvancedPipeline(Pipeline):
+    """Expand `sklearn.pipeline.Pipeline` class."""
+
+    def transform_only(self, x_data):
+        """Only perform `transform` steps of Pipeline."""
 
 
 def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
