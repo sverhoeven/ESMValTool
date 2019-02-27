@@ -85,12 +85,6 @@ class MLRModel():
     mlr_model : str, optional (default: 'gbr')
         Regression model which is used. Allowed models are child classes of
         this base class given in :mod:`esmvaltool.diag_scripts.mlr.models`.
-
-    normalize_data : dict, optional
-        Specify tags (keys) and constants (`float` or `'mean'`, value) for
-        normalization of data. This is done by dividing the data by the
-        given constant and might be necessary when raw data is very small or
-        large which leads to large errors due to finite machine precision.
     parameters : dict, optional
         Parameters used in the classifier.
     predict_kwargs : dict, optional
@@ -436,32 +430,40 @@ class MLRModel():
         for (pred_name, datasets) in self._datasets['prediction'].items():
             if pred_name is None:
                 logger.info("Started prediction")
-                filename = 'prediction.nc'
+                new_path = os.path.join(self._cfg['mlr_work_dir'],
+                                        'prediction.nc')
             else:
                 logger.info("Started prediction for prediction %s", pred_name)
-                filename = 'prediction_{}.nc'.format(pred_name)
+                new_path = os.path.join(self._cfg['mlr_work_dir'],
+                                        'prediction_{}.nc'.format(pred_name))
             (x_pred, cube) = self._extract_prediction_input(datasets)
-            y_pred = self._clf.predict(x_pred, **kwargs)
+            y_preds = self._clf.predict(x_pred, **predict_kwargs)
 
-            # Save data in arrays
+            # Manage multidimensional output
+            if not isinstance(y_preds, (list, tuple)):
+                y_preds = [y_preds]
+            y_preds = list(y_preds)
+
+            # Save data
             self._data['x_pred'][pred_name] = np.copy(x_pred)
-            self._data['y_pred'][pred_name] = np.copy(y_pred)
-            y_pred = self._transformer['y_scaler'].inverse_transform(
-                np.expand_dims(y_pred, axis=-1))
-            y_pred = np.squeeze(y_pred)
-            predictions[pred_name] = np.copy(y_pred)
-
-            # Save data into cubes
-            pred_cube = cube.copy(data=y_pred.reshape(cube.shape))
-            if self._transformer['imputer'].strategy == 'remove':
-                if np.ma.is_masked(cube.data):
-                    pred_cube.data = np.ma.array(
-                        pred_cube.data, mask=cube.data.mask)
-            new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
-            self._set_prediction_cube_attributes(
-                pred_cube, new_path, prediction_name=pred_name)
-            io.save_iris_cube(pred_cube, new_path)
-            logger.info("Successfully predicted %i point(s)", y_pred.size)
+            self._data['y_pred'][pred_name] = np.copy(y_preds[0])
+            y_preds[0] = self._transformer['y_scaler'].inverse_transform(
+                np.expand_dims(y_preds[0], axis=-1))
+            y_preds[0] = np.squeeze(y_preds[0])
+            predictions[pred_name] = []
+            cubes = iris.cube.CubeList([])
+            for (idx, y_pred) in enumerate(y_preds):
+                predictions[pred_name].append(np.copy(y_pred))
+                pred_cube = cube.copy(data=y_pred.reshape(cube.shape))
+                if self._transformer['imputer'].strategy == 'remove':
+                    if np.ma.is_masked(cube.data):
+                        pred_cube.data = np.ma.array(
+                            pred_cube.data, mask=cube.data.mask)
+                self._set_prediction_cube_attributes(
+                    pred_cube, new_path, idx, prediction_name=pred_name)
+                cubes.append(pred_cube)
+            io.save_iris_cube(cubes, new_path)
+            logger.info("Successfully predicted %i point(s)", y_preds[0].size)
 
         return predictions
 
@@ -859,7 +861,8 @@ class MLRModel():
             dataset = self._check_dataset(datasets, var_type, tag, msg)
             if dataset is not None:
                 ref_cube = self._load_cube(dataset['filename'])
-                logger.debug("For %s%s, use reference cube", var_type, msg)
+                logger.debug("For %s '%s'%s, use reference cube", var_type,
+                             tag, msg)
                 logger.debug(ref_cube)
                 return ref_cube
         raise ValueError(
@@ -941,8 +944,8 @@ class MLRModel():
             if self._cfg.get('accept_only_scalar_data'):
                 mask = self._transformer['imputer'].mask_
                 removed_groups = self.classes['group_attributes_raw'][mask]
-                if removed_groups:
-                    strategy += ' {}'.format(removed_groups)
+                if removed_groups.size != 0:
+                    strategy_str += ' {}'.format(removed_groups)
                 self.classes['group_attributes'] = np.copy(
                     self.classes['group_attributes_raw'][~mask])
         else:
@@ -1061,8 +1064,9 @@ class MLRModel():
             x_type = 'x_' + data_type
             y_type = 'y_' + data_type
             if x_type in self._data:
+                text = 'all' if data_type == 'data' else data_type
                 (self._data[x_type], self._data[y_type]) = function(
-                    self._data[x_type], self._data[y_type], text=data_type)
+                    self._data[x_type], self._data[y_type], text=text)
 
     def _preprocess_data(self):
         """Preprocess input data."""
@@ -1158,7 +1162,10 @@ class MLRModel():
                          self._transformer['y_scaler'].scale_[0])
         return (new_x_data, new_y_data)
 
-    def _set_prediction_cube_attributes(self, cube, path,
+    def _set_prediction_cube_attributes(self,
+                                        cube,
+                                        path,
+                                        idx=0,
                                         prediction_name=None):
         """Set the attributes of the prediction cube."""
         cube.attributes = {
@@ -1178,3 +1185,18 @@ class MLRModel():
         label_cube = self._load_cube(label['filename'])
         for attr in ('standard_name', 'var_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
+
+        # Modify variable name depending on idx
+        if idx == 0:
+            return
+        if idx == 1:
+            if 'return_std' in self._cfg.get('predict_kwargs', {}):
+                cube.var_name += '_std'
+                cube.long_name += ' (standard deviation)'
+                return
+            if 'return_cov' in self._cfg.get('predict_kwargs', {}):
+                cube.var_name += '_cov'
+                cube.long_name += ' (covariance)'
+                return
+        cube.var_name += '_{:d}'.format(idx)
+        cube.long_name += '_{:d}'.format(idx)
