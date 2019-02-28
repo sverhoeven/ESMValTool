@@ -28,7 +28,7 @@ class GPRModel(MLRModel):
             logger.error("Printing kernel not possible because the model is "
                          "not fitted yet, call fit() first")
             return
-        kernel = self._clf.kernel_
+        kernel = self._clf.named_steps['regressor'].regressor_.kernel_
         logger.info("Fitted kernel: %s (%i hyperparameters)", kernel,
                     kernel.n_dims)
         logger.info("Hyperparameters:")

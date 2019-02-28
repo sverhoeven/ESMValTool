@@ -85,7 +85,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
 
     def predict(self, x_data, return_std=False, return_cov=False):
         """Expand `predict()` method."""
-        return super().predict(X)
+        return super().predict(x_data)
 
 
 def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):

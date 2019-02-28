@@ -41,12 +41,13 @@ class GBRModel(MLRModel):
         (_, axes) = plt.subplots()
 
         # Plot
-        feature_importance = self._clf.feature_importances_
+        feature_importance = (
+            self._clf.regressor_.named_steps['regressor'].feature_importances_)
         sorted_idx = np.argsort(feature_importance)
         pos = np.arange(sorted_idx.shape[0]) + 0.5
         axes.barh(pos, feature_importance[sorted_idx], align='center')
         axes.set_title('Variable Importance ({} Model)'.format(
-            type(self._clf).__name__))
+            self._CLF_TYPE.__name__))
         axes.set_xlabel('Relative Importance')
         axes.set_yticks(pos)
         axes.set_yticklabels(np.array(self.classes['features'])[sorted_idx])
@@ -73,10 +74,11 @@ class GBRModel(MLRModel):
 
         # Plot for every feature
         for (idx, feature_name) in enumerate(self.classes['features']):
-            (_, [axes]) = plot_partial_dependence(self._clf,
-                                                  self._data['x_train'], [idx])
+            (_, [axes]) = plot_partial_dependence(
+                self._clf.named_steps['regressor'].regressor_,
+                self._data['x_train'], [idx])
             axes.set_title('Partial dependence ({} Model)'.format(
-                type(self._clf).__name__))
+                self._CLF_TYPE.__name__))
             axes.set_xlabel('(Scaled) {}'.format(feature_name))
             axes.set_ylabel('(Scaled) {}'.format(self.classes['label']))
             new_filename = (filename.format(feature=feature_name) + '.' +
@@ -100,28 +102,28 @@ class GBRModel(MLRModel):
         if filename is None:
             filename = 'prediction_error'
         (_, axes) = plt.subplots()
+        clf = self._clf.named_steps['regressor'].regressor_
 
         # Plot train score
         axes.plot(
-            np.arange(len(self._clf.train_score_)) + 1,
-            self._clf.train_score_,
+            np.arange(len(clf.train_score_)) + 1,
+            clf.train_score_,
             'b-',
             label='Training Set Deviance')
 
         # Plot test score if possible
         if 'x_test' in self._data:
-            test_score = np.zeros((len(self._clf.train_score_), ),
-                                  dtype=np.float64)
+            test_score = np.zeros((len(clf.train_score_), ), dtype=np.float64)
             for (idx, y_pred) in enumerate(
-                    self._clf.staged_predict(self._data['x_test'])):
-                test_score[idx] = self._clf.loss_(self._data['y_test'], y_pred)
+                    clf.staged_predict(self._data['x_test'])):
+                test_score[idx] = clf.loss_(self._data['y_test'], y_pred)
             axes.plot(
                 np.arange(len(test_score)) + 1,
                 test_score,
                 'r-',
                 label='Test Set Deviance')
         axes.legend(loc='upper right')
-        axes.set_title('Deviance ({} Model)'.format(type(self._clf).__name__))
+        axes.set_title('Deviance ({} Model)'.format(self._CLF_TYPE.__name__))
         axes.set_xlabel('Boosting Iterations')
         axes.set_ylabel('Deviance')
         new_filename = filename + '.' + self._cfg['output_file_type']

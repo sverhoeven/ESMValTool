@@ -10,6 +10,8 @@ import cf_units
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.exceptions import NotFittedError
+from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -64,6 +66,10 @@ class MLRModel():
         'group_datasets_by_attributes should be given.
     allow_missing_features : bool, optional (default: False)
         Allow missing features in the training data.
+    fit_kwargs : dict, optional
+        Optional keyword arguments for the classifier's `fit()` function. Have
+        to be given for each step of the pipeline seperated by two underscores,
+        i.e. `s__p` is the parameter `p` for step `s`.
     grid_search_cv_param_grid : dict or list of dict, optional
         Parameters (keys) and ranges (values) for exhaustive parameter search
         using cross-validation.
@@ -82,13 +88,16 @@ class MLRModel():
         When imputation strategy is `constant`, replace missing values with
         this value. If `None`, replace numerical values by 0 and others by
         `missing_value`.
+    matplotlib_style_file : str, optional
+        Matplotlib style file (should be located in
+        `esmvaltool.diag_scripts.shared.plot.styles_python.matplotlib`).
     mlr_model : str, optional (default: 'gbr')
         Regression model which is used. Allowed models are child classes of
         this base class given in :mod:`esmvaltool.diag_scripts.mlr.models`.
     parameters : dict, optional
-        Parameters used in the classifier.
+        Parameters used in the final classifier.
     predict_kwargs : dict, optional
-        Optional keyword arguments for the `clf.predict()` function.
+        Optional keyword arguments for the classifier's `predict()` function.
     standardize_data : bool, optional (default: True)
         Linearly standardize input data by removing mean and scaling to unit
         variance.
@@ -126,6 +135,7 @@ class MLRModel():
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
+
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
@@ -169,30 +179,19 @@ class MLRModel():
             `labels` (e.g. `dataset='CanESM2'`).
 
         """
-        plt.style.use(plot.get_path_to_mpl_style())
-
-        # Private members
         self._cfg = cfg
         self._clf = None
         self._data = {}
         self._data['x_pred'] = {}
         self._data['y_pred'] = {}
         self._datasets = {}
-        self._transformer = {}
-        if self._cfg.get('imputation_strategy', 'remove') == 'remove':
-            self._transformer['imputer'] = None
-        else:
-            self._transformer['imputer'] = mlr.Imputer(
-                strategy=self._cfg['imputation_strategy'],
-                fill_value=self._cfg.get('imputation_constant'))
-        for scaler in ('x_scaler', 'y_scaler'):
-            self._transformer[scaler] = StandardScaler(
-                with_mean=self._cfg.get('standardize_data', True),
-                with_std=self._cfg.get('standardize_data', True))
-
-        # Public members
         self.classes = {}
         self.parameters = self._load_parameters()
+
+        # Default parameters
+        self._cfg.setdefault('imputation_strategy', 'remove')
+        plt.style.use(
+            plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
 
         # Adapt output directories
         if root_dir is None:
@@ -212,6 +211,9 @@ class MLRModel():
         self._load_input_datasets(**metadata)
         self._load_classes()
         self._load_training_data()
+
+        # Create classifier (with all preprocessor steps)
+        self._create_classifier()
 
         # Log successful initialization
         msg = ('' if not self.parameters else ' with parameters {} found in '
@@ -244,38 +246,42 @@ class MLRModel():
             Name of the exported files.
 
         """
-        for data_type in ('x_raw', 'x_data', 'x_train', 'x_test', 'y_raw',
-                          'y_data', 'y_train', 'y_test'):
+        for data_type in ('x_data', 'x_train', 'x_test', 'y_data', 'y_train',
+                          'y_test'):
             self._save_csv_file(data_type, filename)
 
-    def fit(self, **parameters):
-        """Initialize and fit the MLR model(s).
+    def fit(self, **kwargs):
+        """Fit MLR model.
 
         Parameters
         ----------
-        parameters : fit parameters, optional
-            Parameters to initialize and fit the MLR model(s). Overwrites
-            default and recipe settings.
+        **kwargs : keyword arguments, optional
+            Additional options for the `self._clf.fit()` function. Have to be
+            given for each step of the pipeline seperated by two underscores,
+            i.e. `s__p` is the parameter `p` for step `s`.
+            Overwrites default and recipe settings.
 
         """
         if not self._clf_is_valid(text='Fitting MLR model'):
             return
-        logger.info("Fitting MLR model with classifier %s", self._CLF_TYPE)
-        if parameters:
+        logger.info("Fitting MLR model with final classifier %s",
+                    self._CLF_TYPE)
+        fit_kwargs = dict(self._cfg.get('fit_kwargs', {}))
+        fit_kwargs.update(kwargs)
+        if fit_kwargs:
             logger.info(
-                "Using additional parameter(s) %s given in fit() function",
-                parameters)
+                "Using additional keyword argument(s) %s for fit() function",
+                fit_kwargs)
 
         # Create MLR model with desired parameters and fit it
-        params = dict(self.parameters)
-        params.update(parameters)
-        self._clf = self._CLF_TYPE(**params)  # noqa
         self._clf.fit(self._data['x_train'], self._data['y_train'])
         self.parameters = self._clf.get_params()
-        logger.info(
-            "Successfully fitted '%s' model on %i training point(s) "
-            "with parameter(s) %s", self._CLF_TYPE.__name__,
-            self._data['y_train'].size, self.parameters)
+        logger.info("Successfully fitted MLR model on %i training point(s)",
+                    self._data['y_train'].size)
+        logger.debug("Pipeline steps:")
+        logger.debug(pformat(self._clf.named_steps))
+        logger.debug("Parameters:")
+        logger.debug(pformat(self.parameters))
 
     def grid_search_cv(self, param_grid=None, **kwargs):
         """Perform exhaustive parameter search using cross-validation.
@@ -283,7 +289,9 @@ class MLRModel():
         Parameters
         ----------
         param_grid : dict or list of dict, optional
-            Parameter names (keys) and ranges (values) for the search.
+            Parameter names (keys) and ranges (values) for the search. Have to
+            be given for each step of the pipeline seperated by two
+            underscores, i.e. `s__p` is the parameter `p` for step `s`.
             Overwrites default and recipe settings.
         **kwargs : keyword arguments, optional
             Additional options for the `GridSearchCV` class. See
@@ -303,7 +311,7 @@ class MLRModel():
                 "search_cv() function)")
             return
         logger.info(
-            "Performing exhaustive grid search cross-validation with "
+            "Performing exhaustive grid search cross-validation with final "
             "classifier %s and parameter grid %s", self._CLF_TYPE,
             parameter_grid)
         additional_args = dict(self._cfg.get('grid_search_cv_kwargs', {}))
@@ -315,10 +323,8 @@ class MLRModel():
             if additional_args.get('cv', '').lower() == 'loo':
                 additional_args['cv'] = LeaveOneOut()
 
-        # Create MLR model with desired parameters and fit it
-        clf = GridSearchCV(
-            self._CLF_TYPE(**self.parameters), parameter_grid,
-            **additional_args)
+        # Create GridSearchCV instance
+        clf = GridSearchCV(self._clf, parameter_grid, **additional_args)
         clf.fit(self._data['x_train'], self._data['y_train'])
         self.parameters.update(clf.best_params_)
         if hasattr(clf, 'best_estimator_'):
@@ -332,10 +338,12 @@ class MLRModel():
             clf.best_params_)
         logger.debug("CV results:")
         logger.debug(pformat(clf.cv_results_))
-        logger.info(
-            "Successfully fitted '%s' model on %i training point(s) "
-            "with parameters %s", self._CLF_TYPE.__name__,
-            self._data['y_train'].size, self.parameters)
+        logger.info("Successfully fitted MLR model on %i training point(s)",
+                    self._data['y_train'].size)
+        logger.debug("Pipeline steps:")
+        logger.debug(pformat(self._clf.named_steps))
+        logger.debug("Parameters:")
+        logger.debug(pformat(self.parameters))
 
     def plot_scatterplots(self, filename=None):
         """Plot scatterplots label vs. feature for every feature.
@@ -353,20 +361,15 @@ class MLRModel():
         (_, axes) = plt.subplots()
 
         # Plot scatterplot for every feature
-        x_data = self._transformer['x_scaler'].inverse_transform(
-            self._data['x_data'])
-        y_data = self._transformer['y_scaler'].inverse_transform(
-            np.expand_dims(self._data['y_data'], axis=-1))
-        y_data = np.squeeze(y_data)
         for (f_idx, feature) in enumerate(self.classes['features']):
             if self._cfg.get('accept_only_scalar_data'):
                 for (g_idx, group_attr) in enumerate(
                         self.classes['group_attributes']):
                     axes.scatter(
-                        x_data[g_idx, f_idx], y_data[g_idx], label=group_attr)
+                        self._data['x_data'][g_idx, f_idx],
+                        self._data['y_data'][g_idx],
+                        label=group_attr)
                 for (pred_name, x_pred) in self._data['x_pred'].items():
-                    x_pred = self._transformer['x_scaler'].inverse_transform(
-                        x_pred)
                     axes.axvline(
                         x_pred[0, f_idx],
                         linestyle='--',
@@ -379,7 +382,8 @@ class MLRModel():
                     bbox_to_anchor=[1.05, 0.5],
                     borderaxespad=0.0)
             else:
-                axes.plot(x_data[:, f_idx], y_data, '.')
+                axes.plot(self._data['x_data'][:, f_idx], self._data['y_data'],
+                          '.')
                 legend = None
             axes.set_title(feature)
             axes.set_xlabel('{} / {}'.format(
@@ -426,53 +430,41 @@ class MLRModel():
                 "function", predict_kwargs)
 
         # Iterate over predictions
-        predictions = {}
         if not self._datasets['prediction']:
             logger.error("Prediction not possible, no 'prediction_input' "
                          "datasets given")
         for (pred_name, datasets) in self._datasets['prediction'].items():
             if pred_name is None:
                 logger.info("Started prediction")
-                new_path = os.path.join(self._cfg['mlr_work_dir'],
-                                        'prediction.nc')
+                filename = 'prediction.nc'
             else:
                 logger.info("Started prediction for prediction %s", pred_name)
-                new_path = os.path.join(self._cfg['mlr_work_dir'],
-                                        'prediction_{}.nc'.format(pred_name))
-            (x_pred, cube) = self._extract_prediction_input(datasets)
-            y_preds = self._clf.predict(x_pred, **predict_kwargs)
+                filename = 'prediction_{}.nc'.format(pred_name)
 
-            # Manage multidimensional output
-            if not isinstance(y_preds, (list, tuple)):
-                y_preds = [y_preds]
-            y_preds = list(y_preds)
+            # Predict
+            (x_pred, x_mask, x_cube) = self._extract_prediction_input(datasets)
+            y_preds = self._get_prediction_array(x_pred, x_mask,
+                                                 **predict_kwargs)
 
             # Save data
-            # TODO
-            self._data['x_pred'][pred_name] = np.ma.copy(x_pred)
-            self._data['y_pred'][pred_name] = np.ma.array(y_preds[0])
-            y_preds[0] = self._transformer['y_scaler'].inverse_transform(
-                np.expand_dims(y_preds[0], axis=-1))
-            y_preds[0] = np.squeeze(y_preds[0])
-            predictions[pred_name] = []
-            cubes = iris.cube.CubeList([])
-            for (idx, y_pred) in enumerate(y_preds):
-                predictions[pred_name].append(np.copy(y_pred))
-                # TODO
-                # y_pred = np.ma.array(y_pred, mask=x_pred.mask)
-                pred_cube = cube.copy(data=y_pred.reshape(cube.shape))
-                if self._transformer['imputer'] is None:
-                    if np.ma.is_masked(cube.data):
-                        pred_cube.data = np.ma.array(
-                            pred_cube.data,
-                            mask=pred_cube.mask | cube.data.mask)
-                self._set_prediction_cube_attributes(
-                    pred_cube, new_path, idx, prediction_name=pred_name)
-                cubes.append(pred_cube)
-            io.save_iris_cube(cubes, new_path)
-            logger.info("Successfully predicted %i point(s)", y_preds[0].size)
+            x_pred = np.ma.array(x_pred, mask=x_mask, copy=True)
+            self._data['x_pred'][pred_name] = x_pred.filled(np.nan)
+            self._data['y_pred'][pred_name] = np.ma.copy(y_preds[0]).filled(
+                np.nan)
+
+            # Save data in cubes
+            new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
+            predictions = self._get_prediction_cubes(y_preds, pred_name,
+                                                     x_cube, new_path)
 
         return predictions
+
+    def reset_training_data(self):
+        """Reset training and test data."""
+        self._data['x_train'] = np.ma.copy(self._data['x_data'])
+        self._data['y_train'] = np.ma.copy(self._data['y_data'])
+        for data_type in ('x_test', 'y_test'):
+            self._data.pop(data_type, None)
 
     def simple_train_test_split(self, test_size=None):
         """Split input data into training and test data.
@@ -486,11 +478,9 @@ class MLRModel():
         """
         if test_size is None:
             test_size = self._cfg.get('test_size', 0.25)
-        self._reset_input_data()
         (self._data['x_train'], self._data['x_test'], self._data['y_train'],
          self._data['y_test']) = train_test_split(
-             self._data['x_raw'], self._data['y_raw'], test_size=test_size)
-        self._preprocess_data()
+             self._data['x_data'], self._data['y_data'], test_size=test_size)
         logger.info("Used %i%% of the input data as test data (%i point(s))",
                     int(test_size * 100), self._data['y_test'].size)
 
@@ -582,6 +572,35 @@ class MLRModel():
             return False
         return True
 
+    def _create_classifier(self):
+        """Create classifier with correct settings."""
+        if not self._clf_is_valid(text='Creating classifier'):
+            return
+        logger.debug("Creating classifier")
+        steps = []
+
+        # Imputer
+        if self._cfg['imputation_strategy'] != 'remove':
+            imputer = SimpleImputer(
+                strategy=self._cfg['imputation_strategy'],
+                fill_value=self._cfg.get('imputation_constant'))
+            steps.append(('imputer', imputer))
+
+        # Scaler
+        scale_data = self._cfg.get('standardize_data', True)
+        x_scaler = StandardScaler(with_mean=scale_data, with_std=scale_data)
+        y_scaler = StandardScaler(with_mean=scale_data, with_std=scale_data)
+        steps.append(('x_scaler', x_scaler))
+
+        # Regressor
+        regressor = self._CLF_TYPE(**self.parameters)
+        transformed_regressor = mlr.AdvancedTransformedTargetRegressor(
+            transformer=y_scaler, regressor=regressor)
+        steps.append(('regressor', transformed_regressor))
+
+        # Final classifier
+        self._clf = mlr.AdvancedPipeline(steps)
+
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
         datasets = self._datasets['training']
@@ -609,14 +628,13 @@ class MLRModel():
         (x_data, prediction_input_cube) = self._extract_x_data(
             datasets, 'prediction_input')
 
-        # Impute data (point removing is done later in cube mask)
-        if self._transformer['imputer'] is not None:
-            (x_data, _) = self._impute_data(x_data, text='prediction input')
-
-        # Scale data
-        (x_data, _) = self._scale_data(x_data, text='prediction_input')
-
-        return (x_data, prediction_input_cube)
+        # If desired missing values get removed in the output cube via a mask
+        mask = x_data.mask
+        if self._cfg['imputation_strategy'] == 'remove':
+            x_data = x_data.filled(np.ma.mean(x_data))
+        else:
+            x_data = x_data.filled(np.nan)
+        return (x_data, mask, prediction_input_cube)
 
     def _extract_x_data(self, datasets, var_type):
         """Extract required x data of type `var_type` from `datasets`."""
@@ -860,6 +878,40 @@ class MLRModel():
             "data)", labels[0], cube.units)
         return (labels[0], cube.units)
 
+    def _get_prediction_array(self, x_data, x_mask, **kwargs):
+        """Get (multi-dimensional) prediction output."""
+        y_preds = self._clf.predict(x_data, **kwargs)
+
+        # Create list of arrays with correct mask and save them
+        if not isinstance(y_preds, (list, tuple)):
+            y_preds = [y_preds]
+        y_preds = list(y_preds)
+        for (idx, y_pred) in enumerate(y_preds):
+            if self._cfg['imputation_strategy'] == 'remove':
+                y_preds[idx] = np.ma.array(y_pred, mask=x_mask[:, 0])
+        logger.info("Successfully predicted %i point(s)", y_preds[0].size)
+        return y_preds
+
+    def _get_prediction_cubes(self, y_predictions, pred_name, x_cube, path):
+        """Get (multi-dimensional) prediction output."""
+        logger.debug("Creating output cubes")
+        predictions = {}
+        predictions[pred_name] = []
+        cubes = iris.cube.CubeList([])
+        for (idx, y_pred) in enumerate(y_predictions):
+            predictions[pred_name].append(np.ma.copy(y_pred))
+            y_pred = y_pred.reshape(x_cube.shape)
+            if (self._cfg['imputation_strategy'] == 'remove'
+                    and np.ma.is_masked(x_cube.data)):
+                y_pred = np.ma.array(
+                    y_pred, mask=y_pred.mask | x_cube.data.mask)
+            pred_cube = x_cube.copy(data=y_pred)
+            self._set_prediction_cube_attributes(
+                pred_cube, path, idx, prediction_name=pred_name)
+            cubes.append(pred_cube)
+        io.save_iris_cube(cubes, path)
+        return predictions
+
     def _get_reference_cube(self, datasets, var_type, text=None):
         """Get reference cube for `datasets`."""
         msg = '' if text is None else text
@@ -942,28 +994,16 @@ class MLRModel():
         logger.info("Grouped feature and label datasets by %s", attributes)
         return datasets
 
-    def _impute_data(self, x_data, y_data=None, text=None):
-        """Impute missing values in the feature data."""
-        if self._transformer['imputer'] is None:
-            new_x_data = x_data
-            new_y_data = None if y_data is None else y_data
-            n_imputes = 0
-        else:
-            (new_x_data, new_y_data,
-             n_imputes) = self._transformer['imputer'].transform(x_data,
-                                                                 y_data)
-            strategy_str = 'setting them to {} ({})'.format(
-                self._transformer['imputer'].strategy,
-                self._transformer['imputer'].statistics_)
-        if n_imputes:
-            msg = '' if text is None else ' for {} data'.format(text)
-            logger.info("Imputed %i missing feature(s)%s", n_imputes, msg)
-            logger.debug("by %s", strategy_str)
-        return (new_x_data, new_y_data)
-
     def _is_fitted(self):
         """Check if the MLR models are fitted."""
-        return bool(self._clf is not None)
+        if self._clf is None:
+            return False
+        x_dummy = np.ones((1, self.classes['features'].size))
+        try:
+            self._clf.predict(x_dummy)
+        except NotFittedError:
+            return False
+        return True
 
     def _is_ready_for_plotting(self):
         """Check if the class is ready for plotting."""
@@ -1050,45 +1090,14 @@ class MLRModel():
 
     def _load_training_data(self):
         """Load training data (features/labels)."""
-        (self._data['x_raw'],
-         self._data['y_raw']) = self._extract_features_and_labels()
-        self._reset_input_data()
-        self._data['x_train'] = np.ma.copy(self._data['x_data'])
-        self._data['y_train'] = np.ma.copy(self._data['y_data'])
-        # TODO
-        logger.debug("Loaded %i raw input data point(s)",
-                     self._data['y_raw'].size)
-        self._preprocess_data()
+        (self._data['x_data'],
+         self._data['y_data']) = self._extract_features_and_labels()
+        self.reset_training_data()
         logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
-
-    def _map_to_data(self, function):
-        """Map a function to all elements of `self._data` (ignore `raw`)."""
-        for data_type in ('data', 'train', 'test'):
-            x_type = 'x_' + data_type
-            y_type = 'y_' + data_type
-            if x_type in self._data:
-                text = 'all' if data_type == 'data' else data_type
-                (self._data[x_type], self._data[y_type]) = function(
-                    self._data[x_type], self._data[y_type], text=text)
-
-    def _preprocess_data(self):
-        """Preprocess input data."""
-        logger.info("Preprocessing training data")
-
-        # Imputing
-        if self._transformer['imputer'] is not None:
-            self._transformer['imputer'].fit(self._data['x_train'])
-            self._map_to_data(self._impute_data)
-
-        # Scaling
-        self._transformer['x_scaler'].fit(self._data['x_train'])
-        self._transformer['y_scaler'].fit(
-            np.expand_dims(self._data['y_train'], axis=-1))
-        self._map_to_data(self._scale_data)
 
     def _remove_missing_features(self, x_data, y_data=None):
         """Remove missing values in the features data (if desired)."""
-        if self._transformer['imputer'] is not None:
+        if self._cfg['imputation_strategy'] != 'remove':
             new_x_data = x_data.filled(np.nan)
             new_y_data = None if y_data is None else y_data.filled(np.nan)
         else:
@@ -1120,13 +1129,6 @@ class MLRModel():
                 "Removed %i training point(s) where labels were missing", diff)
         return (new_x_data, new_y_data)
 
-    def _reset_input_data(self):
-        """Reset self._data."""
-        self._data['x_data'] = np.ma.copy(self._data['x_raw'])
-        self._data['y_data'] = np.ma.copy(self._data['y_raw'])
-        for data_type in ('x_train', 'x_test', 'y_train', 'y_test'):
-            self._data.pop(data_type, None)
-
     def _save_csv_file(self,
                        data_type,
                        filename,
@@ -1150,43 +1152,18 @@ class MLRModel():
                 filename = '{}_{}.csv'.format(data_type, pred_name)
         path = os.path.join(self._cfg['mlr_work_dir'], filename)
 
-        # Save file
+        # File Header
         if 'x_' in data_type:
             sub_txt = 'features: {}'.format(self.classes['features'])
-            scaler = 'x_scaler'
         else:
             sub_txt = 'label: {}'.format(self.classes['label'])
-            scaler = 'y_scaler'
-        mean = self._transformer[scaler].mean_
-        std = self._transformer[scaler].scale_
-        header = '{} with shape {} ({:d}: number of observations)\n{}'.format(
-            data_type, csv_data.shape, csv_data.shape[0], sub_txt)
-        if 'raw' not in data_type:
-            header += ('\nNote: values x have to be transformed by std * x + '
-                       'mean to get real data\nmean = {}\nstd = {}'.format(
-                           mean, std))
+        header = ('{} with shape {}\n{:d}: number of observations)\n{}\nNote:'
+                  'nan indicates missing values').format(
+                      data_type, csv_data.shape, csv_data.shape[0], sub_txt)
+
+        # Save file
         np.savetxt(path, csv_data, delimiter=',', header=header)
         logger.info("Wrote %s", path)
-
-    def _scale_data(self, x_data, y_data=None, text=None):
-        """Scale values in the feature data."""
-        msg = '' if text is None else " for data '{}'".format(text)
-        new_x_data = self._transformer['x_scaler'].transform(x_data)
-        logger.info("Scaled x%s", msg)
-        logger.debug("by means %s and standard deviations %s",
-                     self._transformer['x_scaler'].mean_,
-                     self._transformer['x_scaler'].scale_)
-        if y_data is None:
-            new_y_data = None
-        else:
-            new_y_data = self._transformer['y_scaler'].transform(
-                np.expand_dims(y_data, axis=-1))
-            new_y_data = np.squeeze(new_y_data)
-            logger.info("Scaled y%s", msg)
-            logger.debug("by means %.3e and standard deviations %.3e",
-                         self._transformer['y_scaler'].mean_[0],
-                         self._transformer['y_scaler'].scale_[0])
-        return (new_x_data, new_y_data)
 
     def _set_prediction_cube_attributes(self,
                                         cube,
