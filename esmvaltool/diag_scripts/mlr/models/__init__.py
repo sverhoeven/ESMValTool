@@ -179,9 +179,12 @@ class MLRModel():
         self._data['y_pred'] = {}
         self._datasets = {}
         self._transformer = {}
-        self._transformer['imputer'] = mlr.Imputer(
-            strategy=self._cfg.get('imputation_strategy', 'remove'),
-            fill_value=self._cfg.get('imputation_constant'))
+        if self._cfg.get('imputation_strategy', 'remove') == 'remove':
+            self._transformer['imputer'] = None
+        else:
+            self._transformer['imputer'] = mlr.Imputer(
+                strategy=self._cfg['imputation_strategy'],
+                fill_value=self._cfg.get('imputation_constant'))
         for scaler in ('x_scaler', 'y_scaler'):
             self._transformer[scaler] = StandardScaler(
                 with_mean=self._cfg.get('standardize_data', True),
@@ -445,8 +448,9 @@ class MLRModel():
             y_preds = list(y_preds)
 
             # Save data
-            self._data['x_pred'][pred_name] = np.copy(x_pred)
-            self._data['y_pred'][pred_name] = np.copy(y_preds[0])
+            # TODO
+            self._data['x_pred'][pred_name] = np.ma.copy(x_pred)
+            self._data['y_pred'][pred_name] = np.ma.array(y_preds[0])
             y_preds[0] = self._transformer['y_scaler'].inverse_transform(
                 np.expand_dims(y_preds[0], axis=-1))
             y_preds[0] = np.squeeze(y_preds[0])
@@ -454,11 +458,14 @@ class MLRModel():
             cubes = iris.cube.CubeList([])
             for (idx, y_pred) in enumerate(y_preds):
                 predictions[pred_name].append(np.copy(y_pred))
+                # TODO
+                # y_pred = np.ma.array(y_pred, mask=x_pred.mask)
                 pred_cube = cube.copy(data=y_pred.reshape(cube.shape))
-                if self._transformer['imputer'].strategy == 'remove':
+                if self._transformer['imputer'] is None:
                     if np.ma.is_masked(cube.data):
                         pred_cube.data = np.ma.array(
-                            pred_cube.data, mask=cube.data.mask)
+                            pred_cube.data,
+                            mask=pred_cube.mask | cube.data.mask)
                 self._set_prediction_cube_attributes(
                     pred_cube, new_path, idx, prediction_name=pred_name)
                 cubes.append(pred_cube)
@@ -580,10 +587,13 @@ class MLRModel():
         datasets = self._datasets['training']
         (x_data, _) = self._extract_x_data(datasets, 'feature')
         y_data = self._extract_y_data(datasets)
+        logger.debug("Found %i raw input data point(s)", y_data.size)
 
-        # Handle missing values in labels
-        logger.debug("Found %i input data point(s)", x_data.shape[0])
+        # Remove missing values in labels
         (x_data, y_data) = self._remove_missing_labels(x_data, y_data)
+
+        # Remove missing values in features (if desired)
+        (x_data, y_data) = self._remove_missing_features(x_data, y_data)
 
         # Check sizes
         if x_data.shape[0] != y_data.size:
@@ -600,9 +610,7 @@ class MLRModel():
             datasets, 'prediction_input')
 
         # Impute data (point removing is done later in cube mask)
-        if self._transformer['imputer'].strategy == 'remove':
-            x_data = x_data.filled(np.ma.mean(x_data))
-        else:
+        if self._transformer['imputer'] is not None:
             (x_data, _) = self._impute_data(x_data, text='prediction input')
 
         # Scale data
@@ -833,7 +841,7 @@ class MLRModel():
                 "Found %i group attribute(s) (defined in 'label' data)",
                 len(group_attributes))
             logger.debug(pformat(group_attributes))
-        return group_attributes
+        return np.array(group_attributes)
 
     def _get_label(self):
         """Extract label from training data."""
@@ -936,21 +944,17 @@ class MLRModel():
 
     def _impute_data(self, x_data, y_data=None, text=None):
         """Impute missing values in the feature data."""
-        (new_x_data, new_y_data,
-         n_imputes) = self._transformer['imputer'].transform(x_data, y_data)
-        strategy = self._transformer['imputer'].strategy
-        if strategy == 'remove':
-            strategy_str = 'removing point(s)'
-            if self._cfg.get('accept_only_scalar_data'):
-                mask = self._transformer['imputer'].mask_
-                removed_groups = self.classes['group_attributes_raw'][mask]
-                if removed_groups.size != 0:
-                    strategy_str += ' {}'.format(removed_groups)
-                self.classes['group_attributes'] = np.copy(
-                    self.classes['group_attributes_raw'][~mask])
+        if self._transformer['imputer'] is None:
+            new_x_data = x_data
+            new_y_data = None if y_data is None else y_data
+            n_imputes = 0
         else:
+            (new_x_data, new_y_data,
+             n_imputes) = self._transformer['imputer'].transform(x_data,
+                                                                 y_data)
             strategy_str = 'setting them to {} ({})'.format(
-                strategy, self._transformer['imputer'].statistics_)
+                self._transformer['imputer'].strategy,
+                self._transformer['imputer'].statistics_)
         if n_imputes:
             msg = '' if text is None else ' for {} data'.format(text)
             logger.info("Imputed %i missing feature(s)%s", n_imputes, msg)
@@ -976,8 +980,6 @@ class MLRModel():
     def _load_classes(self):
         """Populate self.classes and check for errors."""
         self.classes['group_attributes'] = self._get_group_attributes()
-        self.classes['group_attributes_raw'] = np.copy(
-            self.classes['group_attributes'])
         (self.classes['features'], self.classes['features_units'],
          self.classes['features_types']) = self._get_features()
         (self.classes['label'],
@@ -1053,6 +1055,7 @@ class MLRModel():
         self._reset_input_data()
         self._data['x_train'] = np.ma.copy(self._data['x_data'])
         self._data['y_train'] = np.ma.copy(self._data['y_data'])
+        # TODO
         logger.debug("Loaded %i raw input data point(s)",
                      self._data['y_raw'].size)
         self._preprocess_data()
@@ -1073,8 +1076,9 @@ class MLRModel():
         logger.info("Preprocessing training data")
 
         # Imputing
-        self._transformer['imputer'].fit(self._data['x_train'])
-        self._map_to_data(self._impute_data)
+        if self._transformer['imputer'] is not None:
+            self._transformer['imputer'].fit(self._data['x_train'])
+            self._map_to_data(self._impute_data)
 
         # Scaling
         self._transformer['x_scaler'].fit(self._data['x_train'])
@@ -1082,14 +1086,38 @@ class MLRModel():
             np.expand_dims(self._data['y_train'], axis=-1))
         self._map_to_data(self._scale_data)
 
+    def _remove_missing_features(self, x_data, y_data=None):
+        """Remove missing values in the features data (if desired)."""
+        if self._transformer['imputer'] is not None:
+            new_x_data = x_data.filled(np.nan)
+            new_y_data = None if y_data is None else y_data.filled(np.nan)
+        else:
+            if x_data.mask.shape == ():
+                mask = np.full(x_data.shape[0], False)
+            else:
+                mask = np.any(x_data.mask, axis=1)
+            new_x_data = x_data.filled()[~mask]
+            new_y_data = None if y_data is None else y_data.filled()[~mask]
+            n_removed = x_data.shape[0] - new_x_data.shape[0]
+            if n_removed:
+                msg = ('Removed %i training point(s) where features were '
+                       'missing')
+                if self._cfg.get('accept_only_scalar_data'):
+                    removed_groups = self.classes['group_attributes'][mask]
+                    msg += ' ({})'.format(removed_groups)
+                    self.classes['group_attributes'] = (
+                        self.classes['group_attributes'][~mask])
+                logger.info(msg, n_removed)
+        return (new_x_data, new_y_data)
+
     def _remove_missing_labels(self, x_data, y_data):
         """Remove missing values in the label data."""
         new_x_data = x_data[~y_data.mask]
         new_y_data = y_data[~y_data.mask]
         diff = y_data.size - new_y_data.size
         if diff:
-            logger.info("Removed %i data point(s) where labels were missing",
-                        diff)
+            logger.info(
+                "Removed %i training point(s) where labels were missing", diff)
         return (new_x_data, new_y_data)
 
     def _reset_input_data(self):
@@ -1098,8 +1126,6 @@ class MLRModel():
         self._data['y_data'] = np.ma.copy(self._data['y_raw'])
         for data_type in ('x_train', 'x_test', 'y_train', 'y_test'):
             self._data.pop(data_type, None)
-        self.classes['group_attributes'] = np.copy(
-            self.classes['group_attributes_raw'])
 
     def _save_csv_file(self,
                        data_type,

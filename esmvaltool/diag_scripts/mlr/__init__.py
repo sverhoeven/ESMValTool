@@ -4,6 +4,7 @@ import logging
 import os
 
 import numpy as np
+from sklearn.compose import TransformedTargetRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 
@@ -77,6 +78,14 @@ class AdvancedPipeline(Pipeline):
 
     def transform_only(self, x_data):
         """Only perform `transform` steps of Pipeline."""
+
+
+class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
+    """Expand `sklearn.compose.TransformedTargetRegressor` class."""
+
+    def predict(self, x_data, return_std=False, return_cov=False):
+        """Expand `predict()` method."""
+        return super().predict(X)
 
 
 def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
