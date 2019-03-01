@@ -1107,10 +1107,7 @@ class MLRModel():
             new_x_data = x_data.filled(np.nan)
             new_y_data = None if y_data is None else y_data.filled(np.nan)
         else:
-            if x_data.mask.shape == ():
-                mask = np.full(x_data.shape[0], False)
-            else:
-                mask = np.any(x_data.mask, axis=1)
+            mask = np.any(np.ma.getmaskarray(x_data), axis=1)
             new_x_data = x_data.filled()[~mask]
             new_y_data = None if y_data is None else y_data.filled()[~mask]
             n_removed = x_data.shape[0] - new_x_data.shape[0]
@@ -1127,8 +1124,9 @@ class MLRModel():
 
     def _remove_missing_labels(self, x_data, y_data):
         """Remove missing values in the label data."""
-        new_x_data = x_data[~y_data.mask]
-        new_y_data = y_data[~y_data.mask]
+        mask = np.ma.getmaskarray(y_data)
+        new_x_data = x_data[~mask]
+        new_y_data = y_data[~mask]
         diff = y_data.size - new_y_data.size
         if diff:
             logger.info(
