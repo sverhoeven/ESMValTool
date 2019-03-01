@@ -66,6 +66,8 @@ class MLRModel():
         'group_datasets_by_attributes should be given.
     allow_missing_features : bool, optional (default: False)
         Allow missing features in the training data.
+    cache_intermediate_results : bool, optional (default: True)
+        Cache the intermediate results of the pipeline's transformers.
     fit_kwargs : dict, optional
         Optional keyword arguments for the classifier's `fit()` function. Have
         to be given for each step of the pipeline seperated by two underscores,
@@ -599,7 +601,11 @@ class MLRModel():
         steps.append(('regressor', transformed_regressor))
 
         # Final classifier
-        self._clf = mlr.AdvancedPipeline(steps)
+        if self._cfg.get('cache_intermediate_results', True):
+            memory = self._cfg['mlr_work_dir']
+        else:
+            memory = None
+        self._clf = mlr.AdvancedPipeline(steps, memory=memory)
 
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
@@ -629,7 +635,7 @@ class MLRModel():
             datasets, 'prediction_input')
 
         # If desired missing values get removed in the output cube via a mask
-        mask = x_data.mask
+        mask = np.ma.getmaskarray(x_data)
         if self._cfg['imputation_strategy'] == 'remove':
             x_data = x_data.filled(np.ma.mean(x_data))
         else:
