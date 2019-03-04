@@ -42,7 +42,7 @@ class GBRModel(MLRModel):
 
         # Plot
         feature_importance = (
-            self._clf.regressor_.named_steps['regressor'].feature_importances_)
+            self._clf.named_steps['regressor'].regressor_.feature_importances_)
         sorted_idx = np.argsort(feature_importance)
         pos = np.arange(sorted_idx.shape[0]) + 0.5
         axes.barh(pos, feature_importance[sorted_idx], align='center')

@@ -59,8 +59,8 @@ def main(cfg):
 
         # Output
         mlr_model.plot_scatterplots()
-        # if model_type in ('gbr' or 'rfr'):
-        #     mlr_model.plot_feature_importance()
+        if model_type in ('gbr' or 'rfr'):
+            mlr_model.plot_feature_importance()
         # if model_type == 'gbr':
         #     mlr_model.plot_partial_dependences()
         #     mlr_model.plot_prediction_error()
