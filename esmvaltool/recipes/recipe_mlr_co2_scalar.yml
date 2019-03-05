@@ -332,7 +332,7 @@ diagnostics:
     description: Perform MLR on input data.
     scripts:
       mlr:
-        script: mlr/gpr_model.py
+        script: mlr/main_gpr.py
         ancestors: [
           'diag_mlr_input_*/mean',
           'diag_mlr_input_*/trend',

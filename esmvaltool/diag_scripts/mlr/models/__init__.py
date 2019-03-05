@@ -10,18 +10,16 @@ import cf_units
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
+from skater.core.explanations import Interpretation
+from skater.model import InMemoryModel
 from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from esmvaltool.diag_scripts import mlr
-from esmvaltool.diag_scripts.shared import (
-    io,
-    group_metadata,
-    plot,
-    select_metadata,
-)
+from esmvaltool.diag_scripts.shared import (group_metadata, io, plot,
+                                            select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -137,7 +135,6 @@ class MLRModel():
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
-
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
@@ -181,12 +178,13 @@ class MLRModel():
             `labels` (e.g. `dataset='CanESM2'`).
 
         """
-        self._cfg = cfg
+        self._cfg = copy.deepcopy(cfg)
         self._clf = None
         self._data = {}
         self._data['x_pred'] = {}
         self._data['y_pred'] = {}
         self._datasets = {}
+        self._skater = {}
         self.classes = {}
         self.parameters = self._load_parameters()
 
@@ -285,6 +283,9 @@ class MLRModel():
         logger.debug("Parameters:")
         logger.debug(pformat(self.parameters))
 
+        # Interpretation
+        self._load_skater_interpreter()
+
     def grid_search_cv(self, param_grid=None, **kwargs):
         """Perform exhaustive parameter search using cross-validation.
 
@@ -347,6 +348,76 @@ class MLRModel():
         logger.debug("Parameters:")
         logger.debug(pformat(self.parameters))
 
+        # Interpretation
+        self._load_skater_interpreter()
+
+    def plot_feature_importance(self, filename=None):
+        """Plot feature importance.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'feature_importance')
+            Name of the plot file.
+
+        """
+        if not self._is_ready_for_plotting():
+            return
+        logger.info("Plotting feature importance")
+        if filename is None:
+            filename = 'feature_importance'
+        progressbar = True if self._cfg['log_level'] == 'debug' else False
+
+        # Plot
+        (_, axes) = (self._skater['interpreter'].feature_importance.
+                     plot_feature_importance(
+                         self._skater['model'],
+                         progressbar=progressbar))
+        axes.set_title('Variable Importance ({} Model)'.format(
+            self._CLF_TYPE.__name__))
+        axes.set_xlabel('Relative Importance')
+        new_filename = filename + '.' + self._cfg['output_file_type']
+        new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+        plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+        logger.info("Wrote %s", new_path)
+        plt.close()
+
+    def plot_partial_dependences(self, filename=None):
+        """Plot partial dependences for every feature.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'partial_dependece_of_{feature}')
+            Name of the plot file.
+
+        """
+        if not self._is_ready_for_plotting():
+            return
+        logger.info("Plotting partial dependences")
+        if filename is None:
+            filename = 'partial_dependece_of_{feature}'
+        progressbar = True if self._cfg['log_level'] == 'debug' else False
+
+        # Plot for every feature
+        for (idx, feature_name) in enumerate(self.classes['features']):
+            logger.debug("Plotting partial dependence of '%s'", feature_name)
+            ((_, axes), ) = (self._skater['interpreter'].partial_dependence.
+                             plot_partial_dependence([feature_name],
+                                                     self._skater['model'],
+                                                     progressbar=progressbar,
+                                                     with_variance=True))
+            axes.set_title('Partial dependence ({} Model)'.format(
+                self._CLF_TYPE.__name__))
+            axes.set_xlabel(feature_name)
+            axes.set_ylabel(self.classes['label'])
+            axes.get_legend().remove()
+            new_filename = (filename.format(feature=feature_name) + '.' +
+                            self._cfg['output_file_type'])
+            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+            logger.info("Wrote %s", new_path)
+            axes.clear()
+        plt.close()
+
     def plot_scatterplots(self, filename=None):
         """Plot scatterplots label vs. feature for every feature.
 
@@ -358,12 +429,14 @@ class MLRModel():
         """
         if not self._is_ready_for_plotting():
             return
+        logger.info("Plotting scatterplots")
         if filename is None:
             filename = 'scatterplot_{feature}'
         (_, axes) = plt.subplots()
 
         # Plot scatterplot for every feature
         for (f_idx, feature) in enumerate(self.classes['features']):
+            logger.debug("Plotting scatterplot of '%s'", feature)
             if self._cfg.get('accept_only_scalar_data'):
                 for (g_idx, group_attr) in enumerate(
                         self.classes['group_attributes']):
@@ -463,10 +536,11 @@ class MLRModel():
 
     def reset_training_data(self):
         """Reset training and test data."""
-        self._data['x_train'] = np.ma.copy(self._data['x_data'])
-        self._data['y_train'] = np.ma.copy(self._data['y_data'])
+        self._data['x_train'] = np.copy(self._data['x_data'])
+        self._data['y_train'] = np.copy(self._data['y_data'])
         for data_type in ('x_test', 'y_test'):
             self._data.pop(data_type, None)
+        logger.debug("Resetted input data")
 
     def simple_train_test_split(self, test_size=None):
         """Split input data into training and test data.
@@ -578,7 +652,6 @@ class MLRModel():
         """Create classifier with correct settings."""
         if not self._clf_is_valid(text='Creating classifier'):
             return
-        logger.debug("Creating classifier")
         steps = []
 
         # Imputer
@@ -606,6 +679,7 @@ class MLRModel():
         else:
             memory = None
         self._clf = mlr.AdvancedPipeline(steps, memory=memory)
+        logger.debug("Created classifier")
 
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
@@ -1094,12 +1168,36 @@ class MLRModel():
         logger.debug("Found parameter(s) %s in recipe", parameters)
         return parameters
 
+    def _load_skater_interpreter(self):
+        """Load :mod:`skater` interpretation modules."""
+        x_train = np.copy(self._data['x_train'])
+        y_train = np.copy(self._data['y_train'])
+        if self._cfg['imputation_strategy'] != 'remove':
+            x_train = self._clf.named_steps['imputer'].transform(x_train)
+
+        # Interpreter
+        self._skater['interpreter'] = Interpretation(
+            x_train,
+            training_labels=y_train,
+            feature_names=self.classes['features'])
+        logger.debug("Loaded skater interpreter with new training data")
+
+        # Model
+        example_size = min(y_train.size, 20)
+        self._skater['model'] = InMemoryModel(
+            self._clf.predict,
+            feature_names=self.classes['features'],
+            examples=x_train[:example_size],
+            model_type='regressor',
+        )
+        logger.debug("Loaded skater model with new classifier")
+
     def _load_training_data(self):
         """Load training data (features/labels)."""
         (self._data['x_data'],
          self._data['y_data']) = self._extract_features_and_labels()
-        self.reset_training_data()
         logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
+        self.reset_training_data()
 
     def _remove_missing_features(self, x_data, y_data=None):
         """Remove missing values in the features data (if desired)."""

@@ -20,6 +20,11 @@ preprocessors:
   mask_sea: &mask_sea
     mask_landsea:
       mask_out: sea
+    extract_region:
+      start_latitude: -60.0
+      end_latitude: 90.0
+      start_longitude: 0.0
+      end_longitude: 360.0
 
   time_average:
     <<: *mask_sea
@@ -34,12 +39,12 @@ preprocessors:
 
 diagnostics:
 
-  diag_mlr_input_nbp:
+  diag_mlr_input_tas:
     variables:
       features: &variable_settings
-        short_name: nbp
+        short_name: tas
         project: CMIP5
-        mip: Lmon
+        mip: Amon
         field: T2Ms
         exp: historical
         ensemble: r1i1p1
@@ -59,53 +64,58 @@ diagnostics:
         preprocessor: regrid
         var_type: prediction_input
         additional_datasets:
-          - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
+          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       mean: &mean
         script: mlr/single_var.py
         mean: ['time']
-        tag: NBP-Glob_c
+        tag: T-Glob_c
       trend: &trend
         script: mlr/single_var.py
         trend: year
-        tag: NBP-Glob_t
+        tag: T-Glob_t
 
-  diag_mlr_input_tas:
+  diag_mlr_input_nbp:
     variables:
       features:
         <<: *variable_settings
-        short_name: tas
-        mip: Amon
+        short_name: nbp_grid
+        mip: Lmon
+        derive: true
       prediction_input:
         <<: *variable_settings
-        short_name: tas
-        mip: Amon
+        short_name: nbp_grid
+        mip: Lmon
+        derive: true
         preprocessor: regrid
         var_type: prediction_input
         additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
+          - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       mean:
         <<: *mean
-        tag: T-Glob_c
+        tag: NBP-Glob_c
       trend:
         <<: *trend
-        tag: T-Glob_t
+        tag: NBP-Glob_t
 
   diag_mlr:
     description: Perform MLR on input data.
     variables:
       label:
         <<: *variable_settings
+        short_name: nbp_grid
+        mip: Lmon
         exp: rcp45
         start_year: 2020
         end_year: 2040
         preprocessor: time_average
         var_type: label
         tag: NBP
+        derive: true
     scripts:
       multiple_mlr_models:
-        script: mlr/multiple_mlr_models.py
+        script: mlr/main_gpr.py
         ancestors: [
           'label',
           'diag_mlr_input_*/mean',
@@ -117,13 +127,13 @@ diagnostics:
           select:
             project: CMIP5
           group: dataset
-        parameters:
-          learning_rate: 0.05
-          loss: ls
-          max_depth: 4
-          min_samples_split: 2
-          n_estimators: 2000
-        # grid_search_cv_param_grid:
-        #   n_estimators: [10, 20]
-        # grid_search_cv_kwargs:
-        #   cv: loo
+          # parameters:
+          #   learning_rate: 0.05
+          #   loss: ls
+          #   max_depth: 4
+          #   min_samples_split: 2
+          #   n_estimators: 2000
+          # grid_search_cv_param_grid:
+          #   n_estimators: [10, 20]
+          # grid_search_cv_kwargs:
+          #   cv: loo

@@ -78,6 +78,9 @@ class AdvancedPipeline(Pipeline):
 
     def transform_only(self, x_data):
         """Only perform `transform` steps of Pipeline."""
+        for (_, transformer) in self.steps[:-1]:
+            x_data = transformer.transform(x_data)
+        return x_data
 
 
 class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):

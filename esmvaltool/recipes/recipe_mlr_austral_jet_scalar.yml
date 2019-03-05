@@ -400,7 +400,7 @@ diagnostics:
     additional_datasets: *datasets
     scripts:
       mlr:
-        script: mlr/single_mlr_model.py
+        script: mlr/main.py
         ancestors: [
           'uajet',
           'diag_mlr_input_*/mean',
