@@ -25,11 +25,10 @@ import logging
 import os
 from pprint import pformat
 
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
-
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
                                             select_metadata)
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -40,7 +39,7 @@ def main(cfg):
 
     # Kernel
     kernel = (ConstantKernel(1.0, (1e-5, 1e5)) * RBF(1.0, (1e-5, 1e5)) +
-              WhiteKernel(1e-1, (1e-5, 1e5)))
+              WhiteKernel(1e-1, (1e-10, 1e5)))
     cfg.setdefault('parameters', {})
     cfg['parameters']['kernel'] = kernel
 

@@ -24,11 +24,13 @@ mean : list of str, optional
 trend : bool or str, optional (default: False)
     Calculate the temporal trend of the data, if `str` is given aditionally
     aggregate along that coordinate before trend calculation(e.g. `year`).
-weighted : bool, optional (default: True)
-    Calculate weighted averages/sums (using grid cell boundaries).
+area_weighted : bool, optional (default: True)
+    Calculate weighted averages/sums for area (using grid cell boundaries).
+time_weighted : bool, optional (default: True)
+    Calculate weighted averages/sums for time (using grid cell boundaries).
 tag : str, optional
     Tag for the variable used in the MLR model.
-convert_units : str, optional
+convert_units_to : str, optional
     Convert units of the cube.
 
 """
@@ -39,11 +41,11 @@ import os
 
 import iris
 import numpy as np
-from scipy import stats
-
+from cf_units import Unit
 from esmvaltool.diag_scripts.mlr import write_cube
 from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
                                             run_diagnostic)
+from scipy import stats
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -74,7 +76,7 @@ def _get_slope(x_arr, y_arr):
 def _get_area_weights(cfg, cube):
     """Calculate area weights."""
     area_weights = None
-    if cfg.get('weighted', True):
+    if cfg.get('area_weighted', True):
         # TODO: Remove after correctly formatted OBS data
         for coord in cube.coords(dim_coords=True):
             if not coord.has_bounds():
@@ -91,7 +93,7 @@ def _get_area_weights(cfg, cube):
 def _get_time_weights(cfg, cube):
     """Calculate time weights."""
     time_weights = None
-    if cfg.get('weighted', True):
+    if cfg.get('time_weighted', True):
         # TODO: Remove after correctly formatted OBS data
         for coord in cube.coords(dim_coords=True):
             if not coord.has_bounds():
@@ -167,6 +169,7 @@ def calculate_trend(cfg, cube, data):
         slopes = v_get_slope(x_data, y_data)
         cube = cube.collapsed('time', iris.analysis.MEAN)
         cube.data = np.ma.masked_invalid(slopes)
+        cube.units *= Unit(temp_units)
         data['standard_name'] += '_trend'
         data['short_name'] += '_trend'
         data['long_name'] += ' (trend)'
@@ -194,8 +197,16 @@ def main(cfg):
             data['filename'] = new_path
             if 'tag' in cfg:
                 data['tag'] = cfg['tag']
-            if cfg.get('convert_units'):
-                cube.convert_units(cfg['convert_units'])
+            if cfg.get('convert_units_to'):
+                logger.info("Converting units from '%s' to '%s'",
+                            cube.units.origin, cfg['convert_units_to'])
+                try:
+                    cube.convert_units(cfg['convert_units_to'])
+                except ValueError:
+                    logger.warning("Cannot convert units from '%s' to '%s'",
+                                   cube.units.origin, cfg['convert_units_to'])
+                else:
+                    data['units'] = cfg['convert_units_to']
             write_cube(cube, data, new_path)
     else:
         logger.warning("Cannot save netcdf files because 'write_netcdf' is "

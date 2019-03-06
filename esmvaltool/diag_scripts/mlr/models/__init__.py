@@ -6,20 +6,19 @@ import logging
 import os
 from pprint import pformat
 
-import cf_units
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
+from cf_units import Unit
+from esmvaltool.diag_scripts import mlr
+from esmvaltool.diag_scripts.shared import (group_metadata, io, plot,
+                                            select_metadata)
 from skater.core.explanations import Interpretation
 from skater.model import InMemoryModel
 from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 from sklearn.preprocessing import StandardScaler
-
-from esmvaltool.diag_scripts import mlr
-from esmvaltool.diag_scripts.shared import (group_metadata, io, plot,
-                                            select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -135,6 +134,7 @@ class MLRModel():
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
+
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
@@ -356,7 +356,7 @@ class MLRModel():
 
         Parameters
         ----------
-        filename : str, optional (default: 'feature_importance')
+        filename : str, optional (default: 'feature_importance_{method}')
             Name of the plot file.
 
         """
@@ -364,22 +364,27 @@ class MLRModel():
             return
         logger.info("Plotting feature importance")
         if filename is None:
-            filename = 'feature_importance'
+            filename = 'feature_importance_{method}'
         progressbar = True if self._cfg['log_level'] == 'debug' else False
 
         # Plot
-        (_, axes) = (self._skater['interpreter'].feature_importance.
-                     plot_feature_importance(
-                         self._skater['model'],
-                         progressbar=progressbar))
-        axes.set_title('Variable Importance ({} Model)'.format(
-            self._CLF_TYPE.__name__))
-        axes.set_xlabel('Relative Importance')
-        new_filename = filename + '.' + self._cfg['output_file_type']
-        new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
-        plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-        logger.info("Wrote %s", new_path)
-        plt.close()
+        for method in ('model-scoring', 'prediction-variance'):
+            logger.debug("Plotting feature importance for method '%s'", method)
+            (_, axes) = (self._skater['interpreter'].feature_importance.
+                         plot_feature_importance(
+                             self._skater['model'],
+                             method=method,
+                             progressbar=progressbar))
+            axes.set_title('Variable Importance ({} Model)'.format(
+                self._CLF_TYPE.__name__))
+            axes.set_xlabel('Relative Importance')
+            new_filename = (filename.format(method=method) + '.' +
+                            self._cfg['output_file_type'])
+            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+            logger.info("Wrote %s", new_path)
+            axes.clear()
+        plt.close('all')
 
     def plot_partial_dependences(self, filename=None):
         """Plot partial dependences for every feature.
@@ -416,7 +421,7 @@ class MLRModel():
             plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
             logger.info("Wrote %s", new_path)
             axes.clear()
-        plt.close()
+        plt.close('all')
 
     def plot_scatterplots(self, filename=None):
         """Plot scatterplots label vs. feature for every feature.
@@ -476,7 +481,7 @@ class MLRModel():
                 additional_artists=[legend])
             logger.info("Wrote %s", new_path)
             axes.clear()
-        plt.close()
+        plt.close('all')
 
     def predict(self, **kwargs):
         """Perform prediction using the MLR model(s) and write netcdf.
@@ -589,7 +594,7 @@ class MLRModel():
                         format(coords, msg, cube_coords))
 
     def _check_dataset(self, datasets, var_type, tag, text=None):
-        """Check if `tag` of datasets exists."""
+        """Check if datasets are exist and are valid."""
         datasets = select_metadata(datasets, tag=tag)
         msg = '' if text is None else text
         if not datasets:
@@ -614,7 +619,7 @@ class MLRModel():
         else:
             units = self.classes['features_units'][np.where(
                 self.classes['features'] == tag)][0]
-        if units != cf_units.Unit(datasets[0]['units']):
+        if units != Unit(datasets[0]['units']):
             raise ValueError(
                 "Expected units '{}' for {} '{}'{}, got '{}'".format(
                     units, var_type, tag, msg, datasets[0]['units']))
@@ -647,6 +652,24 @@ class MLRModel():
                 msg)
             return False
         return True
+
+    def _convert_units(self, datasets):
+        """Convert units of datasets if desired."""
+        for dataset in datasets:
+            if not dataset.get('convert_units_to'):
+                continue
+            units_from = Unit(dataset['units'])
+            units_to = Unit(dataset['convert_units_to'])
+            try:
+                units_from.convert(0.0, units_to)
+            except ValueError:
+                logger.warning(
+                    "Cannot convert units of %s '%s' from '%s' to '%s'",
+                    dataset['var_type'], dataset['tag'], units_from.origin,
+                    units_to.origin)
+                dataset.pop('convert_units_to')
+            else:
+                dataset['units'] = dataset['convert_units_to']
 
     def _create_classifier(self):
         """Create classifier with correct settings."""
@@ -763,7 +786,7 @@ class MLRModel():
             datasets_ = select_metadata(datasets, group_attribute=group_attr)
             dataset = self._check_dataset(datasets_, 'label',
                                           self.classes['label'], msg)
-            cube = self._load_cube(dataset['filename'])
+            cube = self._load_cube(dataset)
             text = "label '{}'{}".format(self.classes['label'], msg)
             self._check_cube_coords(cube, None, text)
             y_data = np.ma.hstack((y_data, self._get_cube_data(cube)))
@@ -791,7 +814,7 @@ class MLRModel():
         """Get broadcasted cube."""
         msg = 'data' if text is None else text
         target_shape = ref_cube.shape
-        cube_to_broadcast = self._load_cube(dataset['filename'])
+        cube_to_broadcast = self._load_cube(dataset)
         data_to_broadcast = np.ma.array(cube_to_broadcast.data)
         try:
             new_axis_pos = np.delete(
@@ -891,14 +914,15 @@ class MLRModel():
         cube = None
         ref_cube = None
         grouped_datasets = group_metadata(datasets, 'tag')
-        for (tag, data) in grouped_datasets.items():
-            cube = iris.load_cube(data[0]['filename'])
-            if 'broadcast_from' not in data[0]:
+        for (tag, datasets_) in grouped_datasets.items():
+            dataset = datasets_[0]
+            cube = self._load_cube(dataset)
+            if 'broadcast_from' not in dataset:
                 ref_cube = cube
             if not self._cfg.get('use_only_coords_as_features'):
                 features.append(tag)
-                units.append(cube.units)
-                if 'broadcast_from' in data[0]:
+                units.append(Unit(dataset['units']))
+                if 'broadcast_from' in dataset:
                     types.append('broadcasted')
                 else:
                     types.append('regular')
@@ -952,11 +976,11 @@ class MLRModel():
         if len(labels) > 1:
             raise ValueError(
                 "Expected unique label tag, got {}".format(labels))
-        cube = iris.load_cube(datasets[0]['filename'])
+        units = Unit(datasets[0]['units'])
         logger.info(
             "Found label '%s' with units '%s' (defined in 'label' "
-            "data)", labels[0], cube.units)
-        return (labels[0], cube.units)
+            "data)", labels[0], units)
+        return (labels[0], units)
 
     def _get_prediction_array(self, x_data, x_mask, **kwargs):
         """Get (multi-dimensional) prediction output."""
@@ -1000,7 +1024,7 @@ class MLRModel():
         for tag in tags:
             dataset = self._check_dataset(datasets, var_type, tag, msg)
             if dataset is not None:
-                ref_cube = self._load_cube(dataset['filename'])
+                ref_cube = self._load_cube(dataset)
                 logger.debug("For %s '%s'%s, use reference cube", var_type,
                              tag, msg)
                 logger.debug(ref_cube)
@@ -1029,7 +1053,7 @@ class MLRModel():
                         cube = self._get_broadcasted_cube(
                             dataset, ref_cube, text)
                     else:
-                        cube = self._load_cube(dataset['filename'])
+                        cube = self._load_cube(dataset)
                     self._check_cube_coords(cube,
                                             ref_cube.coords(dim_coords=True),
                                             text)
@@ -1105,14 +1129,25 @@ class MLRModel():
         (self.classes['label'],
          self.classes['label_units']) = self._get_label()
 
-    def _load_cube(self, path):
-        """Load iris cube and check data type."""
-        cube = iris.load_cube(path)
+    def _load_cube(self, dataset):
+        """Load iris cube, check data type and convert units if desired."""
+        cube = iris.load_cube(dataset['filename'])
         if not np.issubdtype(cube.dtype, np.number):
             raise TypeError(
                 "Data type of cube loaded from '{}' is '{}', at "
                 "the moment only numerical data is supported".format(
-                    path, cube.dtype))
+                    dataset['filename'], cube.dtype))
+        if dataset.get('convert_units_to'):
+            logger.debug("Converting units from '%s' to '%s'",
+                         cube.units.origin, dataset['convert_units_to'])
+            cube.convert_units(dataset['convert_units_to'])
+        if not cube.units == Unit(dataset['units']):
+            raise ValueError(
+                "Units of cube '{}' for {} '{}' differ from units given in "
+                "dataset list (retrieved from ancestors or metadata.yml), got "
+                "'{}' in cube and '{}' in dataset list".format(
+                    dataset['filename'], dataset['var_type'], dataset['tag'],
+                    cube.units.origin, dataset['units']))
         return cube
 
     def _load_input_datasets(self, **metadata):
@@ -1151,6 +1186,10 @@ class MLRModel():
             msg = ' for metadata {}'.format(metadata) if metadata else ''
             raise ValueError(
                 "No training data (features/labels){} found".format(msg))
+
+        # Convert units
+        self._convert_units(training_datasets)
+        self._convert_units(prediction_datasets)
 
         # Set datasets
         self._datasets['training'] = self._group_by_attributes(
@@ -1287,7 +1326,7 @@ class MLRModel():
         cube.attributes.update(params)
         label = select_metadata(
             self._datasets['training'], var_type='label')[0]
-        label_cube = self._load_cube(label['filename'])
+        label_cube = self._load_cube(label)
         for attr in ('standard_name', 'var_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
 

@@ -5,9 +5,8 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.ensemble import GradientBoostingRegressor
-
 from esmvaltool.diag_scripts.mlr.models import MLRModel
+from sklearn.ensemble import GradientBoostingRegressor
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -70,4 +69,4 @@ class GBRModel(MLRModel):
         new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
         plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
         logger.info("Wrote %s", new_path)
-        plt.close()
+        plt.close('all')
