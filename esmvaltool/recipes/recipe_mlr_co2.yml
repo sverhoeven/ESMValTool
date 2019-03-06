@@ -15,6 +15,27 @@ documentation:
     - crescendo
 
 
+DATASET_ANCHOR: &datasets
+  - {dataset: BNU-ESM}
+  - {dataset: CanESM2}
+  - {dataset: CCSM4}
+  - {dataset: CESM1-BGC}
+  - {dataset: GFDL-ESM2G}
+  - {dataset: GFDL-ESM2M}
+  - {dataset: HadGEM2-CC}
+  - {dataset: HadGEM2-ES}
+  - {dataset: inmcm4}
+  - {dataset: IPSL-CM5A-LR}
+  - {dataset: IPSL-CM5A-MR}
+  - {dataset: IPSL-CM5B-LR}
+  - {dataset: MIROC-ESM}
+  - {dataset: MIROC-ESM-CHEM}
+  - {dataset: MPI-ESM-LR}
+  - {dataset: MPI-ESM-MR}
+  - {dataset: NorESM1-M}
+  - {dataset: NorESM1-ME}
+
+
 preprocessors:
 
   mask_sea: &mask_sea
@@ -43,6 +64,7 @@ diagnostics:
     variables:
       features: &variable_settings
         short_name: tas
+        preprocessor: mask_sea
         project: CMIP5
         mip: Amon
         field: T2Ms
@@ -50,30 +72,46 @@ diagnostics:
         ensemble: r1i1p1
         start_year: 1986
         end_year: 2005
-        preprocessor: mask_sea
         var_type: feature
-        additional_datasets:
-          - {dataset: CanESM2}
-          - {dataset: IPSL-CM5A-LR}
-          # - {dataset: MIROC5}
-          # - {dataset: MIROC-ESM}
-          # - {dataset: MPI-ESM-LR}
-          # - {dataset: NorESM1-M}
+        additional_datasets: *datasets
       prediction_input:
         <<: *variable_settings
         preprocessor: regrid
         var_type: prediction_input
         additional_datasets:
-          - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
+          - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       mean: &mean
         script: mlr/single_var.py
         mean: ['time']
         tag: T-Glob_c
+        convert_units_to: celsius
       trend: &trend
         script: mlr/single_var.py
         trend: year
         tag: T-Glob_t
+
+  diag_mlr_input_pr:
+    variables:
+      features:
+        <<: *variable_settings
+        short_name: pr
+      prediction_input:
+        <<: *variable_settings
+        short_name: pr
+        preprocessor: regrid
+        var_type: prediction_input
+        additional_datasets:
+          - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
+    scripts:
+      mean:
+        <<: *mean
+        tag: PR-Glob_c
+        convert_units_to: 'kg m-2 day-1'
+      trend:
+        <<: *trend
+        tag: PR-Glob_t
+        convert_units_to: 'kg m-2 day-1 year-1'
 
   diag_mlr_input_nbp:
     variables:
@@ -85,9 +123,9 @@ diagnostics:
       prediction_input:
         <<: *variable_settings
         short_name: nbp_grid
+        preprocessor: regrid
         mip: Lmon
         derive: true
-        preprocessor: regrid
         var_type: prediction_input
         additional_datasets:
           - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
@@ -95,9 +133,11 @@ diagnostics:
       mean:
         <<: *mean
         tag: NBP-Glob_c
+        convert_units_to: 'Gt yr-1'
       trend:
         <<: *trend
         tag: NBP-Glob_t
+        convert_units_to: 'Gt yr-2'
 
   diag_mlr:
     description: Perform MLR on input data.
@@ -105,14 +145,15 @@ diagnostics:
       label:
         <<: *variable_settings
         short_name: nbp_grid
+        preprocessor: time_average
         mip: Lmon
         exp: rcp45
         start_year: 2020
         end_year: 2040
-        preprocessor: time_average
+        derive: true
         var_type: label
         tag: NBP
-        derive: true
+        convert_units_to: 'Gt yr-1'
     scripts:
       multiple_mlr_models:
         script: mlr/main_gpr.py
@@ -121,19 +162,8 @@ diagnostics:
           'diag_mlr_input_*/mean',
           'diag_mlr_input_*/trend',
         ]
-        mlr_model: gbr
         use_coords_as_feature: ['latitude', 'longitude']
         metadata_preselection:
           select:
             project: CMIP5
           group: dataset
-          # parameters:
-          #   learning_rate: 0.05
-          #   loss: ls
-          #   max_depth: 4
-          #   min_samples_split: 2
-          #   n_estimators: 2000
-          # grid_search_cv_param_grid:
-          #   n_estimators: [10, 20]
-          # grid_search_cv_kwargs:
-          #   cv: loo

@@ -86,6 +86,7 @@ diagnostics:
         script: mlr/single_var.py
         mean: ['time']
         tag: T-Glob_c
+        convert_units_to: celsius
       trend: &trend
         script: mlr/single_var.py
         trend: year
@@ -106,9 +107,11 @@ diagnostics:
       mean:
         <<: *mean
         tag: PR-Glob_c
+        convert_units_to: 'kg m-2 day-1'
       trend:
         <<: *trend
         tag: PR-Glob_t
+        convert_units_to: 'kg m-2 day-1 year-1'
 
   diag_mlr_input_rsds:
     variables:
@@ -127,9 +130,11 @@ diagnostics:
       mean:
         <<: *mean
         tag: SSRD-Glob_c
+        convert_units_to: null
       trend:
         <<: *trend
         tag: SSRD-Glob_t
+        convert_units_to: null
 
   diag_mlr_input_rsus:
     variables:
@@ -148,9 +153,11 @@ diagnostics:
       mean:
         <<: *mean
         tag: SSRU-Glob_c
+        convert_units_to: null
       trend:
         <<: *trend
         tag: SSRU-Glob_t
+        convert_units_to: null
 
   diag_mlr_input_rlds:
     variables:
@@ -169,9 +176,11 @@ diagnostics:
       mean:
         <<: *mean
         tag: SLRD-Glob_c
+        convert_units_to: null
       trend:
         <<: *trend
         tag: SLRD-Glob_t
+        convert_units_to: null
 
   diag_mlr_input_rlus:
     variables:
@@ -190,9 +199,11 @@ diagnostics:
       mean:
         <<: *mean
         tag: SLRU-Glob_c
+        convert_units_to: null
       trend:
         <<: *trend
         tag: SLRU-Glob_t
+        convert_units_to: null
 
   diag_mlr_input_et:
     variables:
@@ -213,9 +224,11 @@ diagnostics:
       mean:
         <<: *mean
         tag: ET-Glob_c
+        convert_units_to: null
       trend:
         <<: *trend
         tag: ET-Glob_t
+        convert_units_to: null
 
   diag_mlr_input_cVeg:
     variables:
@@ -233,8 +246,10 @@ diagnostics:
     scripts:
       mean: &mean_flux
         <<: *mean
+        area_weighted: false
         sum: ['latitude', 'longitude']
         tag: CVEG-Glob_c
+        convert_units_to: 'Gt'
 
   diag_mlr_input_cSoil:
     variables:
@@ -251,6 +266,7 @@ diagnostics:
       mean:
         <<: *mean_flux
         tag: CSOIL-Glob_c
+        convert_units_to: 'Gt'
 
   diag_mlr_input_nbp:
     variables:
@@ -274,6 +290,7 @@ diagnostics:
       mean:
         <<: *mean_flux
         tag: NBP-Glob_c
+        convert_units_to: 'Gt yr-1'
 
   diag_mlr_input_gpp:
     variables:
@@ -290,15 +307,16 @@ diagnostics:
       mean:
         <<: *mean_flux
         tag: GPP-Glob_c
+        convert_units_to: 'Gt yr-1'
 
   diag_mlr_input_reco:
     variables:
       features:
         <<: *variable_settings_flux
-        short_name: reco
+        short_name: reco_grid
       prediction_input:
         <<: *variable_settings_flux
-        short_name: reco
+        short_name: reco_grid
         var_type: prediction_input
         additional_datasets:
           - {dataset: FLUXNET, project: OBS, type: ground, version: 1, tier: 2, start_year: 1991}
@@ -306,6 +324,7 @@ diagnostics:
       mean:
         <<: *mean_flux
         tag: RECO-Glob_c
+        convert_units_to: 'Gt yr-1'
 
   diag_mlr_input_lai:
     variables:
@@ -324,9 +343,11 @@ diagnostics:
       mean:
         <<: *mean
         tag: LAI-Glob_c
+        convert_units_to: null
       trend:
         <<: *trend
         tag: LAI-Glob_t
+        convert_units_to: null
 
   diag_mlr:
     description: Perform MLR on input data.
