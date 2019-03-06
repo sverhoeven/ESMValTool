@@ -2,10 +2,8 @@
 
 import logging
 
-import iris
-from iris import Constraint
-
 from ._derived_variable_base import DerivedVariableBase
+from ._shared import grid_area_correction
 
 logger = logging.getLogger(__name__)
 
@@ -19,27 +17,19 @@ class DerivedVariable(DerivedVariableBase):
             'short_name': 'cVeg',
             'field': 'T2{frequency}s'
         }],
-        'fx_files': ['sftlf']
+        'fx_files': ['areacella', 'sftlf']
     }
 
     def calculate(self, cubes):
-        """Compute carbon mass in vegetation relative to grid cell area.
+        """Compute carbon mass in vegetation per grid cell.
 
         Note
         ----
-        By default, `cVeg` is defined relative to land area. For easy spatial
+        By default, `cVeg` is defined relative to land area. For spatial
         integration, the original quantity is multiplied by the land area
         fraction (`sftlf`), so that the resuting derived variable is defined
         relative to the grid cell area. This correction is only relevant for
         coastal regions.
 
         """
-        cveg_cube = cubes.extract_strict(
-            Constraint(name='vegetation_carbon_content'))
-        try:
-            sftlf_cube = cubes.extract_strict(
-                Constraint(name='land_area_fraction'))
-            cveg_cube.data *= sftlf_cube.data / 100.0
-        except iris.exceptions.ConstraintMismatchError:
-            pass
-        return cveg_cube
+        return grid_area_correction(cubes, 'vegetation_carbon_content')
