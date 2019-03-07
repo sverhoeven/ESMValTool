@@ -83,12 +83,12 @@ diagnostics:
           - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       mean: &mean
-        script: mlr/single_var.py
+        script: mlr/simple_pp.py
         mean: ['time']
         tag: T-Glob_c
         convert_units_to: celsius
       trend: &trend
-        script: mlr/single_var.py
+        script: mlr/simple_pp.py
         trend: year
         tag: T-Glob_t
 
@@ -246,8 +246,8 @@ diagnostics:
     scripts:
       mean: &mean_flux
         <<: *mean
-        area_weighted: false
         sum: ['latitude', 'longitude']
+        area_weighted: false
         tag: CVEG-Glob_c
         convert_units_to: 'Gt'
 
@@ -307,23 +307,6 @@ diagnostics:
       mean:
         <<: *mean_flux
         tag: GPP-Glob_c
-        convert_units_to: 'Gt yr-1'
-
-  diag_mlr_input_reco:
-    variables:
-      features:
-        <<: *variable_settings_flux
-        short_name: reco_grid
-      prediction_input:
-        <<: *variable_settings_flux
-        short_name: reco_grid
-        var_type: prediction_input
-        additional_datasets:
-          - {dataset: FLUXNET, project: OBS, type: ground, version: 1, tier: 2, start_year: 1991}
-    scripts:
-      mean:
-        <<: *mean_flux
-        tag: RECO-Glob_c
         convert_units_to: 'Gt yr-1'
 
   diag_mlr_input_lai:

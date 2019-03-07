@@ -33,17 +33,8 @@ from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def main(cfg):
-    """Run the diagnostic."""
-    model_type = 'gpr'
-
-    # Kernel
-    kernel = (ConstantKernel(1.0, (1e-5, 1e5)) * RBF(1.0, (1e-5, 1e5)) +
-              WhiteKernel(1e-1, (1e-10, 1e5)))
-    cfg.setdefault('parameters', {})
-    cfg['parameters']['kernel'] = kernel
-
-    # Preselect data
+def get_grouped_datasets(cfg):
+    """Group input datasets according to given settings."""
     input_data = cfg['input_data'].values()
     if input_data:
         preselection = cfg.get('metadata_preselection', {})
@@ -64,6 +55,21 @@ def main(cfg):
         grouped_datasets = {None: None}
     if len(list(grouped_datasets.keys())) == 1 and None in grouped_datasets:
         logger.info("Creating single MLR model")
+    return (group, grouped_datasets)
+
+
+def main(cfg):
+    """Run the diagnostic."""
+    model_type = 'gpr'
+
+    # Kernel
+    kernel = (ConstantKernel(1.0, (1e-5, 1e5)) * RBF(1.0, (1e-5, 1e5)) +
+              WhiteKernel(1e-1, (1e-10, 1e5)))
+    cfg.setdefault('parameters', {})
+    cfg['parameters']['kernel'] = kernel
+
+    # Preselect data
+    (group, grouped_datasets) = get_grouped_datasets(cfg)
     for attr in grouped_datasets:
         if attr is not None:
             logger.info("Processing %s", attr)
@@ -82,9 +88,10 @@ def main(cfg):
 
         # Output
         mlr_model.plot_scatterplots()
-        mlr_model.plot_feature_importance()
-        mlr_model.plot_partial_dependences()
-        mlr_model.print_kernel_info()
+        if not cfg.get('accept_only_scalar_data'):
+            mlr_model.plot_feature_importance()
+            mlr_model.plot_partial_dependences()
+            mlr_model.print_kernel_info()
 
 
 # Run main function when this script is called

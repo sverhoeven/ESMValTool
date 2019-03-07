@@ -185,11 +185,11 @@ diagnostics:
     additional_datasets: *datasets
     scripts:
       mean: &mean
-        script: mlr/single_var.py
+        script: mlr/simple_pp.py
         mean: ['time']
         tag: T-SP_c
       trend: &trend
-        script: mlr/single_var.py
+        script: mlr/simple_pp.py
         trend: year
         tag: T-SP_t
 

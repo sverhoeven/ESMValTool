@@ -534,8 +534,8 @@ class MLRModel():
 
             # Save data in cubes
             new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
-            predictions = self._get_prediction_cubes(y_preds, pred_name,
-                                                     x_cube, new_path)
+            predictions = self._save_prediction_cubes(y_preds, pred_name,
+                                                      x_cube, new_path)
 
         return predictions
 
@@ -577,21 +577,33 @@ class MLRModel():
                         allowed_shapes, cube.shape, msg))
         else:
             if expected_coords is not None:
-                if cube.coords(dim_coords=True) != expected_coords:
-                    cube_coords = [
-                        '{}, shape {}'.format(coord.name(), coord.shape)
-                        for coord in cube.coords(dim_coords=True)
-                    ]
-                    coords = [
-                        '{}, shape {}'.format(coord.name(), coord.shape)
-                        for coord in expected_coords
-                    ]
+                cube_coords = cube.coords(dim_coords=True)
+                cube_coords_str = [
+                    '{}, shape {}'.format(coord.name(), coord.shape)
+                    for coord in cube_coords
+                ]
+                expected_coords_str = [
+                    '{}, shape {}'.format(coord.name(), coord.shape)
+                    for coord in expected_coords
+                ]
+                if cube_coords_str != expected_coords_str:
                     raise ValueError(
                         "Expected field with coordinates {}{}, got {}. "
                         "Consider regridding, pre-selecting data at class "
                         "initialization using '**metadata' or the options "
                         "'broadcast_from' or 'group_datasets_by_attributes'".
-                        format(coords, msg, cube_coords))
+                        format(expected_coords_str, msg, cube_coords_str))
+                for (idx, cube_coord) in enumerate(cube_coords):
+                    expected_coord = expected_coords[idx]
+                    if not np.all(
+                            np.isclose(cube_coord.points,
+                                       expected_coord.points)):
+                        raise ValueError(
+                            "Expected coordinate '{}'{} with points {}, got "
+                            "{} (values differ by more than allowed "
+                            "tolerance, check input cubes)".format(
+                                cube_coord.name(), msg, expected_coord.points,
+                                cube_coord.points))
 
     def _check_dataset(self, datasets, var_type, tag, text=None):
         """Check if datasets are exist and are valid."""
@@ -992,29 +1004,13 @@ class MLRModel():
         y_preds = list(y_preds)
         for (idx, y_pred) in enumerate(y_preds):
             if self._cfg['imputation_strategy'] == 'remove':
-                y_preds[idx] = np.ma.array(y_pred, mask=x_mask[:, 0])
+                if y_pred[idx].shape == y_pred[0].shape:
+                    y_preds[idx] = np.ma.array(y_pred, mask=x_mask[:, 0])
+                else:
+                    y_preds[idx] = np.ma.array(y_pred)
+
         logger.info("Successfully predicted %i point(s)", y_preds[0].size)
         return y_preds
-
-    def _get_prediction_cubes(self, y_predictions, pred_name, x_cube, path):
-        """Get (multi-dimensional) prediction output."""
-        logger.debug("Creating output cubes")
-        predictions = {}
-        predictions[pred_name] = []
-        cubes = iris.cube.CubeList([])
-        for (idx, y_pred) in enumerate(y_predictions):
-            predictions[pred_name].append(np.ma.copy(y_pred))
-            y_pred = y_pred.reshape(x_cube.shape)
-            if (self._cfg['imputation_strategy'] == 'remove'
-                    and np.ma.is_masked(x_cube.data)):
-                y_pred = np.ma.array(
-                    y_pred, mask=y_pred.mask | x_cube.data.mask)
-            pred_cube = x_cube.copy(data=y_pred)
-            self._set_prediction_cube_attributes(
-                pred_cube, path, idx, prediction_name=pred_name)
-            cubes.append(pred_cube)
-        io.save_iris_cube(cubes, path)
-        return predictions
 
     def _get_reference_cube(self, datasets, var_type, text=None):
         """Get reference cube for `datasets`."""
@@ -1305,6 +1301,26 @@ class MLRModel():
         # Save file
         np.savetxt(path, csv_data, delimiter=',', header=header)
         logger.info("Wrote %s", path)
+
+    def _save_prediction_cubes(self, y_predictions, pred_name, x_cube, path):
+        """Get (multi-dimensional) prediction output."""
+        logger.debug("Creating output cubes")
+        predictions = {}
+        predictions[pred_name] = []
+        cubes = iris.cube.CubeList([])
+        for (idx, y_pred) in enumerate(y_predictions):
+            predictions[pred_name].append(np.ma.copy(y_pred))
+            y_pred = y_pred.reshape(x_cube.shape)
+            if (self._cfg['imputation_strategy'] == 'remove'
+                    and np.ma.is_masked(x_cube.data)):
+                y_pred = np.ma.array(
+                    y_pred, mask=y_pred.mask | x_cube.data.mask)
+            pred_cube = x_cube.copy(data=y_pred)
+            self._set_prediction_cube_attributes(
+                pred_cube, path, idx, prediction_name=pred_name)
+            cubes.append(pred_cube)
+        io.save_iris_cube(cubes, path)
+        return predictions
 
     def _set_prediction_cube_attributes(self,
                                         cube,

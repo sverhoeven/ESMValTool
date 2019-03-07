@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Preprocess single variables to use them as input for MLR models.
+"""Simple Pre-/Postprocessing for MLR models.
 
 Description
 -----------
-This diagnostic preprocesses single variables in a desired way so that they can
-be used as input data for MLR models.
+This diagnostic performs simple pre-/postprocessing steps for variables in a
+desired way.
 
 Author
 ------
@@ -31,19 +31,22 @@ time_weighted : bool, optional (default: True)
 tag : str, optional
     Tag for the variable used in the MLR model.
 convert_units_to : str, optional
-    Convert units of the cube.
+    Convert units of the input data. Can also be given as dataset option.
+pattern : str, optional
+    Pattern matched against ancestor files.
 
 """
 
 import copy
 import logging
 import os
+from pprint import pformat
 
 import iris
 import numpy as np
 from cf_units import Unit
 from esmvaltool.diag_scripts.mlr import write_cube
-from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
+from esmvaltool.diag_scripts.shared import (get_diagnostic_filename, io,
                                             run_diagnostic)
 from scipy import stats
 
@@ -177,40 +180,57 @@ def calculate_trend(cfg, cube, data):
     return (cube, data)
 
 
+def convert_units(cfg, cube, data):
+    """Convert units if desired."""
+    cfg_settings = cfg.get('convert_units_to')
+    data_settings = data.get('convert_units_to')
+    if cfg_settings or data_settings:
+        units_to = cfg_settings
+        if data_settings:
+            units_to = data_settings
+        logger.info("Converting units from '%s' to '%s'", cube.units.origin,
+                    units_to)
+        try:
+            cube.convert_units(units_to)
+        except ValueError:
+            logger.warning("Cannot convert units from '%s' to '%s'",
+                           cube.units.origin, units_to)
+        else:
+            data['units'] = units_to
+    return (cube, data)
+
+
 def main(cfg):
     """Run the diagnostic."""
-    if cfg['write_netcdf']:
-        for (path, data) in cfg['input_data'].items():
-            logger.info("Processing %s", path)
-            data = dict(data)
-            cube = iris.load_cube(path)
+    input_data = list(cfg['input_data'].values())
+    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
+    paths = [d['filename'] for d in input_data]
+    logger.debug("Found files")
+    logger.debug(pformat(paths))
 
-            # Sum and mean
-            cube = calculate_sum_and_mean(cfg, cube)
+    # Iterate over all data
+    for data in input_data:
+        path = data['filename']
+        logger.info("Processing %s", path)
+        data = dict(data)
+        cube = iris.load_cube(path)
 
-            # Trend
-            (cube, data) = calculate_trend(cfg, cube, data)
+        # Sum and mean
+        cube = calculate_sum_and_mean(cfg, cube)
 
-            # Save new cube
-            basename = os.path.splitext(os.path.basename(path))[0]
-            new_path = get_diagnostic_filename(basename, cfg)
-            data['filename'] = new_path
-            if 'tag' in cfg:
-                data['tag'] = cfg['tag']
-            if cfg.get('convert_units_to'):
-                logger.info("Converting units from '%s' to '%s'",
-                            cube.units.origin, cfg['convert_units_to'])
-                try:
-                    cube.convert_units(cfg['convert_units_to'])
-                except ValueError:
-                    logger.warning("Cannot convert units from '%s' to '%s'",
-                                   cube.units.origin, cfg['convert_units_to'])
-                else:
-                    data['units'] = cfg['convert_units_to']
-            write_cube(cube, data, new_path)
-    else:
-        logger.warning("Cannot save netcdf files because 'write_netcdf' is "
-                       "set to 'False' in user configuration file.")
+        # Trend
+        (cube, data) = calculate_trend(cfg, cube, data)
+
+        # Convert units
+        (cube, data) = convert_units(cfg, cube, data)
+
+        # Save new cube
+        basename = os.path.splitext(os.path.basename(path))[0]
+        new_path = get_diagnostic_filename(basename, cfg)
+        data['filename'] = new_path
+        if 'tag' in cfg:
+            data['tag'] = cfg['tag']
+        write_cube(cube, data, new_path)
 
 
 # Run main function when this script is called

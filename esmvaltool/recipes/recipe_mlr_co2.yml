@@ -16,24 +16,24 @@ documentation:
 
 
 DATASET_ANCHOR: &datasets
-  - {dataset: BNU-ESM}
-  - {dataset: CanESM2}
-  - {dataset: CCSM4}
-  - {dataset: CESM1-BGC}
-  - {dataset: GFDL-ESM2G}
-  - {dataset: GFDL-ESM2M}
-  - {dataset: HadGEM2-CC}
-  - {dataset: HadGEM2-ES}
+  # - {dataset: BNU-ESM}
+  # - {dataset: CanESM2}
+  # - {dataset: CCSM4}
+  # - {dataset: CESM1-BGC}
+  # - {dataset: GFDL-ESM2G}
+  # - {dataset: GFDL-ESM2M}
+  # - {dataset: HadGEM2-CC}
+  # - {dataset: HadGEM2-ES}
   - {dataset: inmcm4}
-  - {dataset: IPSL-CM5A-LR}
-  - {dataset: IPSL-CM5A-MR}
-  - {dataset: IPSL-CM5B-LR}
-  - {dataset: MIROC-ESM}
-  - {dataset: MIROC-ESM-CHEM}
+  # - {dataset: IPSL-CM5A-LR}
+  # - {dataset: IPSL-CM5A-MR}
+  # - {dataset: IPSL-CM5B-LR}
+  # - {dataset: MIROC-ESM}
+  # - {dataset: MIROC-ESM-CHEM}
   - {dataset: MPI-ESM-LR}
-  - {dataset: MPI-ESM-MR}
-  - {dataset: NorESM1-M}
-  - {dataset: NorESM1-ME}
+  # - {dataset: MPI-ESM-MR}
+  # - {dataset: NorESM1-M}
+  # - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -62,7 +62,7 @@ diagnostics:
 
   diag_mlr_input_tas:
     variables:
-      features: &variable_settings
+      features: &variable_settings_features
         short_name: tas
         preprocessor: mask_sea
         project: CMIP5
@@ -74,33 +74,31 @@ diagnostics:
         end_year: 2005
         var_type: feature
         additional_datasets: *datasets
-      prediction_input:
-        <<: *variable_settings
+      prediction_input: &variable_settings_prediction_input
+        <<: *variable_settings_features
         preprocessor: regrid
         var_type: prediction_input
         additional_datasets:
           - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       mean: &mean
-        script: mlr/single_var.py
+        script: mlr/simple_pp.py
         mean: ['time']
         tag: T-Glob_c
         convert_units_to: celsius
       trend: &trend
-        script: mlr/single_var.py
+        script: mlr/simple_pp.py
         trend: year
         tag: T-Glob_t
 
   diag_mlr_input_pr:
     variables:
       features:
-        <<: *variable_settings
+        <<: *variable_settings_features
         short_name: pr
       prediction_input:
-        <<: *variable_settings
+        <<: *variable_settings_prediction_input
         short_name: pr
-        preprocessor: regrid
-        var_type: prediction_input
         additional_datasets:
           - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
@@ -113,20 +111,170 @@ diagnostics:
         tag: PR-Glob_t
         convert_units_to: 'kg m-2 day-1 year-1'
 
+  diag_mlr_input_rsds:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: rsds
+        start_year: 2001
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: rsds
+        start_year: 2001
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+    scripts:
+      mean:
+        <<: *mean
+        tag: SSRD-Glob_c
+        convert_units_to: null
+      trend:
+        <<: *trend
+        tag: SSRD-Glob_t
+        convert_units_to: null
+
+  diag_mlr_input_rsus:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: rsus
+        start_year: 2001
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: rsus
+        start_year: 2001
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+    scripts:
+      mean:
+        <<: *mean
+        tag: SSRU-Glob_c
+        convert_units_to: null
+      trend:
+        <<: *trend
+        tag: SSRU-Glob_t
+        convert_units_to: null
+
+  diag_mlr_input_rlds:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: rlds
+        start_year: 2001
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: rlds
+        start_year: 2001
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+    scripts:
+      mean:
+        <<: *mean
+        tag: SLRD-Glob_c
+        convert_units_to: null
+      trend:
+        <<: *trend
+        tag: SLRD-Glob_t
+        convert_units_to: null
+
+  diag_mlr_input_rlus:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: rlus
+        start_year: 2001
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: rlus
+        start_year: 2001
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+    scripts:
+      mean:
+        <<: *mean
+        tag: SLRU-Glob_c
+        convert_units_to: null
+      trend:
+        <<: *trend
+        tag: SLRU-Glob_t
+        convert_units_to: null
+
+  diag_mlr_input_et:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: et
+        start_year: 1989
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: et
+        start_year: 1989
+        derive: true
+        additional_datasets:
+          - {dataset: LandFlux-EVAL, project: OBS, type: ground, version: 1, tier: 3}
+    scripts:
+      mean:
+        <<: *mean
+        tag: ET-Glob_c
+        convert_units_to: null
+      trend:
+        <<: *trend
+        tag: ET-Glob_t
+        convert_units_to: null
+
+  diag_mlr_input_cVeg:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: cVeg_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: cVeg_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: NDP, project: OBS, type: ground, version: 017b, tier: 2, start_year: 2000, end_year: 2000}
+    scripts:
+      mean:
+        <<: *mean
+        tag: CVEG-Glob_c
+        convert_units_to: 'Gt'
+
+  diag_mlr_input_cSoil:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: cSoil_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: cSoil_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: HWSD, project: OBS, type: ground, version: 1, tier: 2, start_year: 2000, end_year: 2000}
+    scripts:
+      mean:
+        <<: *mean
+        tag: CSOIL-Glob_c
+        convert_units_to: 'Gt'
+
   diag_mlr_input_nbp:
     variables:
       features:
-        <<: *variable_settings
+        <<: *variable_settings_features
         short_name: nbp_grid
         mip: Lmon
         derive: true
       prediction_input:
-        <<: *variable_settings
+        <<: *variable_settings_prediction_input
         short_name: nbp_grid
-        preprocessor: regrid
         mip: Lmon
         derive: true
-        var_type: prediction_input
         additional_datasets:
           - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
@@ -139,11 +287,59 @@ diagnostics:
         tag: NBP-Glob_t
         convert_units_to: 'Gt yr-2'
 
+  diag_mlr_input_gpp:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: 1, tier: 2}
+    scripts:
+      mean:
+        <<: *mean
+        tag: GPP-Glob_c
+        convert_units_to: 'Gt yr-1'
+      trend:
+        <<: *trend
+        tag: GPP-Glob_t
+        convert_units_to: 'Gt yr-2'
+
+  diag_mlr_input_lai:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: lai_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: lai_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: LAI3g, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+    scripts:
+      mean:
+        <<: *mean
+        tag: LAI-Glob_c
+        convert_units_to: null
+      trend:
+        <<: *trend
+        tag: LAI-Glob_t
+        convert_units_to: null
+
   diag_mlr:
     description: Perform MLR on input data.
     variables:
-      label:
-        <<: *variable_settings
+      label: &variable_settings_label
+        <<: *variable_settings_features
         short_name: nbp_grid
         preprocessor: time_average
         mip: Lmon
@@ -162,8 +358,37 @@ diagnostics:
           'diag_mlr_input_*/mean',
           'diag_mlr_input_*/trend',
         ]
-        use_coords_as_feature: ['latitude', 'longitude']
         metadata_preselection:
           select:
             project: CMIP5
           group: dataset
+        use_coords_as_feature: ['latitude', 'longitude']
+        predict_kwargs:
+          return_std: true
+      postprocess_mlr_models:
+        script: mlr/simple_pp.py
+        ancestors: ['multiple_mlr_models']
+        sum: ['latitude', 'longitude']
+        area_weighted: false
+        pattern: '*prediction*'
+      evaluate_mlr_models:
+        script: mlr/simple_multimodel_stats.py
+        ancestors: ['postprocess_mlr_models']
+        pattern: '*prediction*'
+        mean: True
+        std: True
+
+  diag_mmm:
+    description: Calculate simple multi-model mean of label data.
+    variables:
+      label:
+        <<: *variable_settings_label
+    scripts:
+      global_sum:
+        script: mlr/simple_pp.py
+        sum: ['latitude', 'longitude']
+        area_weighted: false
+      mmm:
+        script: mlr/simple_multimodel_stats.py
+        ancestors: ['global_sum']
+        mean: True

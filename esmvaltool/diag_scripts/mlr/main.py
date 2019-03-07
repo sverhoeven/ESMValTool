@@ -32,9 +32,8 @@ from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def main(cfg):
-    """Run the diagnostic."""
-    model_type = cfg.get('mlr_model', 'gbr')
+def get_grouped_datasets(cfg):
+    """Group input datasets according to given settings."""
     input_data = cfg['input_data'].values()
     if input_data:
         preselection = cfg.get('metadata_preselection', {})
@@ -55,7 +54,13 @@ def main(cfg):
         grouped_datasets = {None: None}
     if len(list(grouped_datasets.keys())) == 1 and None in grouped_datasets:
         logger.info("Creating single MLR model")
+    return (group, grouped_datasets)
 
+
+def main(cfg):
+    """Run the diagnostic."""
+    model_type = cfg.get('mlr_model', 'gbr')
+    (group, grouped_datasets) = get_grouped_datasets(cfg)
     for attr in grouped_datasets:
         if attr is not None:
             logger.info("Processing %s", attr)
@@ -74,8 +79,9 @@ def main(cfg):
 
         # Output
         mlr_model.plot_scatterplots()
-        mlr_model.plot_feature_importance()
-        mlr_model.plot_partial_dependences()
+        if not cfg.get('accept_only_scalar_data'):
+            mlr_model.plot_feature_importance()
+            mlr_model.plot_partial_dependences()
         if model_type == 'gbr':
             mlr_model.plot_prediction_error()
         if model_type == 'gpr':
