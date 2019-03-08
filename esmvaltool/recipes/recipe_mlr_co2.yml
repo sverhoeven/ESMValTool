@@ -17,7 +17,7 @@ documentation:
 
 DATASET_ANCHOR: &datasets
   # - {dataset: BNU-ESM}
-  # - {dataset: CanESM2}
+  - {dataset: CanESM2}
   # - {dataset: CCSM4}
   # - {dataset: CESM1-BGC}
   # - {dataset: GFDL-ESM2G}
@@ -30,7 +30,7 @@ DATASET_ANCHOR: &datasets
   # - {dataset: IPSL-CM5B-LR}
   # - {dataset: MIROC-ESM}
   # - {dataset: MIROC-ESM-CHEM}
-  - {dataset: MPI-ESM-LR}
+  # - {dataset: MPI-ESM-LR}
   # - {dataset: MPI-ESM-MR}
   # - {dataset: NorESM1-M}
   # - {dataset: NorESM1-ME}
@@ -364,19 +364,26 @@ diagnostics:
           group: dataset
         use_coords_as_feature: ['latitude', 'longitude']
         predict_kwargs:
-          return_std: true
-      postprocess_mlr_models:
+          return_cov: true
+      postprocess_mlr_mean: &pp_mlr
         script: mlr/simple_pp.py
-        ancestors: ['multiple_mlr_models']
+        ancestors: ['diag_mlr/multiple_mlr_models']
         sum: ['latitude', 'longitude']
         area_weighted: false
-        pattern: '*prediction*'
+        pattern: '*prediction_mean*'
+      postprocess_mlr_cov:
+        <<: *pp_mlr
+        sum: all
+        pattern: '*prediction_cov*'
       evaluate_mlr_models:
         script: mlr/simple_multimodel_stats.py
-        ancestors: ['postprocess_mlr_models']
+        ancestors: [
+          'diag_mlr/postprocess_mlr_mean',
+          'diag_mlr/postprocess_mlr_cov',
+        ]
         pattern: '*prediction*'
-        mean: True
-        std: True
+        mean: true
+        std: true
 
   diag_mmm:
     description: Calculate simple multi-model mean of label data.
@@ -390,5 +397,5 @@ diagnostics:
         area_weighted: false
       mmm:
         script: mlr/simple_multimodel_stats.py
-        ancestors: ['global_sum']
-        mean: True
+        ancestors: ['diag_mmm/global_sum']
+        mean: true

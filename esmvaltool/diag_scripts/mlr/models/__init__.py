@@ -90,9 +90,6 @@ class MLRModel():
     matplotlib_style_file : str, optional
         Matplotlib style file (should be located in
         `esmvaltool.diag_scripts.shared.plot.styles_python.matplotlib`).
-    mlr_model : str, optional (default: 'gbr')
-        Regression model which is used. Allowed models are child classes of
-        this base class given in :mod:`esmvaltool.diag_scripts.mlr.models`.
     parameters : dict, optional
         Parameters used in the final classifier.
     predict_kwargs : dict, optional
@@ -103,6 +100,9 @@ class MLRModel():
     test_size : float, optional (default: 0.25)
         Fraction of feature/label data which is used as test data and not for
         training (if desired).
+    return_shaped_cubes : bool, optional (default: True)
+        Returned cubes from prediction are reshaped to `prediction_input` cubes
+        (if possible).
     use_coords_as_feature : list, optional
         Use coordinates (e.g. 'air_pressure' or 'latitude') as features.
     use_only_coords_as_features : bool, optional (default: False)
@@ -190,6 +190,7 @@ class MLRModel():
 
         # Default parameters
         self._cfg.setdefault('imputation_strategy', 'remove')
+        self._cfg.setdefault('return_shaped_cubes', True)
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
 
@@ -374,6 +375,7 @@ class MLRModel():
                          plot_feature_importance(
                              self._skater['model'],
                              method=method,
+                             n_jobs=1,
                              progressbar=progressbar))
             axes.set_title('Variable Importance ({} Model)'.format(
                 self._CLF_TYPE.__name__))
@@ -383,8 +385,7 @@ class MLRModel():
             new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
             plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
             logger.info("Wrote %s", new_path)
-            axes.clear()
-        plt.close('all')
+            plt.close()
 
     def plot_partial_dependences(self, filename=None):
         """Plot partial dependences for every feature.
@@ -403,11 +404,12 @@ class MLRModel():
         progressbar = True if self._cfg['log_level'] == 'debug' else False
 
         # Plot for every feature
-        for (idx, feature_name) in enumerate(self.classes['features']):
+        for feature_name in self.classes['features']:
             logger.debug("Plotting partial dependence of '%s'", feature_name)
             ((_, axes), ) = (self._skater['interpreter'].partial_dependence.
                              plot_partial_dependence([feature_name],
                                                      self._skater['model'],
+                                                     n_jobs=1,
                                                      progressbar=progressbar,
                                                      with_variance=True))
             axes.set_title('Partial dependence ({} Model)'.format(
@@ -420,8 +422,7 @@ class MLRModel():
             new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
             plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
             logger.info("Wrote %s", new_path)
-            axes.clear()
-        plt.close('all')
+            plt.close()
 
     def plot_scatterplots(self, filename=None):
         """Plot scatterplots label vs. feature for every feature.
@@ -437,11 +438,11 @@ class MLRModel():
         logger.info("Plotting scatterplots")
         if filename is None:
             filename = 'scatterplot_{feature}'
-        (_, axes) = plt.subplots()
 
         # Plot scatterplot for every feature
         for (f_idx, feature) in enumerate(self.classes['features']):
             logger.debug("Plotting scatterplot of '%s'", feature)
+            (_, axes) = plt.subplots()
             if self._cfg.get('accept_only_scalar_data'):
                 for (g_idx, group_attr) in enumerate(
                         self.classes['group_attributes']):
@@ -480,8 +481,7 @@ class MLRModel():
                 bbox_inches='tight',
                 additional_artists=[legend])
             logger.info("Wrote %s", new_path)
-            axes.clear()
-        plt.close('all')
+            plt.close()
 
     def predict(self, **kwargs):
         """Perform prediction using the MLR model(s) and write netcdf.
@@ -513,16 +513,15 @@ class MLRModel():
         if not self._datasets['prediction']:
             logger.error("Prediction not possible, no 'prediction_input' "
                          "datasets given")
-        for (pred_name, datasets) in self._datasets['prediction'].items():
+        for pred_name in self._datasets['prediction']:
             if pred_name is None:
                 logger.info("Started prediction")
-                filename = 'prediction.nc'
             else:
                 logger.info("Started prediction for prediction %s", pred_name)
-                filename = 'prediction_{}.nc'.format(pred_name)
 
             # Predict
-            (x_pred, x_mask, x_cube) = self._extract_prediction_input(datasets)
+            (x_pred, x_mask,
+             x_cube) = self._extract_prediction_input(pred_name)
             y_preds = self._get_prediction_array(x_pred, x_mask,
                                                  **predict_kwargs)
 
@@ -533,9 +532,8 @@ class MLRModel():
                 np.nan)
 
             # Save data in cubes
-            new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
             predictions = self._save_prediction_cubes(y_preds, pred_name,
-                                                      x_cube, new_path)
+                                                      x_cube)
 
         return predictions
 
@@ -721,7 +719,7 @@ class MLRModel():
         datasets = self._datasets['training']
         (x_data, _) = self._extract_x_data(datasets, 'feature')
         y_data = self._extract_y_data(datasets)
-        logger.debug("Found %i raw input data point(s)", y_data.size)
+        logger.info("Found %i raw input data point(s)", y_data.size)
 
         # Remove missing values in labels
         (x_data, y_data) = self._remove_missing_labels(x_data, y_data)
@@ -738,18 +736,31 @@ class MLRModel():
 
         return (x_data, y_data)
 
-    def _extract_prediction_input(self, datasets):
-        """Extract prediction input data points `datasets`."""
+    def _extract_prediction_input(self, prediction_name):
+        """Extract prediction input data points for `prediction_name`."""
+        datasets = self._datasets['prediction'][prediction_name]
         (x_data, prediction_input_cube) = self._extract_x_data(
             datasets, 'prediction_input')
+        logger.info("Found %i raw prediction input data point(s)",
+                    x_data.shape[0])
 
         # If desired missing values get removed in the output cube via a mask
-        mask = np.ma.getmaskarray(x_data)
+        x_mask = np.ma.getmaskarray(x_data)
         if self._cfg['imputation_strategy'] == 'remove':
-            x_data = x_data.filled(np.ma.mean(x_data))
+            if self._cfg['return_shaped_cubes']:
+                x_data = x_data.filled(np.ma.mean(x_data))
+            else:
+                mask = np.any(np.ma.getmaskarray(x_data), axis=1)
+                x_data = x_data.filled()[~mask]
+                n_removed = x_mask.shape[0] - x_data.shape[0]
+                if n_removed:
+                    logger.info(
+                        "Removed %i prediction input point(s) where "
+                        "features were missing'", n_removed)
+                x_mask = np.full(x_data.shape, False)
         else:
             x_data = x_data.filled(np.nan)
-        return (x_data, mask, prediction_input_cube)
+        return (x_data, x_mask, prediction_input_cube)
 
     def _extract_x_data(self, datasets, var_type):
         """Extract required x data of type `var_type` from `datasets`."""
@@ -925,8 +936,7 @@ class MLRModel():
         types = []
         cube = None
         ref_cube = None
-        grouped_datasets = group_metadata(datasets, 'tag')
-        for (tag, datasets_) in grouped_datasets.items():
+        for (tag, datasets_) in group_metadata(datasets, 'tag').items():
             dataset = datasets_[0]
             cube = self._load_cube(dataset)
             if 'broadcast_from' not in dataset:
@@ -996,6 +1006,7 @@ class MLRModel():
 
     def _get_prediction_array(self, x_data, x_mask, **kwargs):
         """Get (multi-dimensional) prediction output."""
+        logger.info("Predicting %i point(s)", x_data.shape[0])
         y_preds = self._clf.predict(x_data, **kwargs)
 
         # Create list of arrays with correct mask and save them
@@ -1004,7 +1015,7 @@ class MLRModel():
         y_preds = list(y_preds)
         for (idx, y_pred) in enumerate(y_preds):
             if self._cfg['imputation_strategy'] == 'remove':
-                if y_pred[idx].shape == y_pred[0].shape:
+                if y_pred.shape == y_pred[0].shape:
                     y_preds[idx] = np.ma.array(y_pred, mask=x_mask[:, 0])
                 else:
                     y_preds[idx] = np.ma.array(y_pred)
@@ -1061,6 +1072,27 @@ class MLRModel():
 
         # Return data and reference cube
         return (attr_data, ref_cube)
+
+    def _get_prediction_properties(self):
+        """Get important properties of prediction input."""
+        datasets = select_metadata(
+            self._datasets['training'], var_type='label')
+        properties = {}
+        for attr in ('dataset', 'exp', 'project', 'start_year', 'end_year'):
+            attrs = list(group_metadata(datasets, attr).keys())
+            properties[attr] = attrs[0]
+            if len(attrs) > 1:
+                if attr == 'start_year':
+                    properties[attr] = min(attrs)
+                elif attr == 'end_year':
+                    properties[attr] = max(attrs)
+                else:
+                    properties[attr] = '|'.join(attrs)
+                logger.info(
+                    "Attribute '%s' of label data is not unique, got values "
+                    "%s, using %s for prediction cubes", attr, attrs,
+                    properties[attr])
+        return properties
 
     def _group_prediction_datasets(self, datasets):
         """Group prediction datasets (use `prediction_name` key)."""
@@ -1302,61 +1334,75 @@ class MLRModel():
         np.savetxt(path, csv_data, delimiter=',', header=header)
         logger.info("Wrote %s", path)
 
-    def _save_prediction_cubes(self, y_predictions, pred_name, x_cube, path):
+    def _save_prediction_cubes(self, y_predictions, pred_name, x_cube):
         """Get (multi-dimensional) prediction output."""
         logger.debug("Creating output cubes")
         predictions = {}
         predictions[pred_name] = []
-        cubes = iris.cube.CubeList([])
-        for (idx, y_pred) in enumerate(y_predictions):
+        for (pred_idx, y_pred) in enumerate(y_predictions):
             predictions[pred_name].append(np.ma.copy(y_pred))
-            y_pred = y_pred.reshape(x_cube.shape)
-            if (self._cfg['imputation_strategy'] == 'remove'
-                    and np.ma.is_masked(x_cube.data)):
-                y_pred = np.ma.array(
-                    y_pred, mask=y_pred.mask | x_cube.data.mask)
-            pred_cube = x_cube.copy(data=y_pred)
-            self._set_prediction_cube_attributes(
-                pred_cube, path, idx, prediction_name=pred_name)
-            cubes.append(pred_cube)
-        io.save_iris_cube(cubes, path)
+            if (self._cfg['return_shaped_cubes']
+                    and y_pred.size == np.prod(x_cube.shape)):
+                y_pred = y_pred.reshape(x_cube.shape)
+                if (self._cfg['imputation_strategy'] == 'remove'
+                        and np.ma.is_masked(x_cube.data)):
+                    y_pred = np.ma.array(
+                        y_pred, mask=y_pred.mask | x_cube.data.mask)
+                pred_cube = x_cube.copy(data=y_pred)
+            else:
+                dim_coords = []
+                for (dim_idx, dim_size) in enumerate(y_pred.shape):
+                    dim_coords.append((iris.coords.DimCoord(
+                        np.arange(dim_size, dtype=np.float64),
+                        long_name=f'MLR prediction index {dim_idx}',
+                        var_name=f'idx_{dim_idx}'), dim_idx))
+                pred_cube = iris.cube.Cube(
+                    y_pred, dim_coords_and_dims=dim_coords)
+            new_path = self._set_prediction_cube_attributes(
+                pred_cube, index=pred_idx, pred_name=pred_name)
+            io.save_iris_cube(pred_cube, new_path)
         return predictions
 
-    def _set_prediction_cube_attributes(self,
-                                        cube,
-                                        path,
-                                        idx=0,
-                                        prediction_name=None):
+    def _set_prediction_cube_attributes(self, cube, index=0, pred_name=None):
         """Set the attributes of the prediction cube."""
         cube.attributes = {
             'classifier': str(self._CLF_TYPE),
-            'dataset': 'MLR model prediction',
-            'filename': path,
-            'project': 'MLR',
+            'description': 'MLR model prediction',
         }
-        if prediction_name is not None:
-            cube.attributes['prediction_name'] = prediction_name
-        params = {}
+        if pred_name is not None:
+            cube.attributes['prediction_name'] = pred_name
+        cube.attributes.update(self._get_prediction_properties())
         for (key, val) in self.parameters.items():
-            params[key] = str(val)
-        cube.attributes.update(params)
+            cube.attributes[key] = str(val)
         label = select_metadata(
             self._datasets['training'], var_type='label')[0]
         label_cube = self._load_cube(label)
         for attr in ('standard_name', 'var_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
 
-        # Modify variable name depending on idx
-        if idx == 0:
-            return
-        if idx == 1:
+        # Modify variable name depending on index
+        suffix = None
+        if index == 0:
+            suffix = 'mean'
+        elif index == 1:
             if 'return_std' in self._cfg.get('predict_kwargs', {}):
                 cube.var_name += '_std'
                 cube.long_name += ' (standard deviation)'
-                return
-            if 'return_cov' in self._cfg.get('predict_kwargs', {}):
+                suffix = 'std'
+            elif 'return_cov' in self._cfg.get('predict_kwargs', {}):
                 cube.var_name += '_cov'
                 cube.long_name += ' (covariance)'
-                return
-        cube.var_name += '_{:d}'.format(idx)
-        cube.long_name += '_{:d}'.format(idx)
+                suffix = 'cov'
+        if suffix is None:
+            cube.var_name += '_{:d}'.format(index)
+            cube.long_name += '_{:d}'.format(index)
+            suffix = index
+
+        # Get new path
+        if pred_name is None:
+            filename = f'prediction_{suffix}.nc'
+        else:
+            filename = f'prediction_{pred_name}_{suffix}.nc'
+        new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
+        cube.attributes['filename'] = new_path
+        return new_path

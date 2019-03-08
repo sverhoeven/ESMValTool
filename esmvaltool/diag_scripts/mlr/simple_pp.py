@@ -80,7 +80,6 @@ def _get_area_weights(cfg, cube):
     """Calculate area weights."""
     area_weights = None
     if cfg.get('area_weighted', True):
-        # TODO: Remove after correctly formatted OBS data
         for coord in cube.coords(dim_coords=True):
             if not coord.has_bounds():
                 logger.debug("Guessing bounds of coordinate '%s' of cube",
@@ -97,7 +96,6 @@ def _get_time_weights(cfg, cube):
     """Calculate time weights."""
     time_weights = None
     if cfg.get('time_weighted', True):
-        # TODO: Remove after correctly formatted OBS data
         for coord in cube.coords(dim_coords=True):
             if not coord.has_bounds():
                 logger.debug("Guessing bounds of coordinate '%s' of cube",
@@ -118,10 +116,14 @@ def _get_time_weights(cfg, cube):
 def calculate_sum_and_mean(cfg, cube):
     """Calculate sum and mean."""
     cfg = copy.deepcopy(cfg)
-    ops = {'sum': iris.analysis.SUM, 'mean': iris.analysis.MEAN}
-    for (oper, iris_op) in ops.items():
+    ops = [('mean', iris.analysis.MEAN), ('sum', iris.analysis.SUM)]
+    for (oper, iris_op) in ops:
         if cfg.get(oper):
             logger.info("Calculating %s over %s", oper, cfg[oper])
+            if cfg[oper] == 'all':
+                cfg[oper] = [
+                    coord.name() for coord in cube.coords(dim_coords=True)
+                ]
 
             # Latitude and longitude (weighted)
             area_weights = _get_area_weights(cfg, cube)
