@@ -365,6 +365,7 @@ diagnostics:
         use_coords_as_feature: ['latitude', 'longitude']
         predict_kwargs:
           return_cov: true
+        return_shaped_cubes: false
       postprocess_mlr_mean: &pp_mlr
         script: mlr/simple_pp.py
         ancestors: ['diag_mlr/multiple_mlr_models']
