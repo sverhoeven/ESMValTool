@@ -15,6 +15,7 @@ from esmvaltool.diag_scripts.shared import (group_metadata, io, plot,
                                             select_metadata)
 from skater.core.explanations import Interpretation
 from skater.model import InMemoryModel
+from sklearn import metrics
 from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
@@ -496,8 +497,8 @@ class MLRModel():
 
         """
         if not self._is_fitted():
-            logger.error("Prediction not possible because the model is not "
-                         "fitted yet, call fit() first")
+            logger.error(
+                "Prediction not possible, MLR model is not fitted yet")
             return None
         predict_kwargs = dict(self._cfg.get('predict_kwargs', {}))
         predict_kwargs.update(kwargs)
@@ -533,6 +534,37 @@ class MLRModel():
                                                       x_cube)
 
         return predictions
+
+    def print_regression_metrics(self):
+        """Print all available regression metrics for the test data."""
+        if not self._is_fitted():
+            logger.error(
+                "Printing regression metrics not possible, MLR model is not "
+                "fitted yet")
+            return
+        regression_metrics = [
+            'explained_variance_score',
+            'mean_absolute_error',
+            'mean_squared_error',
+            'median_absolute_error',
+            'r2_score',
+        ]
+        for data_type in ('train', 'test'):
+            logger.info("Evaluating regression metrics for %s data", data_type)
+            x_data = self._data[f'x_{data_type}']
+            y_true = self._data[f'y_{data_type}']
+            y_pred = self._clf.predict(x_data)
+            y_norm = np.mean(y_true)
+            for metric in regression_metrics:
+                metric_function = getattr(metrics, metric)
+                value = metric_function(y_true, y_pred)
+                if 'squared' in metric:
+                    value = np.sqrt(value)
+                    metric = f'root_{metric}'
+                if metric.endswith('_error'):
+                    metric = f'(normalized) {metric}'
+                    value /= y_norm
+                logger.info("%s: %s", metric, value)
 
     def reset_training_data(self):
         """Reset training and test data."""
@@ -1136,8 +1168,7 @@ class MLRModel():
     def _is_ready_for_plotting(self):
         """Check if the class is ready for plotting."""
         if not self._is_fitted():
-            logger.error("Plotting not possible, MLR model is not fitted yet, "
-                         "call fit() first")
+            logger.error("Plotting not possible, MLR model is not fitted yet.")
             return False
         if not self._cfg['write_plots']:
             logger.debug("Plotting not possible, 'write_plots' is set to "

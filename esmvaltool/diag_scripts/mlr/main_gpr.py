@@ -85,6 +85,7 @@ def main(cfg):
         mlr_model.export_training_data()
         mlr_model.predict()
         mlr_model.export_prediction_data()
+        mlr_model.print_regression_metrics()
 
         # Output
         mlr_model.plot_scatterplots()

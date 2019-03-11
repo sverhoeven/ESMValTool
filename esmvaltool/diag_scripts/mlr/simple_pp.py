@@ -17,6 +17,9 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
+aggregate_by : dict, optional
+    Aggregate over given coordinates (dict keys) using a desired aggregator
+    (dict values). Allowed aggregators are `mean`, `median`, `std` and `var`.
 sum : list of str, optional
     Calculate the sum of over the specified coordinates.
 mean : list of str, optional
@@ -51,6 +54,13 @@ from esmvaltool.diag_scripts.shared import (get_diagnostic_filename, io,
 from scipy import stats
 
 logger = logging.getLogger(os.path.basename(__file__))
+
+AGGREGATORS = {
+    'mean': iris.analysis.MEAN,
+    'median': iris.analysis.MEDIAN,
+    'std': iris.analysis.STD_DEV,
+    'var:': iris.analysis.VARIANCE,
+}
 
 
 def _has_valid_coords(cube, coord_names):
@@ -111,6 +121,21 @@ def _get_time_weights(cfg, cube):
                 time_weights = np.expand_dims(time_weights, idx)
             time_weights = np.broadcast_to(time_weights, cube.shape)
     return time_weights
+
+
+def aggregate(cfg, cube):
+    """Aggregate cube over specified coordinate."""
+    cfg = copy.deepcopy(cfg)
+    for (coord_name, aggregator) in cfg.get('aggregate_by', {}):
+        iris_op = AGGREGATORS.get(aggregator)
+        if iris_op is None:
+            logger.warning("Unknown aggregation option '%s', skipping",
+                           aggregator)
+            continue
+        logger.info("Aggregating coordinate %s by calculating %s", coord_name,
+                    aggregator)
+        cube = cube.aggregated_by(coord_name, iris_op)
+    return cube
 
 
 def calculate_sum_and_mean(cfg, cube):
@@ -216,6 +241,9 @@ def main(cfg):
         logger.info("Processing %s", path)
         data = dict(data)
         cube = iris.load_cube(path)
+
+        # Aggregation
+        cube = aggregate(cfg, cube)
 
         # Sum and mean
         cube = calculate_sum_and_mean(cfg, cube)
