@@ -38,8 +38,10 @@ import os
 from pprint import pformat
 
 import iris
-from esmvaltool.diag_scripts.shared import (get_diagnostic_filename, io,
-                                            run_diagnostic)
+import matplotlib.pyplot as plt
+import numpy as np
+from esmvaltool.diag_scripts.shared import (
+    get_diagnostic_filename, get_plot_filename, io, run_diagnostic)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -49,6 +51,59 @@ STATS = {
     'std': iris.analysis.STD_DEV,
     'var:': iris.analysis.VARIANCE,
 }
+
+
+def _plot_1d_cubes(cubes, datasets, error=None):
+    """Plot 1-dimensional cubes."""
+    (_, axes) = plt.subplots()
+    x_coord = cubes[0].coord(dimensions=(0, ))
+    for (idx, dataset) in enumerate(datasets):
+        cube = cubes[idx]
+        if dataset not in ('mean', 'median'):
+            axes.plot(x_coord.points, cube.data, label=dataset, alpha=0.4)
+        else:
+            lines = axes.plot(x_coord.points, cube.data, label=dataset)
+            if error is not None:
+                label = f'{dataset} ± std'
+                axes.fill_between(
+                    x_coord.points,
+                    cube.data - error,
+                    cube.data + error,
+                    facecolor=lines[-1].get_color(),
+                    alpha=0.4,
+                    label=label)
+    if iris.util.guess_coord_axis(x_coord) == 'T':
+        time = x_coord.units
+        (x_ticks, _) = plt.xticks()
+        x_labels = time.num2date(x_ticks)
+        x_labels = [label.strftime('%Y-%m-%d') for label in x_labels]
+        plt.xticks(x_ticks, x_labels, rotation=45)
+    else:
+        axes.set_xlabel(f'{x_coord.name()} / {x_coord.units.origin}')
+    legend = axes.legend(
+        loc='center left',
+        ncol=2,
+        bbox_to_anchor=[1.05, 0.5],
+        borderaxespad=0.0)
+    return (axes, legend)
+
+
+def _plot_scalar_cubes(cubes, datasets, error=None):
+    """Plot scalar cubes."""
+    (_, axes) = plt.subplots()
+    x_data = np.arange(len(cubes))
+    for (idx, dataset) in enumerate(datasets):
+        cube = cubes[idx]
+        if dataset not in ('mean', 'median'):
+            axes.scatter(x_data[idx], cube.data)
+        else:
+            axes.errorbar(
+                x_data[idx], cube.data, yerr=error, fmt='ro', capsize=5)
+            if error is not None:
+                datasets[idx] += ' ± std'
+    plt.xticks(x_data, datasets, rotation=45)
+    legend = None
+    return (axes, legend)
 
 
 def add_mm_cube_attributes(cube, input_data, stat, path):
@@ -83,6 +138,49 @@ def convert_units(cfg, cube, data):
         else:
             data['units'] = units_to
     return (cube, data)
+
+
+def plot(cfg, cubes, datasets):
+    """Plot calculated data."""
+    if not cfg.get('plot', True):
+        return
+    if not cfg['write_plots']:
+        logger.debug(
+            "Plotting not possible, 'write_plots' is set to 'False' in user "
+            "configuration file")
+        return
+    cubes_to_plot = []
+    datasets_to_plot = []
+    error = None
+    for (idx, dataset) in enumerate(datasets):
+        if dataset not in ('std', 'var'):
+            datasets_to_plot.append(dataset)
+            cubes_to_plot.append(cubes[idx])
+        if dataset == 'std':
+            error = cubes[idx].data
+
+    # Plot
+    if cubes[0].ndim == 0:
+        plot_func = _plot_scalar_cubes
+    elif cubes[0].ndim == 1:
+        plot_func = _plot_1d_cubes
+    else:
+        logger.error("Plotting of %i-dimensional cubes is not supported yet",
+                     cubes[0].ndim)
+        return
+    (axes, legend) = plot_func(cubes_to_plot, datasets_to_plot, error)
+
+    # Set plot appearance and save it
+    axes.set_ylabel(f'{cubes[0].var_name} / {cubes[0].units.origin}')
+    axes.set_title(f'{cubes[0].var_name} for multiple datasets')
+    path = get_plot_filename('multi-model_stats', cfg)
+    plt.savefig(
+        path,
+        orientation='landscape',
+        bbox_inches='tight',
+        additional_artists=[legend])
+    logger.info("Wrote %s", path)
+    plt.close()
 
 
 def preprocess_cube(cube, dataset):
@@ -135,6 +233,9 @@ def main(cfg):
         io.save_iris_cube(new_cube, new_path)
         datasets.append(stat)
         cubes.append(new_cube)
+
+    # Plot if desired
+    plot(cfg, cubes, datasets)
 
 
 # Run main function when this script is called
