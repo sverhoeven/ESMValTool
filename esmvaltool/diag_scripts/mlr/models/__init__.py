@@ -748,6 +748,11 @@ class MLRModel():
         datasets = self._datasets['training']
         (x_data, _) = self._extract_x_data(datasets, 'feature')
         y_data = self._extract_y_data(datasets)
+        if x_data.shape[0] != y_data.size:
+            raise ValueError(
+                "Sizes of features and labels do not match, got {:d} points "
+                "for the features and {:d} points for the label".format(
+                    x_data.shape[0], y_data.size))
         logger.info("Found %i raw input data point(s)", y_data.size)
 
         # Remove missing values in labels
@@ -755,13 +760,6 @@ class MLRModel():
 
         # Remove missing values in features (if desired)
         (x_data, y_data) = self._remove_missing_features(x_data, y_data)
-
-        # Check sizes
-        if x_data.shape[0] != y_data.size:
-            raise ValueError(
-                "Sizes of features and labels do not match, got {:d} points "
-                "for the features and {:d} points for the label".format(
-                    x_data.shape[0], y_data.size))
 
         return (x_data, y_data)
 
@@ -1060,8 +1058,9 @@ class MLRModel():
             dataset = self._check_dataset(datasets, var_type, tag, msg)
             if dataset is not None:
                 ref_cube = self._load_cube(dataset)
-                logger.debug("For %s '%s'%s, use reference cube", var_type,
-                             tag, msg)
+                logger.debug(
+                    "For var_type '%s'%s, use reference cube with tag '%s'",
+                    var_type, msg, tag)
                 logger.debug(ref_cube)
                 return ref_cube
         raise ValueError(

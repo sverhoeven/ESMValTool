@@ -116,7 +116,8 @@ def _get_time_weights(cfg, cube):
             logger.debug("Calculating time weights")
             time = cube.coord('time')
             time_weights = time.bounds[:, 1] - time.bounds[:, 0]
-            new_axis_pos = np.delete(cube.shape, cube.coord_dims('time')[0])
+            new_axis_pos = np.delete(
+                np.arange(cube.ndim), cube.coord_dims('time'))
             for idx in new_axis_pos:
                 time_weights = np.expand_dims(time_weights, idx)
             time_weights = np.broadcast_to(time_weights, cube.shape)
@@ -126,7 +127,7 @@ def _get_time_weights(cfg, cube):
 def aggregate(cfg, cube):
     """Aggregate cube over specified coordinate."""
     cfg = copy.deepcopy(cfg)
-    for (coord_name, aggregator) in cfg.get('aggregate_by', {}):
+    for (coord_name, aggregator) in cfg.get('aggregate_by', {}).items():
         iris_op = AGGREGATORS.get(aggregator)
         if iris_op is None:
             logger.warning("Unknown aggregation option '%s', skipping",
@@ -258,7 +259,7 @@ def main(cfg):
         basename = os.path.splitext(os.path.basename(path))[0]
         new_path = get_diagnostic_filename(basename, cfg)
         data['filename'] = new_path
-        if 'tag' in cfg:
+        if 'tag' in cfg and 'tag' not in data:
             data['tag'] = cfg['tag']
         write_cube(cube, data, new_path)
 

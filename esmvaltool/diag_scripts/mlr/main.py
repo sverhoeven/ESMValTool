@@ -26,7 +26,7 @@ import os
 from pprint import pformat
 
 from esmvaltool.diag_scripts.mlr.models import MLRModel
-from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
+from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -34,7 +34,8 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 def get_grouped_datasets(cfg):
     """Group input datasets according to given settings."""
-    input_data = cfg['input_data'].values()
+    input_data = list(cfg['input_data'].values())
+    input_data.extend(io.netcdf_to_metadata(cfg))
     if input_data:
         preselection = cfg.get('metadata_preselection', {})
         if preselection:
