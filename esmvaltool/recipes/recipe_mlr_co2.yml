@@ -84,12 +84,12 @@ diagnostics:
       mean: &mean
         script: mlr/simple_pp.py
         mean: ['time']
-        tag: T-Glob_c
+        tag: T_c
         convert_units_to: celsius
       trend: &trend
         script: mlr/simple_pp.py
         trend: year
-        tag: T-Glob_t
+        tag: T_t
 
   diag_mlr_input_pr:
     variables:
@@ -104,11 +104,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: PR-Glob_c
+        tag: PR_c
         convert_units_to: 'kg m-2 day-1'
       trend:
         <<: *trend
-        tag: PR-Glob_t
+        tag: PR_t
         convert_units_to: 'kg m-2 day-1 year-1'
 
   diag_mlr_input_rsds:
@@ -126,11 +126,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: SSRD-Glob_c
+        tag: SSRD_c
         convert_units_to: null
       trend:
         <<: *trend
-        tag: SSRD-Glob_t
+        tag: SSRD_t
         convert_units_to: null
 
   diag_mlr_input_rsus:
@@ -148,11 +148,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: SSRU-Glob_c
+        tag: SSRU_c
         convert_units_to: null
       trend:
         <<: *trend
-        tag: SSRU-Glob_t
+        tag: SSRU_t
         convert_units_to: null
 
   diag_mlr_input_rlds:
@@ -170,11 +170,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: SLRD-Glob_c
+        tag: SLRD_c
         convert_units_to: null
       trend:
         <<: *trend
-        tag: SLRD-Glob_t
+        tag: SLRD_t
         convert_units_to: null
 
   diag_mlr_input_rlus:
@@ -192,11 +192,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: SLRU-Glob_c
+        tag: SLRU_c
         convert_units_to: null
       trend:
         <<: *trend
-        tag: SLRU-Glob_t
+        tag: SLRU_t
         convert_units_to: null
 
   diag_mlr_input_et:
@@ -216,11 +216,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: ET-Glob_c
+        tag: ET_c
         convert_units_to: null
       trend:
         <<: *trend
-        tag: ET-Glob_t
+        tag: ET_t
         convert_units_to: null
 
   diag_mlr_input_cVeg:
@@ -240,7 +240,7 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: CVEG-Glob_c
+        tag: CVEG_c
         convert_units_to: 'Gt'
 
   diag_mlr_input_cSoil:
@@ -260,7 +260,7 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: CSOIL-Glob_c
+        tag: CSOIL_c
         convert_units_to: 'Gt'
 
   diag_mlr_input_nbp:
@@ -280,11 +280,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: NBP-Glob_c
+        tag: NBP_c
         convert_units_to: 'Gt yr-1'
       trend:
         <<: *trend
-        tag: NBP-Glob_t
+        tag: NBP_t
         convert_units_to: 'Gt yr-2'
 
   diag_mlr_input_gpp:
@@ -304,11 +304,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: GPP-Glob_c
+        tag: GPP_c
         convert_units_to: 'Gt yr-1'
       trend:
         <<: *trend
-        tag: GPP-Glob_t
+        tag: GPP_t
         convert_units_to: 'Gt yr-2'
 
   diag_mlr_input_lai:
@@ -328,11 +328,11 @@ diagnostics:
     scripts:
       mean:
         <<: *mean
-        tag: LAI-Glob_c
+        tag: LAI_c
         convert_units_to: null
       trend:
         <<: *trend
-        tag: LAI-Glob_t
+        tag: LAI_t
         convert_units_to: null
 
   diag_mlr:
@@ -365,24 +365,16 @@ diagnostics:
         use_coords_as_feature: ['latitude', 'longitude']
         predict_kwargs:
           return_cov: true
-        return_shaped_cubes: false
-      postprocess_mlr_mean: &pp_mlr
+      postprocess_mlr:
         script: mlr/simple_pp.py
         ancestors: ['diag_mlr/multiple_mlr_models']
-        sum: ['latitude', 'longitude']
-        area_weighted: false
-        pattern: '*prediction_mean*'
-      postprocess_mlr_cov:
-        <<: *pp_mlr
         sum: all
-        pattern: '*prediction_cov*'
+        area_weighted: false
+        pattern: '*prediction*'
       evaluate_mlr_models:
         script: mlr/simple_multimodel_stats.py
-        ancestors: [
-          'diag_mlr/postprocess_mlr_mean',
-          'diag_mlr/postprocess_mlr_cov',
-        ]
-        pattern: '*prediction*'
+        ancestors: ['diag_mlr/postprocess_mlr']
+        pattern: '*prediction*mean*'
         mean: true
         std: true
 
@@ -400,3 +392,4 @@ diagnostics:
         script: mlr/simple_multimodel_stats.py
         ancestors: ['diag_mmm/global_sum']
         mean: true
+        std: true

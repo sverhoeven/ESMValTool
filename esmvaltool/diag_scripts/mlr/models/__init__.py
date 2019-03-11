@@ -100,9 +100,6 @@ class MLRModel():
     test_size : float, optional (default: 0.25)
         Fraction of feature/label data which is used as test data and not for
         training (if desired).
-    return_shaped_cubes : bool, optional (default: True)
-        Returned cubes from prediction are reshaped to `prediction_input` cubes
-        (if possible).
     use_coords_as_feature : list, optional
         Use coordinates (e.g. 'air_pressure' or 'latitude') as features.
     use_only_coords_as_features : bool, optional (default: False)
@@ -190,13 +187,13 @@ class MLRModel():
 
         # Default parameters
         self._cfg.setdefault('imputation_strategy', 'remove')
-        self._cfg.setdefault('return_shaped_cubes', True)
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
 
         # Adapt output directories
         if root_dir is None:
             root_dir = ''
+        self._cfg['root_dir'] = root_dir
         self._cfg['mlr_work_dir'] = os.path.join(self._cfg['work_dir'],
                                                  root_dir)
         self._cfg['mlr_plot_dir'] = os.path.join(self._cfg['plot_dir'],
@@ -746,20 +743,7 @@ class MLRModel():
 
         # If desired missing values get removed in the output cube via a mask
         x_mask = np.ma.getmaskarray(x_data)
-        if self._cfg['imputation_strategy'] == 'remove':
-            if self._cfg['return_shaped_cubes']:
-                x_data = x_data.filled(np.ma.mean(x_data))
-            else:
-                mask = np.any(np.ma.getmaskarray(x_data), axis=1)
-                x_data = x_data.filled()[~mask]
-                n_removed = x_mask.shape[0] - x_data.shape[0]
-                if n_removed:
-                    logger.info(
-                        "Removed %i prediction input point(s) where "
-                        "features were missing'", n_removed)
-                x_mask = np.full(x_data.shape, False)
-        else:
-            x_data = x_data.filled(np.nan)
+        x_data = x_data.filled(np.nan)
         return (x_data, x_mask, prediction_input_cube)
 
     def _extract_x_data(self, datasets, var_type):
@@ -1006,21 +990,33 @@ class MLRModel():
 
     def _get_prediction_array(self, x_data, x_mask, **kwargs):
         """Get (multi-dimensional) prediction output."""
+        mask_1d = np.any(x_mask, axis=1)
+        if self._cfg['imputation_strategy'] == 'remove':
+            x_data = x_data[~mask_1d]
+            n_removed = x_mask.shape[0] - x_data.shape[0]
+            if n_removed:
+                logger.info(
+                    "Removed %i prediction input point(s) where "
+                    "features were missing'", n_removed)
+
+        # Start prediction
         logger.info("Predicting %i point(s)", x_data.shape[0])
         y_preds = self._clf.predict(x_data, **kwargs)
 
-        # Create list of arrays with correct mask and save them
+        # Create list of arrays with correct shape and mask and save them
         if not isinstance(y_preds, (list, tuple)):
             y_preds = [y_preds]
         y_preds = list(y_preds)
         for (idx, y_pred) in enumerate(y_preds):
-            if self._cfg['imputation_strategy'] == 'remove':
-                if y_pred.shape == y_pred[0].shape:
-                    y_preds[idx] = np.ma.array(y_pred, mask=x_mask[:, 0])
-                else:
-                    y_preds[idx] = np.ma.array(y_pred)
-
-        logger.info("Successfully predicted %i point(s)", y_preds[0].size)
+            if y_pred.ndim == 1 and y_pred.shape[0] != x_mask.shape[0]:
+                new_y_pred = np.ma.empty(x_mask.shape[0])
+                new_y_pred[mask_1d] = np.ma.masked
+                new_y_pred[~mask_1d] = y_pred
+                y_preds[idx] = new_y_pred
+            else:
+                y_preds[idx] = np.ma.array(y_pred)
+        logger.info("Successfully created prediction array with %i point(s)",
+                    y_preds[0].size)
         return y_preds
 
     def _get_reference_cube(self, datasets, var_type, text=None):
@@ -1341,8 +1337,7 @@ class MLRModel():
         predictions[pred_name] = []
         for (pred_idx, y_pred) in enumerate(y_predictions):
             predictions[pred_name].append(np.ma.copy(y_pred))
-            if (self._cfg['return_shaped_cubes']
-                    and y_pred.size == np.prod(x_cube.shape)):
+            if y_pred.size == np.prod(x_cube.shape):
                 y_pred = y_pred.reshape(x_cube.shape)
                 if (self._cfg['imputation_strategy'] == 'remove'
                         and np.ma.is_masked(x_cube.data)):
@@ -1368,6 +1363,8 @@ class MLRModel():
         cube.attributes = {
             'classifier': str(self._CLF_TYPE),
             'description': 'MLR model prediction',
+            'tag': self.classes['label'],
+            'var_type': 'prediction_output',
         }
         if pred_name is not None:
             cube.attributes['prediction_name'] = pred_name
@@ -1399,10 +1396,10 @@ class MLRModel():
             suffix = index
 
         # Get new path
-        if pred_name is None:
-            filename = f'prediction_{suffix}.nc'
-        else:
-            filename = f'prediction_{pred_name}_{suffix}.nc'
+        pred_str = '' if pred_name is None else f'_{pred_name}'
+        root_str = ('' if self._cfg['root_dir'] == '' else
+                    f"{self._cfg['root_dir']}_")
+        filename = f'{root_str}prediction{pred_str}_{suffix}.nc'
         new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
         cube.attributes['filename'] = new_path
         return new_path
