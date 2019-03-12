@@ -61,7 +61,7 @@ def get_grouped_datasets(cfg):
 
 def main(cfg):
     """Run the diagnostic."""
-    model_type = 'gpr'
+    model_type = 'sklearn_gpr'
 
     # Kernel
     kernel = (ConstantKernel(1.0, (1e-5, 1e5)) * RBF(1.0, (1e-5, 1e5)) +
