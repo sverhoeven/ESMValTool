@@ -66,6 +66,10 @@ class MLRModel():
         Allow missing features in the training data.
     cache_intermediate_results : bool, optional (default: True)
         Cache the intermediate results of the pipeline's transformers.
+    dtype : str, optional (default: 'float64')
+        Internal data type which is used for all calculations, see
+        <https://docs.scipy.org/doc/numpy/user/basics.types.html> for a list
+        of allowed values.
     fit_kwargs : dict, optional
         Optional keyword arguments for the classifier's `fit()` function. Have
         to be given for each step of the pipeline seperated by two underscores,
@@ -75,8 +79,8 @@ class MLRModel():
         using cross-validation.
     grid_search_cv_kwargs : dict, optional
         Keyword arguments for the grid search cross-validation, see
-        https://scikit-learn.org/stable/modules/generated/
-        sklearn.model_selection.GridSearchCV.html.
+        <https://scikit-learn.org/stable/modules/generated/
+        sklearn.model_selection.GridSearchCV.html>.
     group_datasets_by_attributes : list of str, optional
         List of dataset attributes which are used to group input data for
         `features` and `labels`, e.g. specify `dataset` to use the different
@@ -187,6 +191,7 @@ class MLRModel():
         self.parameters = self._load_parameters()
 
         # Default parameters
+        self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('imputation_strategy', 'remove')
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
@@ -263,8 +268,9 @@ class MLRModel():
         """
         if not self._clf_is_valid(text='Fitting MLR model'):
             return
-        logger.info("Fitting MLR model with final classifier %s",
-                    self._CLF_TYPE)
+        logger.info(
+            "Fitting MLR model with final classifier %s on %i training "
+            "point(s)", self._CLF_TYPE, self._data['y_train'].size)
         fit_kwargs = dict(self._cfg.get('fit_kwargs', {}))
         fit_kwargs.update(kwargs)
         if fit_kwargs:
@@ -273,7 +279,8 @@ class MLRModel():
                 fit_kwargs)
 
         # Create MLR model with desired parameters and fit it
-        self._clf.fit(self._data['x_train'], self._data['y_train'])
+        self._clf.fit(self._data['x_train'], self._data['y_train'],
+                      **fit_kwargs)
         self.parameters = self._clf.get_params()
         logger.info("Successfully fitted MLR model on %i training point(s)",
                     self._data['y_train'].size)
@@ -297,8 +304,8 @@ class MLRModel():
             Overwrites default and recipe settings.
         **kwargs : keyword arguments, optional
             Additional options for the `GridSearchCV` class. See
-            https://scikit-learn.org/stable/modules/generated/
-            sklearn.model_selection.GridSearchCV.html. Overwrites default and
+            <https://scikit-learn.org/stable/modules/generated/
+            sklearn.model_selection.GridSearchCV.html>. Overwrites default and
             recipe settings.
 
         """
@@ -314,8 +321,8 @@ class MLRModel():
             return
         logger.info(
             "Performing exhaustive grid search cross-validation with final "
-            "classifier %s and parameter grid %s", self._CLF_TYPE,
-            parameter_grid)
+            "classifier %s and parameter grid %s on %i training points",
+            self._CLF_TYPE, parameter_grid, self._data['y_train'].size)
         additional_args = dict(self._cfg.get('grid_search_cv_kwargs', {}))
         additional_args.update(kwargs)
         if additional_args:
@@ -622,9 +629,8 @@ class MLRModel():
                         format(expected_coords_str, msg, cube_coords_str))
                 for (idx, cube_coord) in enumerate(cube_coords):
                     expected_coord = expected_coords[idx]
-                    if not np.all(
-                            np.isclose(cube_coord.points,
-                                       expected_coord.points)):
+                    if not np.allclose(cube_coord.points,
+                                       expected_coord.points):
                         raise ValueError(
                             "Expected coordinate '{}'{} with points {}, got "
                             "{} (values differ by more than allowed "
@@ -753,7 +759,8 @@ class MLRModel():
                 "Sizes of features and labels do not match, got {:d} points "
                 "for the features and {:d} points for the label".format(
                     x_data.shape[0], y_data.size))
-        logger.info("Found %i raw input data point(s)", y_data.size)
+        logger.info("Found %i raw input data point(s) with data type '%s'",
+                    y_data.size, y_data.dtype)
 
         # Remove missing values in labels
         (x_data, y_data) = self._remove_missing_labels(x_data, y_data)
@@ -768,8 +775,9 @@ class MLRModel():
         datasets = self._datasets['prediction'][prediction_name]
         (x_data, prediction_input_cube) = self._extract_x_data(
             datasets, 'prediction_input')
-        logger.info("Found %i raw prediction input data point(s)",
-                    x_data.shape[0])
+        logger.info(
+            "Found %i raw prediction input data point(s) with data type '%s'",
+            x_data.shape[0], x_data.dtype)
 
         # If desired missing values get removed in the output cube via a mask
         x_mask = np.ma.getmaskarray(x_data)
@@ -815,7 +823,7 @@ class MLRModel():
     def _extract_y_data(self, datasets):
         """Extract y data (labels) from `datasets`."""
         datasets = select_metadata(datasets, var_type='label')
-        y_data = np.ma.array([])
+        y_data = np.ma.array([], dtype=self._cfg['dtype'])
         for group_attr in self.classes['group_attributes']:
             if group_attr is not None:
                 logger.info("Loading 'label' data of '%s'", group_attr)
@@ -1039,7 +1047,8 @@ class MLRModel():
         y_preds = list(y_preds)
         for (idx, y_pred) in enumerate(y_preds):
             if y_pred.ndim == 1 and y_pred.shape[0] != x_mask.shape[0]:
-                new_y_pred = np.ma.empty(x_mask.shape[0])
+                new_y_pred = np.ma.empty(
+                    x_mask.shape[0], dtype=self._cfg['dtype'])
                 new_y_pred[mask_1d] = np.ma.masked
                 new_y_pred[~mask_1d] = y_pred
                 y_preds[idx] = new_y_pred
@@ -1073,7 +1082,7 @@ class MLRModel():
         ref_cube = self._get_reference_cube(datasets, var_type, msg)
         shape = (np.prod(ref_cube.shape, dtype=np.int),
                  len(self.classes['features']))
-        attr_data = np.ma.empty(shape)
+        attr_data = np.ma.empty(shape, dtype=self._cfg['dtype'])
 
         # Iterate over all features
         for (idx, tag) in enumerate(self.classes['features']):
@@ -1157,7 +1166,8 @@ class MLRModel():
         """Check if the MLR models are fitted."""
         if self._clf is None:
             return False
-        x_dummy = np.ones((1, self.classes['features'].size))
+        x_dummy = np.ones((1, self.classes['features'].size),
+                          dtype=self._cfg['dtype'])
         try:
             self._clf.predict(x_dummy)
         except NotFittedError:
@@ -1186,11 +1196,29 @@ class MLRModel():
     def _load_cube(self, dataset):
         """Load iris cube, check data type and convert units if desired."""
         cube = iris.load_cube(dataset['filename'])
+
+        # Check dtype
         if not np.issubdtype(cube.dtype, np.number):
             raise TypeError(
                 "Data type of cube loaded from '{}' is '{}', at "
                 "the moment only numerical data is supported".format(
                     dataset['filename'], cube.dtype))
+
+        # Convert dtypes
+        cube_data = cube.core_data()
+        cube = cube.copy(
+            data=cube_data.astype(self._cfg['dtype'], casting='same_kind'))
+        for coord in cube.coords():
+            try:
+                coord.points = coord.points.astype(
+                    self._cfg['dtype'], casting='same_kind')
+            except TypeError:
+                logger.debug(
+                    "Cannot convert dtype of coordinate array '%s' from '%s' "
+                    "to '%s'", coord.name(), coord.points.dtype,
+                    self._cfg['dtype'])
+
+        # Convert and check units
         if dataset.get('convert_units_to'):
             logger.debug("Converting units from '%s' to '%s'",
                          cube.units.origin, dataset['convert_units_to'])

@@ -79,8 +79,9 @@ diagnostics:
     scripts:
       monthly_clim: &monthly_clim
         script: mlr/simple_pp.py
-        aggregate_by:
-          month_number: mean
+        # aggregate_by:
+        #   month_number: mean
+        mean: ['time']
         tag: T_c
         convert_units_to: celsius
 
