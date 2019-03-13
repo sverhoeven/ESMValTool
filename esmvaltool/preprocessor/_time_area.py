@@ -55,10 +55,10 @@ def time_slice(cube, start_year, start_month, start_day, end_year, end_month,
     t_1 = time_units.date2num(start_date)
     t_2 = time_units.date2num(end_date)
     if use_legacy_iris():
-        constraint = iris.Constraint(time=lambda t: (t_1 < t.point < t_2))
+        constraint = iris.Constraint(time=lambda t: (t_1 <= t.point < t_2))
     else:
         constraint = iris.Constraint(
-            time=lambda t: (t_1 < time_units.date2num(t.point) < t_2))
+            time=lambda t: (t_1 <= time_units.date2num(t.point) < t_2))
 
     cube_slice = cube.extract(constraint)
 
