@@ -341,6 +341,7 @@ diagnostics:
           'diag_mlr_input_*/mean',
           'diag_mlr_input_*/trend',
         ]
+        algorithm: george
         accept_only_scalar_data: true
         allow_missing_features: true
         group_datasets_by_attributes: ['dataset', 'ensemble']

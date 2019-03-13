@@ -318,7 +318,9 @@ diagnostics:
           select:
             project: CMIP5
           group: dataset
-        use_coords_as_feature: ['month_number','latitude', 'longitude']
+        algorithm: george
+        # use_coords_as_feature: ['month_number','latitude', 'longitude']
+        use_coords_as_feature: ['latitude', 'longitude']
         predict_kwargs:
           return_cov: true
       postprocess_mlr:
