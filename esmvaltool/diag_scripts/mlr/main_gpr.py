@@ -25,10 +25,12 @@ import logging
 import os
 from pprint import pformat
 
+import numpy as np
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
+from george import kernels as george_kernels
+from sklearn.gaussian_process import kernels as sklearn_kernels
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -61,12 +63,24 @@ def get_grouped_datasets(cfg):
 
 def main(cfg):
     """Run the diagnostic."""
-    model_type = 'sklearn_gpr'
-
-    # Kernel
-    kernel = (ConstantKernel(1.0, (1e-5, 1e5)) * RBF(1.0, (1e-5, 1e5)) +
-              WhiteKernel(1e-1, (1e-10, 1e5)))
     cfg.setdefault('parameters', {})
+    algorithm = cfg.get('algorithm', 'sklearn')
+    if algorithm == 'sklearn':
+        model_type = 'sklearn_gpr'
+        kernel = (sklearn_kernels.ConstantKernel(
+            1.0, (1e-5, 1e5)) * sklearn_kernels.RBF(1.0, (1e-5, 1e5)) +
+                  sklearn_kernels.WhiteKernel(1e-1, (1e-10, 1e5)))
+
+    elif algorithm == 'george':
+        model_type = 'george_gpr'
+        kernel = 1.0 * george_kernels.ExpSquaredKernel(1.0)
+        # cfg['parameters']['white_noise'] = np.log(1e-2)
+        cfg['parameters']['fit_white_noise'] = True
+    else:
+        logger.error("Got unknown GPR algorithm '%s'", algorithm)
+        return
+
+    # Set Kernel
     cfg['parameters']['kernel'] = kernel
 
     # Preselect data
@@ -76,6 +90,16 @@ def main(cfg):
             logger.info("Processing %s", attr)
         metadata = {} if group is None else {group: attr}
         mlr_model = MLRModel.create(model_type, cfg, root_dir=attr, **metadata)
+
+        # Kernel (dependent on number of features)
+        n_features = mlr_model.classes['features'].size
+        mlr_model.update_parameters(
+            transformed_target_regressor__regressor__fit_mean=False,
+            transformed_target_regressor__transformer__with_std=False,
+            transformed_target_regressor__regressor__kernel__k1__log_constant=
+            -1.0,
+        )
+        print(pformat(mlr_model.parameters))
 
         # Fit and predict
         if cfg.get('grid_search_cv_param_grid'):

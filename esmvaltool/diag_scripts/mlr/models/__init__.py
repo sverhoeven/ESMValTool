@@ -96,7 +96,10 @@ class MLRModel():
         Matplotlib style file (should be located in
         `esmvaltool.diag_scripts.shared.plot.styles_python.matplotlib`).
     parameters : dict, optional
-        Parameters used in the final classifier.
+        Parameters used in the **final** regressor. If these parameters are
+        updated using the function `self.update_parameters()`, the new names
+        have to be given for each step of the pipeline seperated by two
+        underscores, i.e. `s__p` is the parameter `p` for step `s`.
     predict_kwargs : dict, optional
         Optional keyword arguments for the classifier's `predict()` function.
     standardize_data : bool, optional (default: True)
@@ -113,7 +116,9 @@ class MLRModel():
     """
 
     _CLF_TYPE = None
+    _GEORGE_CLF = False
     _MODELS = {}
+    _PIPELINE_FINAL_STEP = 'transformed_target_regressor'
 
     @staticmethod
     def _load_mlr_models():
@@ -187,8 +192,8 @@ class MLRModel():
         self._data['y_pred'] = {}
         self._datasets = {}
         self._skater = {}
-        self.classes = {}
-        self.parameters = self._load_parameters()
+        self._classes = {}
+        self._parameters = self._load_cfg_parameters()
 
         # Default parameters
         self._cfg.setdefault('dtype', 'float64')
@@ -220,9 +225,19 @@ class MLRModel():
         self._create_classifier()
 
         # Log successful initialization
-        msg = ('' if not self.parameters else ' with parameters {} found in '
-               'recipe'.format(self.parameters))
-        logger.info("Initialized MRT model%s", msg)
+        logger.info("Initialized MLR model")
+        logger.info("with parameters")
+        logger.info(pformat(self.parameters))
+
+    @property
+    def classes(self):
+        """Classes of the model (read-only), e.g. features, label, etc."""
+        return self._classes
+
+    @property
+    def parameters(self):
+        """Parameters of the final regressor (read-only)."""
+        return self._parameters
 
     def export_prediction_data(self, filename=None):
         """Export all prediction data contained in `self._data`.
@@ -281,7 +296,7 @@ class MLRModel():
         # Create MLR model with desired parameters and fit it
         self._clf.fit(self._data['x_train'], self._data['y_train'],
                       **fit_kwargs)
-        self.parameters = self._clf.get_params()
+        self._parameters = self._get_clf_parameters()
         logger.info("Successfully fitted MLR model on %i training point(s)",
                     self._data['y_train'].size)
         logger.debug("Pipeline steps:")
@@ -335,13 +350,13 @@ class MLRModel():
         # Create GridSearchCV instance
         clf = GridSearchCV(self._clf, parameter_grid, **additional_args)
         clf.fit(self._data['x_train'], self._data['y_train'])
-        self.parameters.update(clf.best_params_)
+        self._parameters.update(clf.best_params_)
         if hasattr(clf, 'best_estimator_'):
             self._clf = clf.best_estimator_
         else:
             self._clf = self._CLF_TYPE(**self.parameters)
             self._clf.fit(self._data['x_train'], self._data['y_train'])
-        self.parameters = self._clf.get_params()
+        self._parameters = self._get_clf_parameters()
         logger.info(
             "Exhaustive grid search successful, found best parameter(s) %s",
             clf.best_params_)
@@ -599,6 +614,31 @@ class MLRModel():
         logger.info("Used %i%% of the input data as test data (%i point(s))",
                     int(test_size * 100), self._data['y_test'].size)
 
+    def update_parameters(self, **params):
+        """Update parameters of the classifier.
+
+        Parameters
+        ----------
+        **params : keyword arguments, optional
+            Paramaters of the classifier which should be updated.
+
+        Note
+        ----
+        Parameter names have to be given for each step of the pipeline
+        seperated by two underscores, i.e. `s__p` is the parameter `p` for
+        step `s`.
+
+        """
+        new_params = {}
+        for (key, val) in params.items():
+            if key in self.parameters:
+                new_params[key] = val
+            else:
+                logger.warning(
+                    "'%s' is not a valid parameter for the classifier")
+        self._clf.set_params(**params)
+        self._parameters = self._get_clf_parameters()
+
     def _check_cube_coords(self, cube, expected_coords, text=None):
         """Check shape and coordinates of a given cube."""
         msg = '' if text is None else ' for {}'.format(text)
@@ -698,24 +738,6 @@ class MLRModel():
             return False
         return True
 
-    def _convert_units(self, datasets):
-        """Convert units of datasets if desired."""
-        for dataset in datasets:
-            if not dataset.get('convert_units_to'):
-                continue
-            units_from = Unit(dataset['units'])
-            units_to = Unit(dataset['convert_units_to'])
-            try:
-                units_from.convert(0.0, units_to)
-            except ValueError:
-                logger.warning(
-                    "Cannot convert units of %s '%s' from '%s' to '%s'",
-                    dataset['var_type'], dataset['tag'], units_from.origin,
-                    units_to.origin)
-                dataset.pop('convert_units_to')
-            else:
-                dataset['units'] = dataset['convert_units_to']
-
     def _create_classifier(self):
         """Create classifier with correct settings."""
         if not self._clf_is_valid(text='Creating classifier'):
@@ -739,7 +761,7 @@ class MLRModel():
         regressor = self._CLF_TYPE(**self.parameters)
         transformed_regressor = mlr.AdvancedTransformedTargetRegressor(
             transformer=y_scaler, regressor=regressor)
-        steps.append(('regressor', transformed_regressor))
+        steps.append((self._PIPELINE_FINAL_STEP, transformed_regressor))
 
         # Final classifier
         if self._cfg.get('cache_intermediate_results', True):
@@ -747,6 +769,7 @@ class MLRModel():
         else:
             memory = None
         self._clf = mlr.AdvancedPipeline(steps, memory=memory)
+        self._parameters = self._get_clf_parameters()
         logger.debug("Created classifier")
 
     def _extract_features_and_labels(self):
@@ -883,31 +906,15 @@ class MLRModel():
         logger.debug("Added broadcasted %s", msg)
         return new_cube
 
-    def _get_coordinate_data(self, ref_cube, var_type, tag, text=None):
-        """Get coordinate variable `ref_cube` which can be used as x data."""
-        msg = '' if text is None else text
-        try:
-            coord = ref_cube.coord(tag)
-        except iris.exceptions.CoordinateNotFoundError:
-            raise iris.exceptions.CoordinateNotFoundError(
-                "Coordinate '{}' given in 'use_coords_as_feature' not "
-                "found in reference cube for {}{}".format(tag, var_type, msg))
-        coord_array = np.ma.array(coord.points)
-        new_axis_pos = np.delete(
-            np.arange(ref_cube.ndim), ref_cube.coord_dims(coord))
-        for idx in new_axis_pos:
-            coord_array = np.ma.expand_dims(coord_array, idx)
-        mask = coord_array.mask
-        coord_array = np.broadcast_to(coord_array, ref_cube.shape, subok=True)
-        coord_array.mask = np.broadcast_to(mask, ref_cube.shape)
-        logger.debug("Added coordinate %s '%s'%s", var_type, tag, msg)
-        return coord_array.ravel()
-
-    def _get_cube_data(self, cube):
-        """Get data from cube."""
-        if cube.shape == ():
-            return cube.data
-        return cube.data.ravel()
+    def _get_clf_parameters(self, deep=True):
+        """Get parameters of classifier."""
+        params = self._clf.get_params(deep=deep)
+        prefix = f'{self._PIPELINE_FINAL_STEP}__regressor__'
+        if self._GEORGE_CLF:
+            params.update(self._clf.named_steps[
+                self._PIPELINE_FINAL_STEP].regressor.get_george_params(
+                    include_frozen=True, prefix=prefix))
+        return params
 
     def _get_features(self):
         """Extract all features from the `prediction_input` datasets."""
@@ -1130,12 +1137,6 @@ class MLRModel():
                     properties[attr])
         return properties
 
-    def _group_prediction_datasets(self, datasets):
-        """Group prediction datasets (use `prediction_name` key)."""
-        for dataset in datasets:
-            dataset['group_attribute'] = None
-        return group_metadata(datasets, 'prediction_name')
-
     def _group_by_attributes(self, datasets):
         """Group datasets by specified attributes."""
         attributes = self._cfg.get('group_datasets_by_attributes', [])
@@ -1185,13 +1186,19 @@ class MLRModel():
             return False
         return True
 
+    def _load_cfg_parameters(self):
+        """Load parameters for classifier from recipe."""
+        parameters = self._cfg.get('parameters', {})
+        logger.debug("Found parameter(s) %s in recipe", parameters)
+        return parameters
+
     def _load_classes(self):
         """Populate self.classes and check for errors."""
-        self.classes['group_attributes'] = self._get_group_attributes()
-        (self.classes['features'], self.classes['features_units'],
-         self.classes['features_types']) = self._get_features()
-        (self.classes['label'],
-         self.classes['label_units']) = self._get_label()
+        self._classes['group_attributes'] = self._get_group_attributes()
+        (self._classes['features'], self._classes['features_units'],
+         self._classes['features_types']) = self._get_features()
+        (self._classes['label'],
+         self._classes['label_units']) = self._get_label()
 
     def _load_cube(self, dataset):
         """Load iris cube, check data type and convert units if desired."""
@@ -1283,12 +1290,6 @@ class MLRModel():
         logger.debug("Found prediction data:")
         logger.debug(pformat(self._datasets['prediction']))
 
-    def _load_parameters(self):
-        """Load parameters for classifier from recipe."""
-        parameters = self._cfg.get('parameters', {})
-        logger.debug("Found parameter(s) %s in recipe", parameters)
-        return parameters
-
     def _load_skater_interpreter(self):
         """Load :mod:`skater` interpretation modules."""
         x_train = np.copy(self._data['x_train'])
@@ -1339,17 +1340,6 @@ class MLRModel():
                     self.classes['group_attributes'] = (
                         self.classes['group_attributes'][~mask])
                 logger.info(msg, n_removed)
-        return (new_x_data, new_y_data)
-
-    def _remove_missing_labels(self, x_data, y_data):
-        """Remove missing values in the label data."""
-        mask = np.ma.getmaskarray(y_data)
-        new_x_data = x_data[~mask]
-        new_y_data = y_data[~mask]
-        diff = y_data.size - new_y_data.size
-        if diff:
-            logger.info(
-                "Removed %i training point(s) where labels were missing", diff)
         return (new_x_data, new_y_data)
 
     def _save_csv_file(self,
@@ -1461,3 +1451,74 @@ class MLRModel():
         new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
         cube.attributes['filename'] = new_path
         return new_path
+
+    @staticmethod
+    def _convert_units(datasets):
+        """Convert units of datasets if desired."""
+        for dataset in datasets:
+            if not dataset.get('convert_units_to'):
+                continue
+            units_from = Unit(dataset['units'])
+            units_to = Unit(dataset['convert_units_to'])
+            try:
+                units_from.convert(0.0, units_to)
+            except ValueError:
+                logger.warning(
+                    "Cannot convert units of %s '%s' from '%s' to '%s'",
+                    dataset['var_type'], dataset['tag'], units_from.origin,
+                    units_to.origin)
+                dataset.pop('convert_units_to')
+            else:
+                dataset['units'] = dataset['convert_units_to']
+
+    @staticmethod
+    def _get_coordinate_data(ref_cube, var_type, tag, text=None):
+        """Get coordinate variable `ref_cube` which can be used as x data."""
+        msg = '' if text is None else text
+        try:
+            coord = ref_cube.coord(tag)
+        except iris.exceptions.CoordinateNotFoundError:
+            raise iris.exceptions.CoordinateNotFoundError(
+                "Coordinate '{}' given in 'use_coords_as_feature' not "
+                "found in reference cube for {}{}".format(tag, var_type, msg))
+        coord_array = np.ma.array(coord.points)
+        coord_dims = ref_cube.coord_dims(coord)
+        if coord_dims == ():
+            logger.warning(
+                "Coordinate '%s' is scalar, including it as feature does not "
+                "add any information to the model (array is constant)", tag)
+        else:
+            new_axis_pos = np.delete(np.arange(ref_cube.ndim), coord_dims)
+            for idx in new_axis_pos:
+                coord_array = np.ma.expand_dims(coord_array, idx)
+        mask = coord_array.mask
+        coord_array = np.broadcast_to(coord_array, ref_cube.shape, subok=True)
+        coord_array.mask = np.broadcast_to(mask, ref_cube.shape)
+        logger.debug("Added coordinate %s '%s'%s", var_type, tag, msg)
+        return coord_array.ravel()
+
+    @staticmethod
+    def _get_cube_data(cube):
+        """Get data from cube."""
+        if cube.shape == ():
+            return cube.data
+        return cube.data.ravel()
+
+    @staticmethod
+    def _group_prediction_datasets(datasets):
+        """Group prediction datasets (use `prediction_name` key)."""
+        for dataset in datasets:
+            dataset['group_attribute'] = None
+        return group_metadata(datasets, 'prediction_name')
+
+    @staticmethod
+    def _remove_missing_labels(x_data, y_data):
+        """Remove missing values in the label data."""
+        mask = np.ma.getmaskarray(y_data)
+        new_x_data = x_data[~mask]
+        new_y_data = y_data[~mask]
+        diff = y_data.size - new_y_data.size
+        if diff:
+            logger.info(
+                "Removed %i training point(s) where labels were missing", diff)
+        return (new_x_data, new_y_data)

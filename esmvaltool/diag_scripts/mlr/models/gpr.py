@@ -11,6 +11,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.exceptions import NotFittedError
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.utils import check_random_state
+from sklearn.utils.validation import check_array, check_X_y
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -88,17 +89,8 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
         self.copy_X_train = copy_X_train
         self.random_state = random_state
         self.kwargs = kwargs
-
-        # george GP main object
-        self._gp = GP(
-            kernel=kernel,
-            fit_kernel=fit_kernel,
-            mean=mean,
-            fit_mean=fit_mean,
-            white_noise=white_noise,
-            fit_white_noise=fit_white_noise,
-            solver=solver,
-            **kwargs)
+        self._gp = None
+        self._init_gp()
 
         # Training data
         self._x_train = None
@@ -109,58 +101,105 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
     def fit(self, x_train, y_train):
         """Fit regressor using given training data."""
+        (x_train, y_train) = check_X_y(
+            x_train, y_train, multi_output=True, y_numeric=True)
         self._x_train = np.copy(x_train) if self.copy_X_train else x_train
         self._y_train = np.copy(y_train) if self.copy_X_train else y_train
+        self._gp.compute(self._x_train)
 
         # Optimize hyperparameters of kernel if desired
-        if self.optimizer is not None and self._gp.vector_size:
-            self._gp.compute(self._x_train)
+        if self.optimizer is None:
+            logger.warning(
+                "No optimizer for optimizing Gaussian Process (kernel) "
+                "hyperparameters specified, using initial values")
+            return self
+        if not self._gp.vector_size:
+            logger.warning(
+                "No hyperparameters for Gaussian Process (kernel) specified, "
+                "optimization not possible")
+            return self
 
-            print(self._gp)
-            print(self._gp.get_parameter_dict())
-            print(self._gp.get_parameter_bounds())
+        print(self._gp)
+        print(self.get_george_params(include_frozen=True))
+        print(self._gp.get_parameter_bounds(include_frozen=True))
 
-            # Objective function to minimize (- log-marginal likelihood)
-            def obj_func(theta):
-                self._gp.set_parameter_vector(theta)
-                log_like = self._gp.log_likelihood(self._y_train, quiet=True)
-                log_like = log_like if np.isfinite(log_like) else -np.inf
+        # Objective function to minimize (- log-marginal likelihood)
+        def obj_func(theta, eval_gradient=True):
+            self._gp.set_parameter_vector(theta)
+            log_like = self._gp.log_likelihood(self._y_train, quiet=True)
+            log_like = log_like if np.isfinite(log_like) else -np.inf
+            if eval_gradient:
                 grad_log_like = self._gp.grad_log_likelihood(
                     self._y_train, quiet=True)
                 return (-log_like, -grad_log_like)
+            return -log_like
 
-            # Start optimization from values specfied in kernel
-            bounds = self._gp.get_parameter_bounds()
-            optima = [
-                self._constrained_optimization(obj_func,
-                                               self._gp.get_parameter_vector(),
-                                               bounds)
-            ]
+        # Start optimization from values specfied in kernel
+        bounds = self._gp.get_parameter_bounds()
+        optima = [
+            self._constrained_optimization(obj_func,
+                                           self._gp.get_parameter_vector(),
+                                           bounds)
+        ]
 
-            # Additional runs (chosen from log-uniform intitial theta)
-            if self.n_restarts_optimizer > 0:
-                if not np.isfinite(bounds).all():
-                    raise ValueError(
-                        "Multiple optimizer restarts (n_restarts_optimizer > "
-                        "0) requires that all bounds are finite")
-                for _ in range(self.n_restarts_optimizer):
-                    theta_initial = self._rng.uniform(bounds[:, 0],
-                                                      bounds[:, 1])
-                    optima.append(
-                        self._constrained_optimization(obj_func, theta_initial,
-                                                       bounds))
+        # Additional runs (chosen from log-uniform intitial theta)
+        if self.n_restarts_optimizer > 0:
+            if not np.isfinite(bounds).all():
+                raise ValueError(
+                    "Multiple optimizer restarts (n_restarts_optimizer > "
+                    "0) requires that all bounds are finite")
+            for _ in range(self.n_restarts_optimizer):
+                theta_initial = self._rng.uniform(bounds[:, 0], bounds[:, 1])
+                optima.append(
+                    self._constrained_optimization(obj_func, theta_initial,
+                                                   bounds))
 
-            # Select best run (with lowest negative log-marginal likelihood)
-            log_like_vals = [opt[1] for opt in optima]
-            theta_opt = optima[np.argmin(log_like_vals)][0]
-            self._gp.set_parameter_vector(theta_opt)
+        # Select best run (with lowest negative log-marginal likelihood)
+        log_like_vals = [opt[1] for opt in optima]
+        theta_opt = optima[np.argmin(log_like_vals)][0]
+        self._gp.set_parameter_vector(theta_opt)
         return self
+
+    def get_george_params(self, include_frozen=False, prefix=''):
+        """Get `dict` of parameters of the :mod:`george.GP` class member."""
+        params = self._gp.get_parameter_dict(include_frozen=include_frozen)
+        new_params = {}
+        for (key, val) in params.items():
+            key = key.replace(':', '__')
+            new_params[f'{prefix}{key}'] = val
+        return new_params
 
     def predict(self, x_pred, **kwargs):
         """Predict for unknown data."""
         if not self._gp.computed:
             raise NotFittedError("Prediction not possible, model not fitted")
+        x_pred = check_array(x_pred)
         return self._gp.predict(self._y_train, x_pred, **kwargs)
+
+    def set_params(self, **params):
+        """Set the parameters of this estimator."""
+        valid_gp_params = self._gp.get_parameter_names(include_frozen=True)
+        gp_params = {}
+        remaining_params = {}
+        for (key, val) in params.items():
+            new_key = key.replace('__', ':')
+            if new_key in valid_gp_params:
+                gp_params[new_key] = val
+            else:
+                remaining_params[key] = val
+
+        # Initialize new GP object and adapt parameters
+        super().set_params(**remaining_params)
+        self._init_gp()
+        valid_gp_params = self._gp.get_parameter_names(include_frozen=True)
+        for (key, val) in gp_params.items():
+            if key in valid_gp_params:
+                self._gp.set_parameter(key, val)
+            else:
+                logger.error(
+                    "Parameter '%s' is not a valid parameter of the GP member "
+                    "anymore, was removed after new initialization", key)
+        return self
 
     def _constrained_optimization(self, obj_func, initial_theta, bounds):
         """Optimize hyperparameters.
@@ -185,6 +224,18 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
             raise ValueError(f"Unknown optimizer {self.optimizer}")
         return (theta_opt, func_min)
 
+    def _init_gp(self):
+        """Initialize :mod:`george.GP` instance."""
+        self._gp = GP(
+            kernel=self.kernel,
+            fit_kernel=self.fit_kernel,
+            mean=self.mean,
+            fit_mean=self.fit_mean,
+            white_noise=self.white_noise,
+            fit_white_noise=self.fit_white_noise,
+            solver=self.solver,
+            **self.kwargs)
+
 
 @MLRModel.register_mlr_model('george_gpr')
 class GeorgeGPRModel(MLRModel):
@@ -197,6 +248,7 @@ class GeorgeGPRModel(MLRModel):
     """
 
     _CLF_TYPE = GeorgeGaussianProcessRegressor
+    _GEORGE_CLF = True
 
     def print_kernel_info(self):
         """Print information of the fitted kernel of the GPR model."""
