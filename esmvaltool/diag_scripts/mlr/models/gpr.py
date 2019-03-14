@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pprint import pformat
 
 import numpy as np
 from esmvaltool.diag_scripts.mlr.models import MLRModel
@@ -56,6 +57,9 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
     sklearn.gaussian_process.GaussianProcessRegressor.html>.
 
     """
+
+    _SKLEARN_SEP = '__'
+    _GEORGE_SEP = ':'
 
     def __init__(self,
                  kernel=None,
@@ -119,11 +123,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
                 "optimization not possible")
             return self
 
-        print(self._gp)
-        print(self.get_george_params(include_frozen=True))
-        print(self._gp.get_parameter_bounds(include_frozen=True))
-
-        # Objective function to minimize (- log-marginal likelihood)
+        # Objective function to minimize (negative log-marginal likelihood)
         def obj_func(theta, eval_gradient=True):
             self._gp.set_parameter_vector(theta)
             log_like = self._gp.log_likelihood(self._y_train, quiet=True)
@@ -135,6 +135,8 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
             return -log_like
 
         # Start optimization from values specfied in kernel
+        logger.info("Optimizing george GP hyperparameters")
+        logger.info(pformat(self.get_george_params()))
         bounds = self._gp.get_parameter_bounds()
         optima = [
             self._constrained_optimization(obj_func,
@@ -144,20 +146,33 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
         # Additional runs (chosen from log-uniform intitial theta)
         if self.n_restarts_optimizer > 0:
-            if not np.isfinite(bounds).all():
-                raise ValueError(
-                    "Multiple optimizer restarts (n_restarts_optimizer > "
-                    "0) requires that all bounds are finite")
-            for _ in range(self.n_restarts_optimizer):
-                theta_initial = self._rng.uniform(bounds[:, 0], bounds[:, 1])
-                optima.append(
-                    self._constrained_optimization(obj_func, theta_initial,
-                                                   bounds))
+            if any([None in b for b in bounds]):
+                logger.error(
+                    "Multiple optimizer restarts (n_restarts_optimizer > 0) "
+                    "require that all bounds are given and finite (not set to "
+                    "'None')")
+            elif not np.isfinite(bounds).all():
+                logger.error(
+                    "Multiple optimizer restarts (n_restarts_optimizer > 0) "
+                    "require that all bounds are finite")
+            else:
+                for idx in range(self.n_restarts_optimizer):
+                    logger.info(
+                        "Restarted hyperparameter optimization, "
+                        "iteration %3i/%i", idx + 1, self.n_restarts_optimizer)
+                    theta_initial = self._rng.uniform(bounds[:, 0],
+                                                      bounds[:, 1])
+                    optima.append(
+                        self._constrained_optimization(obj_func, theta_initial,
+                                                       bounds))
 
         # Select best run (with lowest negative log-marginal likelihood)
         log_like_vals = [opt[1] for opt in optima]
         theta_opt = optima[np.argmin(log_like_vals)][0]
         self._gp.set_parameter_vector(theta_opt)
+        self._gp.compute(self._x_train)
+        logger.info("Result of hyperparameter optimization:")
+        logger.info(pformat(self.get_george_params()))
         return self
 
     def get_george_params(self, include_frozen=False, prefix=''):
@@ -165,7 +180,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
         params = self._gp.get_parameter_dict(include_frozen=include_frozen)
         new_params = {}
         for (key, val) in params.items():
-            key = key.replace(':', '__')
+            key = self._str_to_sklearn(key)
             new_params[f'{prefix}{key}'] = val
         return new_params
 
@@ -182,23 +197,31 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
         gp_params = {}
         remaining_params = {}
         for (key, val) in params.items():
-            new_key = key.replace('__', ':')
+            new_key = self._str_to_george(key)
             if new_key in valid_gp_params:
                 gp_params[new_key] = val
             else:
                 remaining_params[key] = val
 
-        # Initialize new GP object and adapt parameters
-        super().set_params(**remaining_params)
-        self._init_gp()
+        # Initialize new GP object and update parameters of this class
+        if remaining_params:
+            logger.debug("Updating <%s> with parameters %s",
+                         self.__class__.__name__, remaining_params)
+            super().set_params(**remaining_params)
+            self._init_gp()
+
+        # Update parameters of GP member
         valid_gp_params = self._gp.get_parameter_names(include_frozen=True)
         for (key, val) in gp_params.items():
             if key in valid_gp_params:
                 self._gp.set_parameter(key, val)
+                logger.debug("Set parameter '%s' of george GP member to '%s'",
+                             self._str_to_sklearn(key), val)
             else:
                 logger.error(
                     "Parameter '%s' is not a valid parameter of the GP member "
-                    "anymore, was removed after new initialization", key)
+                    "anymore, it was removed after new initialization with "
+                    "other parameters", self._str_to_sklearn(key))
         return self
 
     def _constrained_optimization(self, obj_func, initial_theta, bounds):
@@ -235,6 +258,18 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
             fit_white_noise=self.fit_white_noise,
             solver=self.solver,
             **self.kwargs)
+        logger.debug("Initialized george GP member of <%s>",
+                     self.__class__.__name__)
+
+    @classmethod
+    def _str_to_george(cls, string):
+        """Convert seperators of parameter string to :mod:`george`."""
+        return string.replace(cls._SKLEARN_SEP, cls._GEORGE_SEP)
+
+    @classmethod
+    def _str_to_sklearn(cls, string):
+        """Convert seperators of parameter string to :mod:`sklearn`."""
+        return string.replace(cls._GEORGE_SEP, cls._SKLEARN_SEP)
 
 
 @MLRModel.register_mlr_model('george_gpr')

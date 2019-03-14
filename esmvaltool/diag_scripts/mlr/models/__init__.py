@@ -226,8 +226,8 @@ class MLRModel():
 
         # Log successful initialization
         logger.info("Initialized MLR model")
-        logger.info("with parameters")
-        logger.info(pformat(self.parameters))
+        logger.debug("with parameters")
+        logger.debug(pformat(self.parameters))
 
     @property
     def classes(self):
@@ -636,8 +636,9 @@ class MLRModel():
             else:
                 logger.warning(
                     "'%s' is not a valid parameter for the classifier")
-        self._clf.set_params(**params)
+        self._clf.set_params(**new_params)
         self._parameters = self._get_clf_parameters()
+        logger.info("Updated classifier with parameters %s", new_params)
 
     def _check_cube_coords(self, cube, expected_coords, text=None):
         """Check shape and coordinates of a given cube."""

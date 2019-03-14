@@ -75,7 +75,7 @@ def main(cfg):
         model_type = 'george_gpr'
         kernel = 1.0 * george_kernels.ExpSquaredKernel(1.0)
         # cfg['parameters']['white_noise'] = np.log(1e-2)
-        cfg['parameters']['fit_white_noise'] = True
+        # cfg['parameters']['fit_white_noise'] = True
     else:
         logger.error("Got unknown GPR algorithm '%s'", algorithm)
         return
@@ -94,12 +94,9 @@ def main(cfg):
         # Kernel (dependent on number of features)
         n_features = mlr_model.classes['features'].size
         mlr_model.update_parameters(
-            transformed_target_regressor__regressor__fit_mean=False,
-            transformed_target_regressor__transformer__with_std=False,
-            transformed_target_regressor__regressor__kernel__k1__log_constant=
-            -1.0,
-        )
-        print(pformat(mlr_model.parameters))
+            transformed_target_regressor__regressor__kernel=george_kernels.
+            ExpSquaredKernel(
+                1.0, ndim=n_features, metric_bounds=[(-5.0, 5.0)]))
 
         # Fit and predict
         if cfg.get('grid_search_cv_param_grid'):
