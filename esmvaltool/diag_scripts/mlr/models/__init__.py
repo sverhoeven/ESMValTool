@@ -226,7 +226,7 @@ class MLRModel():
 
         # Log successful initialization
         logger.info("Initialized MLR model")
-        logger.debug("with parameters")
+        logger.debug("With parameters")
         logger.debug(pformat(self.parameters))
 
     @property
@@ -338,17 +338,18 @@ class MLRModel():
             "Performing exhaustive grid search cross-validation with final "
             "classifier %s and parameter grid %s on %i training points",
             self._CLF_TYPE, parameter_grid, self._data['y_train'].size)
-        additional_args = dict(self._cfg.get('grid_search_cv_kwargs', {}))
-        additional_args.update(kwargs)
-        if additional_args:
+        gridsearch_kwargs = dict(self._cfg.get('grid_search_cv_kwargs', {}))
+        gridsearch_kwargs.update(kwargs)
+        if gridsearch_kwargs:
             logger.info(
                 "Using additional keyword argument(s) %s given in "
-                "recipe and grid_search_cv() function", additional_args)
-            if additional_args.get('cv', '').lower() == 'loo':
-                additional_args['cv'] = LeaveOneOut()
+                "recipe and grid_search_cv() function", gridsearch_kwargs)
+            if isinstance(gridsearch_kwargs.get('cv'), str):
+                if gridsearch_kwargs['cv'].lower() == 'loo':
+                    gridsearch_kwargs['cv'] = LeaveOneOut()
 
         # Create GridSearchCV instance
-        clf = GridSearchCV(self._clf, parameter_grid, **additional_args)
+        clf = GridSearchCV(self._clf, parameter_grid, **gridsearch_kwargs)
         clf.fit(self._data['x_train'], self._data['y_train'])
         self._parameters.update(clf.best_params_)
         if hasattr(clf, 'best_estimator_'):

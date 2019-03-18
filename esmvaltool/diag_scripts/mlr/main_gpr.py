@@ -25,7 +25,6 @@ import logging
 import os
 from pprint import pformat
 
-import numpy as np
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
@@ -67,21 +66,17 @@ def main(cfg):
     algorithm = cfg.get('algorithm', 'sklearn')
     if algorithm == 'sklearn':
         model_type = 'sklearn_gpr'
-        kernel = (sklearn_kernels.ConstantKernel(
-            1.0, (1e-5, 1e5)) * sklearn_kernels.RBF(1.0, (1e-5, 1e5)) +
-                  sklearn_kernels.WhiteKernel(1e-1, (1e-10, 1e5)))
-
+        kernel = (
+            sklearn_kernels.ConstantKernel(1.0, (1e-5, 1e5)) *
+            sklearn_kernels.RBF(1.0, (1e-5, 1e5)) +
+            sklearn_kernels.WhiteKernel(1e-1, (1e-5, 1e5))
+        )
+        cfg['parameters']['kernel'] = kernel
     elif algorithm == 'george':
         model_type = 'george_gpr'
-        kernel = 1.0 * george_kernels.ExpSquaredKernel(1.0)
-        # cfg['parameters']['white_noise'] = np.log(1e-2)
-        # cfg['parameters']['fit_white_noise'] = True
     else:
         logger.error("Got unknown GPR algorithm '%s'", algorithm)
         return
-
-    # Set Kernel
-    cfg['parameters']['kernel'] = kernel
 
     # Preselect data
     (group, grouped_datasets) = get_grouped_datasets(cfg)
@@ -91,18 +86,23 @@ def main(cfg):
         metadata = {} if group is None else {group: attr}
         mlr_model = MLRModel.create(model_type, cfg, root_dir=attr, **metadata)
 
-        # Kernel (dependent on number of features)
-        n_features = mlr_model.classes['features'].size
-        mlr_model.update_parameters(
-            transformed_target_regressor__regressor__kernel=george_kernels.
-            ExpSquaredKernel(
-                1.0, ndim=n_features, metric_bounds=[(-5.0, 5.0)]))
+        # Kernel for george model needs number of features
+        if algorithm == 'george':
+            n_features = mlr_model.classes['features'].size
+            new_kernel = (
+                george_kernels.ExpSquaredKernel(
+                    1.0, ndim=n_features, metric_bounds=[(-5.0, 5.0)]) *
+                george_kernels.ConstantKernel(
+                    0.0, ndim=n_features, bounds=[(-5.0, 5.0)])
+            )
+            mlr_model.update_parameters(
+                transformed_target_regressor__regressor__kernel=new_kernel)
 
         # Fit and predict
+        mlr_model.simple_train_test_split()
         if cfg.get('grid_search_cv_param_grid'):
             mlr_model.grid_search_cv()
         else:
-            mlr_model.simple_train_test_split()
             mlr_model.fit()
         mlr_model.export_training_data()
         mlr_model.predict()

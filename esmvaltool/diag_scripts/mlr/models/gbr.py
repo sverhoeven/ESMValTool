@@ -38,7 +38,7 @@ class GBRModel(MLRModel):
         if filename is None:
             filename = 'prediction_error'
         (_, axes) = plt.subplots()
-        clf = self._clf.named_steps['regressor'].regressor_
+        clf = self._clf.named_steps[self._PIPELINE_FINAL_STEP].regressor_
 
         # Plot train score
         axes.plot(
@@ -51,8 +51,9 @@ class GBRModel(MLRModel):
         if 'x_test' in self._data:
             test_score = np.zeros((len(clf.train_score_), ), dtype=np.float64)
             x_test = self._clf.transform_only(self._data['x_test'])
-            y_test = self._clf.named_steps['regressor'].transformer_.transform(
-                np.expand_dims(self._data['y_test'], axis=-1))
+            y_test = self._clf.named_steps[
+                self._PIPELINE_FINAL_STEP].transformer_.transform(
+                    np.expand_dims(self._data['y_test'], axis=-1))
             y_test = y_test[:, 0]
             for (idx, y_pred) in enumerate(clf.staged_predict(x_test)):
                 test_score[idx] = clf.loss_(y_test, y_pred)

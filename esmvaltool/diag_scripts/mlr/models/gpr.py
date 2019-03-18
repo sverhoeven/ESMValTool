@@ -35,15 +35,12 @@ class SklearnGPRModel(MLRModel):
             logger.error("Printing kernel not possible because the model is "
                          "not fitted yet, call fit() first")
             return
-        kernel = self._clf.named_steps['regressor'].regressor_.kernel_
-        logger.info("Fitted kernel: %s (%i hyperparameters)", kernel,
-                    kernel.n_dims)
-        logger.info("Hyperparameters:")
-        for hyper_param in kernel.hyperparameters:
-            logger.info(hyper_param)
-        logger.info("Theta:")
-        for elem in kernel.theta:
-            logger.info(elem)
+        kernel = self._clf.named_steps[
+            self._PIPELINE_FINAL_STEP].regressor_.kernel_
+        logger.info("Fitted kernel: %s", kernel)
+        logger.info("All fitted log-hyperparameters:")
+        for (idx, hyper_param) in enumerate(kernel.hyperparameters):
+            logger.info("%s: %s", hyper_param, kernel.theta[idx])
 
 
 class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
@@ -135,9 +132,11 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
             return -log_like
 
         # Start optimization from values specfied in kernel
-        logger.info("Optimizing george GP hyperparameters")
-        logger.info(pformat(self.get_george_params()))
-        bounds = self._gp.get_parameter_bounds()
+        logger.debug("Optimizing george GP hyperparameters")
+        logger.debug(pformat(self.get_george_params()))
+        bounds = np.array(self._gp.get_parameter_bounds(), dtype=float)
+        bounds[np.isnan(bounds[:, 0]), 0] = -np.inf
+        bounds[np.isnan(bounds[:, 1]), 1] = +np.inf
         optima = [
             self._constrained_optimization(obj_func,
                                            self._gp.get_parameter_vector(),
@@ -146,18 +145,15 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
         # Additional runs (chosen from log-uniform intitial theta)
         if self.n_restarts_optimizer > 0:
-            if any([None in b for b in bounds]):
+            if not np.all(np.isfinite(bounds)):
                 logger.error(
                     "Multiple optimizer restarts (n_restarts_optimizer > 0) "
-                    "require that all bounds are given and finite (not set to "
-                    "'None')")
-            elif not np.isfinite(bounds).all():
-                logger.error(
-                    "Multiple optimizer restarts (n_restarts_optimizer > 0) "
-                    "require that all bounds are finite")
+                    "require that all bounds are given and finite, for "
+                    "parameters %s, got", self._gp.get_parameter_names())
+                logger.error(pformat(bounds))
             else:
                 for idx in range(self.n_restarts_optimizer):
-                    logger.info(
+                    logger.debug(
                         "Restarted hyperparameter optimization, "
                         "iteration %3i/%i", idx + 1, self.n_restarts_optimizer)
                     theta_initial = self._rng.uniform(bounds[:, 0],
@@ -171,8 +167,8 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
         theta_opt = optima[np.argmin(log_like_vals)][0]
         self._gp.set_parameter_vector(theta_opt)
         self._gp.compute(self._x_train)
-        logger.info("Result of hyperparameter optimization:")
-        logger.info(pformat(self.get_george_params()))
+        logger.debug("Result of hyperparameter optimization:")
+        logger.debug(pformat(self.get_george_params()))
         return self
 
     def get_george_params(self, include_frozen=False, prefix=''):
@@ -184,12 +180,15 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
             new_params[f'{prefix}{key}'] = val
         return new_params
 
-    def predict(self, x_pred, **kwargs):
+    def predict(self, x_pred, return_std=False, return_cov=False):
         """Predict for unknown data."""
         if not self._gp.computed:
             raise NotFittedError("Prediction not possible, model not fitted")
         x_pred = check_array(x_pred)
-        return self._gp.predict(self._y_train, x_pred, **kwargs)
+        if return_std:
+            pred = self._gp.predict(self._y_train, x_pred, return_var=True)
+            return (pred[0], np.sqrt(pred[1]))
+        return self._gp.predict(self._y_train, x_pred, return_cov=return_cov)
 
     def set_params(self, **params):
         """Set the parameters of this estimator."""
@@ -287,4 +286,12 @@ class GeorgeGPRModel(MLRModel):
 
     def print_kernel_info(self):
         """Print information of the fitted kernel of the GPR model."""
-        logger.error("PRINTING KERNEL NOT SUPPORTED YET")
+        if not self._is_fitted():
+            logger.error("Printing kernel not possible because the model is "
+                         "not fitted yet, call fit() first")
+            return
+        clf = self._clf.named_steps[self._PIPELINE_FINAL_STEP].regressor_
+        logger.info("Fitted kernel: %s", clf.kernel)
+        logger.info("All fitted log-hyperparameters:")
+        for (hyper_param, value) in clf.get_george_params().items():
+            logger.info("%s: %s", hyper_param, value)

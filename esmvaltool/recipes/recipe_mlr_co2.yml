@@ -79,9 +79,8 @@ diagnostics:
     scripts:
       monthly_clim: &monthly_clim
         script: mlr/simple_pp.py
-        # aggregate_by:
-        #   month_number: mean
-        mean: ['time']
+        aggregate_by:
+          month_number: mean
         tag: T_c
         convert_units_to: celsius
 
@@ -319,10 +318,12 @@ diagnostics:
             project: CMIP5
           group: dataset
         algorithm: george
-        # use_coords_as_feature: ['month_number','latitude', 'longitude']
-        use_coords_as_feature: ['latitude', 'longitude']
+        use_coords_as_feature: ['month_number', 'latitude', 'longitude']
         predict_kwargs:
           return_cov: true
+        parameters:
+          white_noise: 1.0e-2
+
       postprocess_mlr:
         script: mlr/simple_pp.py
         ancestors: ['diag_mlr/multiple_mlr_models']
