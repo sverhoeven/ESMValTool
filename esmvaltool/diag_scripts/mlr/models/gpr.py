@@ -142,6 +142,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
                                            self._gp.get_parameter_vector(),
                                            bounds)
         ]
+        logger.debug("Found parameters %s", optima[-1][0])
 
         # Additional runs (chosen from log-uniform intitial theta)
         if self.n_restarts_optimizer > 0:
@@ -161,6 +162,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
                     optima.append(
                         self._constrained_optimization(obj_func, theta_initial,
                                                        bounds))
+                    logger.debug("Found parameters %s", optima[-1][0])
 
         # Select best run (with lowest negative log-marginal likelihood)
         log_like_vals = [opt[1] for opt in optima]

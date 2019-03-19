@@ -28,6 +28,7 @@ from pprint import pformat
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
+from george import HODLRSolver
 from george import kernels as george_kernels
 from sklearn.gaussian_process import kernels as sklearn_kernels
 
@@ -91,12 +92,13 @@ def main(cfg):
             n_features = mlr_model.classes['features'].size
             new_kernel = (
                 george_kernels.ExpSquaredKernel(
-                    1.0, ndim=n_features, metric_bounds=[(-5.0, 5.0)]) *
+                    1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
                 george_kernels.ConstantKernel(
-                    0.0, ndim=n_features, bounds=[(-5.0, 5.0)])
+                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
             )
             mlr_model.update_parameters(
-                transformed_target_regressor__regressor__kernel=new_kernel)
+                transformed_target_regressor__regressor__kernel=new_kernel,
+                transformed_target_regressor__regressor__solver=HODLRSolver)
 
         # Fit and predict
         mlr_model.simple_train_test_split()

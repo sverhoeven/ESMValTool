@@ -323,6 +323,7 @@ diagnostics:
           return_cov: true
         parameters:
           white_noise: 1.0e-2
+          n_restarts_optimizer: 2
 
       postprocess_mlr:
         script: mlr/simple_pp.py
