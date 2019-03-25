@@ -116,20 +116,16 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
             return self
         if not self._gp.vector_size:
             logger.warning(
-                "No hyperparameters for Gaussian Process (kernel) specified, "
-                "optimization not possible")
+                "No free hyperparameters for Gaussian Process (kernel) "
+                "specified, optimization not possible")
             return self
 
         # Objective function to minimize (negative log-marginal likelihood)
         def obj_func(theta, eval_gradient=True):
-            self._gp.set_parameter_vector(theta)
-            log_like = self._gp.log_likelihood(self._y_train, quiet=True)
-            log_like = log_like if np.isfinite(log_like) else -np.inf
+            neg_log_like = self._gp.nll(theta, self._y_train)
             if eval_gradient:
-                grad_log_like = self._gp.grad_log_likelihood(
-                    self._y_train, quiet=True)
-                return (-log_like, -grad_log_like)
-            return -log_like
+                return (neg_log_like, self._gp.grad_nll(theta, self._y_train))
+            return neg_log_like
 
         # Start optimization from values specfied in kernel
         logger.debug("Optimizing george GP hyperparameters")

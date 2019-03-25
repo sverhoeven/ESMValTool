@@ -46,6 +46,9 @@ preprocessors:
       end_latitude: 90.0
       start_longitude: 0.0
       end_longitude: 360.0
+    regrid:
+      scheme: nearest
+      target_grid: 6x6
 
   regrid:
     <<: *mask_sea
@@ -322,8 +325,8 @@ diagnostics:
         predict_kwargs:
           return_cov: true
         parameters:
-          white_noise: 1.0e-2
-          n_restarts_optimizer: 2
+          white_noise: 0.05
+          n_restarts_optimizer: 5
 
       postprocess_mlr:
         script: mlr/simple_pp.py

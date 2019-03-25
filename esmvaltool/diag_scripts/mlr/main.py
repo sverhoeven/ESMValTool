@@ -86,7 +86,7 @@ def main(cfg):
             mlr_model.plot_partial_dependences()
         if model_type == 'gbr':
             mlr_model.plot_prediction_error()
-        if model_type == 'sklearn_gpr':
+        if 'gpr' in model_type:
             mlr_model.print_kernel_info()
 
 

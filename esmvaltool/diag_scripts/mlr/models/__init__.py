@@ -1180,7 +1180,7 @@ class MLRModel():
     def _is_ready_for_plotting(self):
         """Check if the class is ready for plotting."""
         if not self._is_fitted():
-            logger.error("Plotting not possible, MLR model is not fitted yet.")
+            logger.error("Plotting not possible, MLR model is not fitted yet")
             return False
         if not self._cfg['write_plots']:
             logger.debug("Plotting not possible, 'write_plots' is set to "

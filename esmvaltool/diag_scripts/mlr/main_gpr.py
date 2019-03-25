@@ -28,7 +28,6 @@ from pprint import pformat
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
-from george import HODLRSolver
 from george import kernels as george_kernels
 from sklearn.gaussian_process import kernels as sklearn_kernels
 
@@ -67,11 +66,8 @@ def main(cfg):
     algorithm = cfg.get('algorithm', 'sklearn')
     if algorithm == 'sklearn':
         model_type = 'sklearn_gpr'
-        kernel = (
-            sklearn_kernels.ConstantKernel(1.0, (1e-5, 1e5)) *
-            sklearn_kernels.RBF(1.0, (1e-5, 1e5)) +
-            sklearn_kernels.WhiteKernel(1e-1, (1e-5, 1e5))
-        )
+        kernel = (sklearn_kernels.ConstantKernel(1.0, (1e-5, 1e5)) *
+                  sklearn_kernels.RBF(1.0, (1e-5, 1e5)))
         cfg['parameters']['kernel'] = kernel
     elif algorithm == 'george':
         model_type = 'george_gpr'
@@ -94,11 +90,9 @@ def main(cfg):
                 george_kernels.ExpSquaredKernel(
                     1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
                 george_kernels.ConstantKernel(
-                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
-            )
+                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)]))
             mlr_model.update_parameters(
-                transformed_target_regressor__regressor__kernel=new_kernel,
-                transformed_target_regressor__regressor__solver=HODLRSolver)
+                transformed_target_regressor__regressor__kernel=new_kernel)
 
         # Fit and predict
         mlr_model.simple_train_test_split()
@@ -107,8 +101,8 @@ def main(cfg):
         else:
             mlr_model.fit()
         mlr_model.export_training_data()
-        mlr_model.predict()
-        mlr_model.export_prediction_data()
+        # mlr_model.predict()
+        # mlr_model.export_prediction_data()
         mlr_model.print_regression_metrics()
 
         # Output
