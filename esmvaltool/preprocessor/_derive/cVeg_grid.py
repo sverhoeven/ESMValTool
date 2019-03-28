@@ -17,11 +17,11 @@ class DerivedVariable(DerivedVariableBase):
             'short_name': 'cVeg',
             'field': 'T2{frequency}s'
         }],
-        'fx_files': ['areacella', 'sftlf']
+        'fx_files': ['sftlf']
     }
 
     def calculate(self, cubes):
-        """Compute carbon mass in vegetation per grid cell.
+        """Compute carbon mass in vegetation relative to grid cell area.
 
         Note
         ----

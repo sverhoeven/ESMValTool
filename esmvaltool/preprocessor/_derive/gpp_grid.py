@@ -17,11 +17,11 @@ class DerivedVariable(DerivedVariableBase):
             'short_name': 'gpp',
             'field': 'T2{frequency}s'
         }],
-        'fx_files': ['areacella', 'sftlf']
+        'fx_files': ['sftlf']
     }
 
     def calculate(self, cubes):
-        """Compute gross primary production per grid cell.
+        """Compute gross primary production relative to grid cell area.
 
         Note
         ----

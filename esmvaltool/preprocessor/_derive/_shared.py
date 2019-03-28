@@ -69,13 +69,19 @@ def _get_fx_cube(cubes, standard_name, fx_land_name, fx_sea_name=None):
                 "Cannot correct cube '%s' with '%s', fx file not found",
                 standard_name, fx_land_name)
         else:
-            logger.debug("Using fx cube '%s' to fix '%s'", fx_land_name,
-                         standard_name)
+            if not shape_is_broadcastable(fx_cube.shape, cube.shape):
+                fx_cube = None
+                invert = False
+                logger.debug("Cannot broadcast fx cube '%s' to cube '%s'",
+                             fx_land_name, standard_name)
+            else:
+                logger.debug("Using fx cube '%s' to fix '%s'", fx_land_name,
+                             standard_name)
     return (fx_cube, invert)
 
 
-def grid_area_correction(cubes, standard_name, integrate=True, sea_var=False):
-    """Correct (flux) variable defined relative to land area and integrate."""
+def grid_area_correction(cubes, standard_name, sea_var=False):
+    """Correct (flux) variable defined relative to land/sea area."""
     cube = cubes.extract_strict(Constraint(name=standard_name))
     core_data = cube.core_data()
 
@@ -92,33 +98,6 @@ def grid_area_correction(cubes, standard_name, integrate=True, sea_var=False):
             fraction = (da.ones_like(fraction_cube.core_data()) -
                         fraction_cube.core_data() / 100.0)
             core_data *= fraction
-
-    # Area
-    if integrate:
-        (area_cube, _) = _get_fx_cube(
-            cubes,
-            standard_name,
-            fx_land_name='areacella',
-            fx_sea_name='areacello' if sea_var else None)
-        if area_cube is not None:
-            core_data *= area_cube.core_data()
-            cube.units *= area_cube.units
-        else:
-            try:
-                logger.debug(
-                    "Area files for cube '%s' not found, trying to calculate "
-                    "area using cell bounds", standard_name)
-                for coord_name in ('latitude', 'longitude'):
-                    if not cube.coord(coord_name).has_bounds():
-                        cube.coord(coord_name).guess_bounds()
-                area = iris.analysis.cartography.area_weights(cube)
-                core_data *= area
-            except iris.exceptions.CoordinateMultiDimError as exc:
-                logger.error(
-                    "Cannot integrate irregular cube '%s', necessary area "
-                    "files not found", standard_name)
-                logger.error(cube)
-                raise exc
 
     # Return cube
     cube = cube.copy(core_data)

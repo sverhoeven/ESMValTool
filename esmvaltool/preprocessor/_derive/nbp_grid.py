@@ -17,11 +17,11 @@ class DerivedVariable(DerivedVariableBase):
             'short_name': 'nbp',
             'field': 'T2{frequency}s'
         }],
-        'fx_files': ['areacella', 'sftlf']
+        'fx_files': ['sftlf']
     }
 
     def calculate(self, cubes):
-        """Compute net biome production per grid cell.
+        """Compute net biome production relative to grid cell area.
 
         Note
         ----

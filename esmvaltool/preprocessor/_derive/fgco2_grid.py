@@ -17,11 +17,11 @@ class DerivedVariable(DerivedVariableBase):
             'short_name': 'fgco2',
             'field': 'T2{frequency}s'
         }],
-        'fx_files': ['areacella', 'areacello', 'sftof', 'sftlf']
+        'fx_files': ['sftof', 'sftlf']
     }
 
     def calculate(self, cubes):
-        """Compute gas exchange flux of CO2 per grid cell.
+        """Compute gas exchange flux of CO2 relative to grid cell area.
 
         Note
         ----

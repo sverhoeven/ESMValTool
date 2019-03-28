@@ -17,11 +17,11 @@ class DerivedVariable(DerivedVariableBase):
             'short_name': 'lai',
             'field': 'T2{frequency}s'
         }],
-        'fx_files': ['areacella', 'sftlf']
+        'fx_files': ['sftlf']
     }
 
     def calculate(self, cubes):
-        """Compute leaf area index per grid cell.
+        """Compute leaf area index relative to grid cell area.
 
         Note
         ----
@@ -32,4 +32,4 @@ class DerivedVariable(DerivedVariableBase):
         coastal regions.
 
         """
-        return grid_area_correction(cubes, 'leaf_area_index', integrate=False)
+        return grid_area_correction(cubes, 'leaf_area_index')
