@@ -102,6 +102,10 @@ class MLRModel():
         underscores, i.e. `s__p` is the parameter `p` for step `s`.
     predict_kwargs : dict, optional
         Optional keyword arguments for the classifier's `predict()` function.
+    prediction_pp : dict, optional
+        Postprocess prediction output (e.g. combine best estimate and standard
+        deviation in one cube). Accepts keywords `mean` and `sum` (followed by
+        list of coordinates) and `area_weighted` (bool).
     standardize_data : bool, optional (default: True)
         Linearly standardize input data by removing mean and scaling to unit
         variance.
@@ -198,6 +202,7 @@ class MLRModel():
         # Default parameters
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('imputation_strategy', 'remove')
+        self._cfg.setdefault('prediction_pp', {})
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
 
@@ -513,16 +518,11 @@ class MLRModel():
             Additional options for the `self._clf.predict()` function.
             Overwrites default and recipe settings.
 
-        Returns
-        -------
-        dict
-            Prediction names (keys) and data (values).
-
         """
         if not self._is_fitted():
             logger.error(
                 "Prediction not possible, MLR model is not fitted yet")
-            return None
+            return
         predict_kwargs = dict(self._cfg.get('predict_kwargs', {}))
         predict_kwargs.update(kwargs)
         if predict_kwargs:
@@ -552,11 +552,12 @@ class MLRModel():
             self._data['y_pred'][pred_name] = np.ma.copy(y_preds[0]).filled(
                 np.nan)
 
-            # Save data in cubes
-            predictions = self._save_prediction_cubes(y_preds, pred_name,
-                                                      x_cube)
+            # Get (and save) prediction cubes
+            (predictions, ref_path) = self._get_prediction_cubes(
+                y_preds, pred_name, x_cube)
 
-        return predictions
+            # Postprocess prediction cubes (if desired)
+            self._postprocess_predictions(predictions, ref_path)
 
     def print_regression_metrics(self):
         """Print all available regression metrics for the test data."""
@@ -673,12 +674,12 @@ class MLRModel():
                     expected_coord = expected_coords[idx]
                     if not np.allclose(cube_coord.points,
                                        expected_coord.points):
-                        raise ValueError(
-                            "Expected coordinate '{}'{} with points {}, got "
-                            "{} (values differ by more than allowed "
-                            "tolerance, check input cubes)".format(
-                                cube_coord.name(), msg, expected_coord.points,
-                                cube_coord.points))
+                        logger.warning(
+                            "'%s' coordinate for different cubes does not "
+                            "match, got %s%s, expected %s (values differ by "
+                            "more than allowed tolerance, check input cubes)",
+                            cube_coord.name(), cube_coord.points, msg,
+                            expected_coord.points)
 
     def _check_dataset(self, datasets, var_type, tag, text=None):
         """Check if datasets are exist and are valid."""
@@ -1067,6 +1068,57 @@ class MLRModel():
                     y_preds[0].size)
         return y_preds
 
+    def _get_prediction_cubes(self, y_predictions, pred_name, x_cube):
+        """Get (multi-dimensional) prediction output."""
+        logger.debug("Creating output cubes")
+        prediction_cubes = {}
+        ref_path = None
+        for (pred_idx, y_pred) in enumerate(y_predictions):
+            if y_pred.size == np.prod(x_cube.shape):
+                y_pred = y_pred.reshape(x_cube.shape)
+                if (self._cfg['imputation_strategy'] == 'remove'
+                        and np.ma.is_masked(x_cube.data)):
+                    y_pred = np.ma.array(
+                        y_pred, mask=y_pred.mask | x_cube.data.mask)
+                pred_cube = x_cube.copy(data=y_pred)
+            else:
+                dim_coords = []
+                for (dim_idx, dim_size) in enumerate(y_pred.shape):
+                    dim_coords.append((iris.coords.DimCoord(
+                        np.arange(dim_size, dtype=np.float64),
+                        long_name=f'MLR prediction index {dim_idx}',
+                        var_name=f'idx_{dim_idx}'), dim_idx))
+                pred_cube = iris.cube.Cube(
+                    y_pred, dim_coords_and_dims=dim_coords)
+            new_path = self._set_prediction_cube_attributes(
+                pred_cube, index=pred_idx, pred_name=pred_name)
+            prediction_cubes[new_path] = pred_cube
+            io.save_iris_cube(pred_cube, new_path)
+            if pred_idx == 0:
+                ref_path = new_path
+        return (prediction_cubes, ref_path)
+
+    def _get_prediction_properties(self):
+        """Get important properties of prediction input."""
+        datasets = select_metadata(
+            self._datasets['training'], var_type='label')
+        properties = {}
+        for attr in ('dataset', 'exp', 'project', 'start_year', 'end_year'):
+            attrs = list(group_metadata(datasets, attr).keys())
+            properties[attr] = attrs[0]
+            if len(attrs) > 1:
+                if attr == 'start_year':
+                    properties[attr] = min(attrs)
+                elif attr == 'end_year':
+                    properties[attr] = max(attrs)
+                else:
+                    properties[attr] = '|'.join(attrs)
+                logger.info(
+                    "Attribute '%s' of label data is not unique, got values "
+                    "%s, using %s for prediction cubes", attr, attrs,
+                    properties[attr])
+        return properties
+
     def _get_reference_cube(self, datasets, var_type, text=None):
         """Get reference cube for `datasets`."""
         msg = '' if text is None else text
@@ -1117,27 +1169,6 @@ class MLRModel():
 
         # Return data and reference cube
         return (attr_data, ref_cube)
-
-    def _get_prediction_properties(self):
-        """Get important properties of prediction input."""
-        datasets = select_metadata(
-            self._datasets['training'], var_type='label')
-        properties = {}
-        for attr in ('dataset', 'exp', 'project', 'start_year', 'end_year'):
-            attrs = list(group_metadata(datasets, attr).keys())
-            properties[attr] = attrs[0]
-            if len(attrs) > 1:
-                if attr == 'start_year':
-                    properties[attr] = min(attrs)
-                elif attr == 'end_year':
-                    properties[attr] = max(attrs)
-                else:
-                    properties[attr] = '|'.join(attrs)
-                logger.info(
-                    "Attribute '%s' of label data is not unique, got values "
-                    "%s, using %s for prediction cubes", attr, attrs,
-                    properties[attr])
-        return properties
 
     def _group_by_attributes(self, datasets):
         """Group datasets by specified attributes."""
@@ -1323,6 +1354,96 @@ class MLRModel():
         logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
         self.reset_training_data()
 
+    def _postprocess_cube(self, cube):
+        """Postprocess single prediction cube."""
+        cfg = self._cfg['prediction_pp']
+        calc_weights = cfg.get('area_weights', True)
+        flat_weights = None
+        if calc_weights:
+            flat_weights = self._get_area_weights(cube).ravel()
+            if np.ma.is_masked(cube.data):
+                mask = np.ma.getmaskarray(cube.data).ravel()
+                flat_weights = flat_weights[~mask]
+
+        # Mean
+        n_points_mean = None
+        if cfg.get('mean'):
+            logger.debug("Calculating mean for coordinates %s", cfg['mean'])
+            weights = None
+            old_size = np.prod(cube.shape, dtype=np.int)
+            if all([
+                    calc_weights, 'latitude' in cfg['mean'],
+                    'longitude' in cfg['mean']
+            ]):
+                weights = self._get_area_weights(cube)
+            cube = cube.collapsed(
+                cfg['mean'], iris.analysis.MEAN, weights=weights)
+            new_size = np.prod(cube.shape, dtype=np.int)
+            n_points_mean = int(old_size / new_size)
+
+        # Sum
+        if cfg.get('sum'):
+            logger.debug("Calculating sum for coordinates %s", cfg['sum'])
+            weights = None
+            if all([
+                    calc_weights, 'latitude' in cfg['mean'],
+                    'longitude' in cfg['mean']
+            ]):
+                weights = self._get_area_weights(cube)
+            cube = cube.collapsed(
+                cfg['sum'], iris.analysis.SUM, weights=weights)
+            cube.units *= Unit('m2')
+
+        # Weights for covariance matrix
+        cov_weights = None
+        if flat_weights is not None:
+            cov_weights = np.outer(flat_weights, flat_weights)
+            if n_points_mean is not None:
+                cov_weights /= n_points_mean**2
+        return (cube, cov_weights)
+
+    def _postprocess_predictions(self, predictions, ref_path=None):
+        """Postprocess prediction cubes if desired."""
+        if not self._cfg['prediction_pp']:
+            return
+        if ref_path is None:
+            return
+        logger.info("Postprocessing prediction output using %s",
+                    self._cfg['prediction_pp'])
+        logger.debug("Using reference cube at '%s'", ref_path)
+
+        # Process reference cube
+        ref_cube = predictions[ref_path]
+        ref_shape = ref_cube.shape
+        (ref_cube, cov_weights) = self._postprocess_cube(ref_cube)
+
+        # Process other cubes
+        pp_cubes = [ref_cube]
+        for (path, cube) in predictions.items():
+            if path == ref_path:
+                continue
+            if cube.shape == ref_shape:
+                (cube, _) = self._postprocess_cube(cube)
+            else:
+                if cov_weights is not None:
+                    if cube.shape != cov_weights.shape:
+                        logger.error(
+                            "Cannot postprocess all prediction cubes, "
+                            "expected shapes %s or %s (for covariance), got "
+                            "%s", ref_shape, cov_weights.shape, cube.shape)
+                        return
+                logger.debug("Collapsing covariance matrix")
+                cube = cube.collapsed(
+                    cube.coords(dim_coords=True),
+                    iris.analysis.SUM,
+                    weights=cov_weights)
+                cube.units *= Unit('m4')
+            pp_cubes.append(cube)
+
+        # Save cubes
+        new_path = ref_path.replace('.nc', '_pp.nc')
+        io.save_iris_cube(pp_cubes, new_path)
+
     def _remove_missing_features(self, x_data, y_data=None):
         """Remove missing values in the features data (if desired)."""
         if self._cfg['imputation_strategy'] != 'remove':
@@ -1380,34 +1501,6 @@ class MLRModel():
         np.savetxt(path, csv_data, delimiter=',', header=header)
         logger.info("Wrote %s", path)
 
-    def _save_prediction_cubes(self, y_predictions, pred_name, x_cube):
-        """Get (multi-dimensional) prediction output."""
-        logger.debug("Creating output cubes")
-        predictions = {}
-        predictions[pred_name] = []
-        for (pred_idx, y_pred) in enumerate(y_predictions):
-            predictions[pred_name].append(np.ma.copy(y_pred))
-            if y_pred.size == np.prod(x_cube.shape):
-                y_pred = y_pred.reshape(x_cube.shape)
-                if (self._cfg['imputation_strategy'] == 'remove'
-                        and np.ma.is_masked(x_cube.data)):
-                    y_pred = np.ma.array(
-                        y_pred, mask=y_pred.mask | x_cube.data.mask)
-                pred_cube = x_cube.copy(data=y_pred)
-            else:
-                dim_coords = []
-                for (dim_idx, dim_size) in enumerate(y_pred.shape):
-                    dim_coords.append((iris.coords.DimCoord(
-                        np.arange(dim_size, dtype=np.float64),
-                        long_name=f'MLR prediction index {dim_idx}',
-                        var_name=f'idx_{dim_idx}'), dim_idx))
-                pred_cube = iris.cube.Cube(
-                    y_pred, dim_coords_and_dims=dim_coords)
-            new_path = self._set_prediction_cube_attributes(
-                pred_cube, index=pred_idx, pred_name=pred_name)
-            io.save_iris_cube(pred_cube, new_path)
-        return predictions
-
     def _set_prediction_cube_attributes(self, cube, index=0, pred_name=None):
         """Set the attributes of the prediction cube."""
         cube.attributes = {
@@ -1439,6 +1532,7 @@ class MLRModel():
             elif 'return_cov' in self._cfg.get('predict_kwargs', {}):
                 cube.var_name += '_cov'
                 cube.long_name += ' (covariance)'
+                cube.units *= cube.units
                 suffix = 'cov'
         if suffix is None:
             cube.var_name += '_{:d}'.format(index)
@@ -1472,6 +1566,22 @@ class MLRModel():
                 dataset.pop('convert_units_to')
             else:
                 dataset['units'] = dataset['convert_units_to']
+
+    @staticmethod
+    def _get_area_weights(cube):
+        """Get area weights for a cube."""
+        logger.debug("Calculating area weights")
+        area_weights = None
+        for coord in cube.coords(dim_coords=True):
+            if not coord.has_bounds():
+                coord.guess_bounds()
+        try:
+            area_weights = iris.analysis.cartography.area_weights(cube)
+        except ValueError as exc:
+            logger.warning(
+                "Calculation of area weights for prediction cubes failed")
+            logger.warning(str(exc))
+        return area_weights
 
     @staticmethod
     def _get_coordinate_data(ref_cube, var_type, tag, text=None):
