@@ -36,14 +36,23 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
 
     def predict(self, x_data, return_std=False, return_cov=False):
         """Expand `predict()` method."""
+        if return_std and return_cov:
+            logger.warning(
+                "Cannot return standard deviation and full covariance matrix "
+                "for prediction, returning only standard deviation")
+            return_cov = False
         y_pred = super().predict(x_data)
-        if return_std or return_cov:
-            (_, y_err) = self.regressor_.predict(
-                x_data, return_std=return_std, return_cov=return_cov)
-            scale = self.transformer_.scale_
+        scale = self.transformer_.scale_
+        if return_std:
+            (_, y_std) = self.regressor_.predict(x_data, return_std=True)
             if scale is not None:
-                y_err *= scale
-            return (y_pred, y_err)
+                y_std *= scale
+            return (y_pred, y_std)
+        if return_cov:
+            (_, y_cov) = self.regressor_.predict(x_data, return_cov=True)
+            if scale is not None:
+                y_cov *= scale**2
+            return (y_pred, y_cov)
         return y_pred
 
 
