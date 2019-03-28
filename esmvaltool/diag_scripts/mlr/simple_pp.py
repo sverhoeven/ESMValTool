@@ -153,22 +153,23 @@ def calculate_sum_and_mean(cfg, cube):
 
             # Latitude and longitude (weighted)
             area_weights = _get_area_weights(cfg, cube)
-            if all([
-                    area_weights is not None,
-                    'latitude' in cfg[oper],
-                    'longitude' in cfg[oper],
-            ]):
+            if 'latitude' in cfg[oper] and 'longitude' in cfg[oper]:
                 cube = cube.collapsed(['latitude', 'longitude'],
                                       iris_op,
                                       weights=area_weights)
                 cfg[oper].remove('latitude')
                 cfg[oper].remove('longitude')
+                if oper == 'sum' and area_weights is not None:
+                    cube.units *= Unit('m2')
 
             # Time (weighted)
             time_weights = _get_time_weights(cfg, cube)
-            if all([time_weights is not None, 'time' in cfg[oper]]):
+            if 'time' in cfg[oper]:
                 cube = cube.collapsed(['time'], iris_op, weights=time_weights)
                 cfg[oper].remove('time')
+                if oper == 'sum' and time_weights is not None:
+                    time_units = cube.coord('time').units.origin.split()[0]
+                    cube.units *= Unit(time_units)
 
             # Remaining operations
             if cfg[oper]:
