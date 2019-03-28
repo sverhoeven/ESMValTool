@@ -247,7 +247,6 @@ diagnostics:
       mean: &mean_flux
         <<: *mean
         sum: ['latitude', 'longitude']
-        area_weighted: false
         tag: CVEG-Glob_c
         convert_units_to: 'Gt'
 

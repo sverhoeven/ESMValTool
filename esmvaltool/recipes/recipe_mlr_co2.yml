@@ -48,7 +48,7 @@ preprocessors:
       end_longitude: 360.0
     regrid:
       scheme: nearest
-      target_grid: 6x6
+      target_grid: 10x10
 
   regrid:
     <<: *mask_sea
@@ -211,7 +211,7 @@ diagnostics:
   #     monthly_clim:
   #       <<: *monthly_clim
   #       tag: CVEG_c
-  #       convert_units_to: 'Gt'
+  #       convert_units_to: 'Gt km-2'
 
   # diag_mlr_input_cSoil:
   #   variables:
@@ -231,7 +231,7 @@ diagnostics:
   #     monthly_clim:
   #       <<: *monthly_clim
   #       tag: CSOIL_c
-  #       convert_units_to: 'Gt'
+  #       convert_units_to: 'Gt km-2'
 
   diag_mlr_input_nbp:
     variables:
@@ -251,7 +251,7 @@ diagnostics:
       monthly_clim:
         <<: *monthly_clim
         tag: NBP_c
-        convert_units_to: 'Gt yr-1'
+        convert_units_to: 'Gt km-2 yr-1'
 
   diag_mlr_input_gpp:
     variables:
@@ -271,7 +271,7 @@ diagnostics:
       monthly_clim:
         <<: *monthly_clim
         tag: GPP_c
-        convert_units_to: 'Gt yr-1'
+        convert_units_to: 'Gt km-2 yr-1'
 
   diag_mlr_input_lai:
     variables:
@@ -306,7 +306,7 @@ diagnostics:
         derive: true
         var_type: label
         tag: NBP
-        convert_units_to: 'Gt yr-1'
+        convert_units_to: 'Gt km-2 yr-1'
     scripts:
       monthly_clim:
         <<: *monthly_clim
@@ -316,23 +316,25 @@ diagnostics:
           'diag_mlr/monthly_clim',
           'diag_mlr_input_*/monthly_clim',
         ]
+        algorithm: george
         metadata_preselection:
           select:
             project: CMIP5
           group: dataset
-        algorithm: george
-        use_coords_as_feature: ['month_number', 'latitude', 'longitude']
-        predict_kwargs:
-          return_cov: true
         parameters:
           white_noise: 0.05
           n_restarts_optimizer: 5
+        predict_kwargs:
+          return_cov: true
+        prediction_pp:
+          mean: ['time']
+          sum: ['latitude', 'longitude']
+        use_coords_as_feature: ['month_number', 'latitude', 'longitude']
 
       postprocess_mlr:
         script: mlr/simple_pp.py
         ancestors: ['diag_mlr/multiple_mlr_models']
         sum: all
-        area_weighted: false
         pattern: '*prediction*'
       evaluate_mlr_models:
         script: mlr/simple_multimodel_stats.py
@@ -350,7 +352,6 @@ diagnostics:
       global_sum:
         script: mlr/simple_pp.py
         sum: ['latitude', 'longitude']
-        area_weighted: false
       mmm:
         script: mlr/simple_multimodel_stats.py
         ancestors: ['diag_mmm/global_sum']
