@@ -144,7 +144,6 @@ class MLRModel():
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
-
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
@@ -1393,9 +1392,6 @@ class MLRModel():
             cov_weights = np.outer(flat_weights, flat_weights)
             if n_points_mean is not None:
                 cov_weights /= n_points_mean**2
-        path = os.path.expanduser('~/iii.nc')
-        iris.save(iris.cube.Cube(cov_weights), path)
-        logger.info("Wrote %s", path)
         return (cube, cov_weights)
 
     def _postprocess_predictions(self, predictions, ref_path=None):
@@ -1521,10 +1517,11 @@ class MLRModel():
         if index == 0:
             suffix = 'mean'
         elif index == 1:
-            if 'return_std' in self._cfg.get('predict_kwargs', {}):
-                cube.var_name += '_std'
-                cube.long_name += ' (standard deviation)'
-                suffix = 'std'
+            if 'return_var' in self._cfg.get('predict_kwargs', {}):
+                cube.var_name += '_var'
+                cube.long_name += ' (variance)'
+                cube.units *= cube.units
+                suffix = 'var'
             elif 'return_cov' in self._cfg.get('predict_kwargs', {}):
                 cube.var_name += '_cov'
                 cube.long_name += ' (covariance)'
