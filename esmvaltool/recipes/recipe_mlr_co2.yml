@@ -50,12 +50,6 @@ preprocessors:
       scheme: nearest
       target_grid: 10x10
 
-  regrid:
-    <<: *mask_sea
-    regrid:
-      scheme: nearest
-      target_grid: 2x2
-
 
 diagnostics:
 
@@ -75,7 +69,6 @@ diagnostics:
         additional_datasets: *datasets
       prediction_input: &variable_settings_prediction_input
         <<: *variable_settings_features
-        preprocessor: regrid
         var_type: prediction_input
         additional_datasets:
           - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}

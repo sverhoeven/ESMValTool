@@ -120,7 +120,6 @@ class MLRModel():
     """
 
     _CLF_TYPE = None
-    _GEORGE_CLF = False
     _MODELS = {}
     _PIPELINE_FINAL_STEP = 'transformed_target_regressor'
 
@@ -911,13 +910,7 @@ class MLRModel():
 
     def _get_clf_parameters(self, deep=True):
         """Get parameters of classifier."""
-        params = self._clf.get_params(deep=deep)
-        prefix = f'{self._PIPELINE_FINAL_STEP}__regressor__'
-        if self._GEORGE_CLF:
-            params.update(self._clf.named_steps[
-                self._PIPELINE_FINAL_STEP].regressor.get_george_params(
-                    include_frozen=True, prefix=prefix))
-        return params
+        return self._clf.get_params(deep=deep)
 
     def _get_features(self):
         """Extract all features from the `prediction_input` datasets."""
@@ -1400,6 +1393,9 @@ class MLRModel():
             cov_weights = np.outer(flat_weights, flat_weights)
             if n_points_mean is not None:
                 cov_weights /= n_points_mean**2
+        path = os.path.expanduser('~/iii.nc')
+        iris.save(iris.cube.Cube(cov_weights), path)
+        logger.info("Wrote %s", path)
         return (cube, cov_weights)
 
     def _postprocess_predictions(self, predictions, ref_path=None):

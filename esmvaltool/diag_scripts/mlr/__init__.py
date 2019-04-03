@@ -34,26 +34,25 @@ class AdvancedPipeline(Pipeline):
 class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
     """Expand `sklearn.compose.TransformedTargetRegressor` class."""
 
-    def predict(self, x_data, return_std=False, return_cov=False):
+    def predict(self, x_data, return_var=False, return_cov=False):
         """Expand `predict()` method."""
-        if return_std and return_cov:
+        if return_var and return_cov:
             logger.warning(
-                "Cannot return standard deviation and full covariance matrix "
-                "for prediction, returning only standard deviation")
+                "Cannot return variance and full covariance matrix for "
+                "prediction, returning only variance")
             return_cov = False
         y_pred = super().predict(x_data)
+        if not (return_var or return_cov):
+            return y_pred
         scale = self.transformer_.scale_
-        if return_std:
-            (_, y_std) = self.regressor_.predict(x_data, return_std=True)
-            if scale is not None:
-                y_std *= scale
-            return (y_pred, y_std)
-        if return_cov:
-            (_, y_cov) = self.regressor_.predict(x_data, return_cov=True)
-            if scale is not None:
-                y_cov *= scale**2
-            return (y_pred, y_cov)
-        return y_pred
+        if return_var:
+            (_, y_err) = self.regressor_.predict(x_data, return_std=True)
+            y_err *= y_err
+        else:
+            (_, y_err) = self.regressor_.predict(x_data, return_cov=True)
+        if scale is not None:
+            y_err *= scale**2
+        return (y_pred, y_err)
 
 
 def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):

@@ -1,4 +1,4 @@
-"""Gaussian Process Regression model."""
+"""Gaussian Process Regression model (using :mod:`george`)."""
 
 import logging
 import os
@@ -10,37 +10,10 @@ from george import GP
 from scipy.optimize import fmin_l_bfgs_b
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.exceptions import NotFittedError
-from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.utils import check_random_state
 from sklearn.utils.validation import check_array, check_X_y
 
 logger = logging.getLogger(os.path.basename(__file__))
-
-
-@MLRModel.register_mlr_model('sklearn_gpr')
-class SklearnGPRModel(MLRModel):
-    """Gaussian Process Regression model (:mod:`sklearn` implementation).
-
-    Note
-    ----
-    See :mod:`esmvaltool.diag_scripts.mlr.models`.
-
-    """
-
-    _CLF_TYPE = GaussianProcessRegressor
-
-    def print_kernel_info(self):
-        """Print information of the fitted kernel of the GPR model."""
-        if not self._is_fitted():
-            logger.error("Printing kernel not possible because the model is "
-                         "not fitted yet, call fit() first")
-            return
-        kernel = self._clf.named_steps[
-            self._PIPELINE_FINAL_STEP].regressor_.kernel_
-        logger.info("Fitted kernel: %s", kernel)
-        logger.info("All fitted log-hyperparameters:")
-        for (idx, hyper_param) in enumerate(kernel.hyperparameters):
-            logger.info("%s: %s", hyper_param, kernel.theta[idx])
 
 
 class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
@@ -293,3 +266,12 @@ class GeorgeGPRModel(MLRModel):
         logger.info("All fitted log-hyperparameters:")
         for (hyper_param, value) in clf.get_george_params().items():
             logger.info("%s: %s", hyper_param, value)
+
+    def _get_clf_parameters(self, deep=True):
+        """Get parameters of classifier."""
+        params = super()._get_clf_parameters(deep)
+        prefix = f'{self._PIPELINE_FINAL_STEP}__regressor__'
+        params.update(self._clf.named_steps[
+            self._PIPELINE_FINAL_STEP].regressor.get_george_params(
+                include_frozen=True, prefix=prefix))
+        return params
