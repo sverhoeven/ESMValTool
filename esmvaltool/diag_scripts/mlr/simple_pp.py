@@ -48,10 +48,11 @@ from pprint import pformat
 import iris
 import numpy as np
 from cf_units import Unit
+from scipy import stats
+
 from esmvaltool.diag_scripts.mlr import write_cube
 from esmvaltool.diag_scripts.shared import (get_diagnostic_filename, io,
                                             run_diagnostic)
-from scipy import stats
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -116,8 +117,8 @@ def _get_time_weights(cfg, cube):
             logger.debug("Calculating time weights")
             time = cube.coord('time')
             time_weights = time.bounds[:, 1] - time.bounds[:, 0]
-            new_axis_pos = np.delete(
-                np.arange(cube.ndim), cube.coord_dims('time'))
+            new_axis_pos = np.delete(np.arange(cube.ndim),
+                                     cube.coord_dims('time'))
             for idx in new_axis_pos:
                 time_weights = np.expand_dims(time_weights, idx)
             time_weights = np.broadcast_to(time_weights, cube.shape)
@@ -196,8 +197,9 @@ def calculate_trend(cfg, cube, data):
         y_data = np.moveaxis(cube.data, cube.coord_dims('time')[0], -1)
 
         # Calculate slope for (vectorized function)
-        v_get_slope = np.vectorize(
-            _get_slope, excluded=['x'], signature='(n),(n)->()')
+        v_get_slope = np.vectorize(_get_slope,
+                                   excluded=['x_arr'],
+                                   signature='(n),(n)->()')
         slopes = v_get_slope(x_data, y_data)
         cube = cube.collapsed('time', iris.analysis.MEAN)
         cube.data = np.ma.masked_invalid(slopes)

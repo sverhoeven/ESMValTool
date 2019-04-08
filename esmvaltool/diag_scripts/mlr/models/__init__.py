@@ -4,15 +4,13 @@ import copy
 import importlib
 import logging
 import os
+import re
 from pprint import pformat
 
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
 from cf_units import Unit
-from esmvaltool.diag_scripts import mlr
-from esmvaltool.diag_scripts.shared import (group_metadata, io, plot,
-                                            select_metadata)
 from skater.core.explanations import Interpretation
 from skater.model import InMemoryModel
 from sklearn import metrics
@@ -20,6 +18,10 @@ from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 from sklearn.preprocessing import StandardScaler
+
+from esmvaltool.diag_scripts import mlr
+from esmvaltool.diag_scripts.shared import (group_metadata, io, plot,
+                                            select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -144,6 +146,7 @@ class MLRModel():
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
+
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
@@ -253,11 +256,10 @@ class MLRModel():
         """
         for data_type in ('x_pred', 'y_pred'):
             for pred_name in self._data[data_type]:
-                self._save_csv_file(
-                    data_type,
-                    filename,
-                    is_prediction=True,
-                    pred_name=pred_name)
+                self._save_csv_file(data_type,
+                                    filename,
+                                    is_prediction=True,
+                                    pred_name=pred_name)
 
     def export_training_data(self, filename=None):
         """Export all training data contained in `self._data`.
@@ -396,11 +398,10 @@ class MLRModel():
         for method in ('model-scoring', 'prediction-variance'):
             logger.debug("Plotting feature importance for method '%s'", method)
             (_, axes) = (self._skater['interpreter'].feature_importance.
-                         plot_feature_importance(
-                             self._skater['model'],
-                             method=method,
-                             n_jobs=1,
-                             progressbar=progressbar))
+                         plot_feature_importance(self._skater['model'],
+                                                 method=method,
+                                                 n_jobs=1,
+                                                 progressbar=progressbar))
             axes.set_title('Variable Importance ({} Model)'.format(
                 self._CLF_TYPE.__name__))
             axes.set_xlabel('Relative Importance')
@@ -470,22 +471,19 @@ class MLRModel():
             if self._cfg.get('accept_only_scalar_data'):
                 for (g_idx, group_attr) in enumerate(
                         self.classes['group_attributes']):
-                    axes.scatter(
-                        self._data['x_data'][g_idx, f_idx],
-                        self._data['y_data'][g_idx],
-                        label=group_attr)
+                    axes.scatter(self._data['x_data'][g_idx, f_idx],
+                                 self._data['y_data'][g_idx],
+                                 label=group_attr)
                 for (pred_name, x_pred) in self._data['x_pred'].items():
-                    axes.axvline(
-                        x_pred[0, f_idx],
-                        linestyle='--',
-                        color='black',
-                        label=('Observation'
-                               if pred_name is None else pred_name))
-                legend = axes.legend(
-                    loc='center left',
-                    ncol=2,
-                    bbox_to_anchor=[1.05, 0.5],
-                    borderaxespad=0.0)
+                    axes.axvline(x_pred[0, f_idx],
+                                 linestyle='--',
+                                 color='black',
+                                 label=('Observation'
+                                        if pred_name is None else pred_name))
+                legend = axes.legend(loc='center left',
+                                     ncol=2,
+                                     bbox_to_anchor=[1.05, 0.5],
+                                     borderaxespad=0.0)
             else:
                 axes.plot(self._data['x_data'][:, f_idx], self._data['y_data'],
                           '.')
@@ -499,11 +497,10 @@ class MLRModel():
                 self._cfg['mlr_plot_dir'],
                 filename.format(feature=feature) + '.' +
                 self._cfg['output_file_type'])
-            plt.savefig(
-                new_path,
-                orientation='landscape',
-                bbox_inches='tight',
-                additional_artists=[legend])
+            plt.savefig(new_path,
+                        orientation='landscape',
+                        bbox_inches='tight',
+                        additional_artists=[legend])
             logger.info("Wrote %s", new_path)
             plt.close()
 
@@ -551,8 +548,8 @@ class MLRModel():
                 np.nan)
 
             # Get (and save) prediction cubes
-            (predictions, ref_path) = self._get_prediction_cubes(
-                y_preds, pred_name, x_cube)
+            (predictions,
+             ref_path) = self._get_prediction_cubes(y_preds, pred_name, x_cube)
 
             # Postprocess prediction cubes (if desired)
             self._postprocess_predictions(predictions, ref_path)
@@ -609,8 +606,9 @@ class MLRModel():
         if test_size is None:
             test_size = self._cfg.get('test_size', 0.25)
         (self._data['x_train'], self._data['x_test'], self._data['y_train'],
-         self._data['y_test']) = train_test_split(
-             self._data['x_data'], self._data['y_data'], test_size=test_size)
+         self._data['y_test']) = train_test_split(self._data['x_data'],
+                                                  self._data['y_data'],
+                                                  test_size=test_size)
         logger.info("Used %i%% of the input data as test data (%i point(s))",
                     int(test_size * 100), self._data['y_test'].size)
 
@@ -797,8 +795,9 @@ class MLRModel():
     def _extract_prediction_input(self, prediction_name):
         """Extract prediction input data points for `prediction_name`."""
         datasets = self._datasets['prediction'][prediction_name]
-        (x_data, prediction_input_cube) = self._extract_x_data(
-            datasets, 'prediction_input')
+        (x_data,
+         prediction_input_cube) = self._extract_x_data(datasets,
+                                                       'prediction_input')
         logger.info(
             "Found %i raw prediction input data point(s) with data type '%s'",
             x_data.shape[0], x_data.dtype)
@@ -826,15 +825,16 @@ class MLRModel():
         else:
             groups = [None]
         for group_attr in groups:
-            attr_datasets = select_metadata(
-                datasets, group_attribute=group_attr)
+            attr_datasets = select_metadata(datasets,
+                                            group_attribute=group_attr)
             if group_attr is not None:
                 logger.info("Loading '%s' data of '%s'", var_type, group_attr)
             msg = '' if group_attr is None else " for '{}'".format(group_attr)
             if not attr_datasets:
                 raise ValueError("No '{}' data{} found".format(var_type, msg))
-            (attr_data, cube) = self._get_x_data_for_group(
-                attr_datasets, var_type, group_attr)
+            (attr_data,
+             cube) = self._get_x_data_for_group(attr_datasets, var_type,
+                                                group_attr)
 
             # Append data
             if x_data is None:
@@ -886,8 +886,8 @@ class MLRModel():
         cube_to_broadcast = self._load_cube(dataset)
         data_to_broadcast = np.ma.array(cube_to_broadcast.data)
         try:
-            new_axis_pos = np.delete(
-                np.arange(len(target_shape)), dataset['broadcast_from'])
+            new_axis_pos = np.delete(np.arange(len(target_shape)),
+                                     dataset['broadcast_from'])
         except IndexError:
             raise ValueError(
                 "Broadcasting to shape {} failed{}, index out of bounds".
@@ -897,8 +897,9 @@ class MLRModel():
         for idx in new_axis_pos:
             data_to_broadcast = np.ma.expand_dims(data_to_broadcast, idx)
         mask = data_to_broadcast.mask
-        data_to_broadcast = np.broadcast_to(
-            data_to_broadcast, target_shape, subok=True)
+        data_to_broadcast = np.broadcast_to(data_to_broadcast,
+                                            target_shape,
+                                            subok=True)
         data_to_broadcast.mask = np.broadcast_to(mask, target_shape)
         new_cube = ref_cube.copy(data_to_broadcast)
         for idx in dataset['broadcast_from']:
@@ -917,8 +918,9 @@ class MLRModel():
         datasets = self._datasets['prediction'][pred_name]
         msg = ('' if pred_name is None else
                " for prediction '{}'".format(pred_name))
-        (features, units, types) = self._get_features_of_datasets(
-            datasets, 'prediction_input', msg)
+        (features, units,
+         types) = self._get_features_of_datasets(datasets, 'prediction_input',
+                                                 msg)
 
         # Check if features were found
         if not features:
@@ -999,10 +1001,11 @@ class MLRModel():
 
     def _get_group_attributes(self):
         """Get all group attributes from `label` datasets."""
-        datasets = select_metadata(
-            self._datasets['training'], var_type='label')
-        grouped_datasets = group_metadata(
-            datasets, 'group_attribute', sort=True)
+        datasets = select_metadata(self._datasets['training'],
+                                   var_type='label')
+        grouped_datasets = group_metadata(datasets,
+                                          'group_attribute',
+                                          sort=True)
         group_attributes = list(grouped_datasets.keys())
         if group_attributes != [None]:
             logger.info(
@@ -1013,8 +1016,8 @@ class MLRModel():
 
     def _get_label(self):
         """Extract label from training data."""
-        datasets = select_metadata(
-            self._datasets['training'], var_type='label')
+        datasets = select_metadata(self._datasets['training'],
+                                   var_type='label')
         if not datasets:
             raise ValueError("No 'label' datasets given")
         grouped_datasets = group_metadata(datasets, 'tag')
@@ -1049,8 +1052,8 @@ class MLRModel():
         y_preds = list(y_preds)
         for (idx, y_pred) in enumerate(y_preds):
             if y_pred.ndim == 1 and y_pred.shape[0] != x_mask.shape[0]:
-                new_y_pred = np.ma.empty(
-                    x_mask.shape[0], dtype=self._cfg['dtype'])
+                new_y_pred = np.ma.empty(x_mask.shape[0],
+                                         dtype=self._cfg['dtype'])
                 new_y_pred[mask_1d] = np.ma.masked
                 new_y_pred[~mask_1d] = y_pred
                 y_preds[idx] = new_y_pred
@@ -1070,8 +1073,8 @@ class MLRModel():
                 y_pred = y_pred.reshape(x_cube.shape)
                 if (self._cfg['imputation_strategy'] == 'remove'
                         and np.ma.is_masked(x_cube.data)):
-                    y_pred = np.ma.array(
-                        y_pred, mask=y_pred.mask | x_cube.data.mask)
+                    y_pred = np.ma.array(y_pred,
+                                         mask=y_pred.mask | x_cube.data.mask)
                 pred_cube = x_cube.copy(data=y_pred)
             else:
                 dim_coords = []
@@ -1080,8 +1083,8 @@ class MLRModel():
                         np.arange(dim_size, dtype=np.float64),
                         long_name=f'MLR prediction index {dim_idx}',
                         var_name=f'idx_{dim_idx}'), dim_idx))
-                pred_cube = iris.cube.Cube(
-                    y_pred, dim_coords_and_dims=dim_coords)
+                pred_cube = iris.cube.Cube(y_pred,
+                                           dim_coords_and_dims=dim_coords)
             new_path = self._set_prediction_cube_attributes(
                 pred_cube, index=pred_idx, pred_name=pred_name)
             prediction_cubes[new_path] = pred_cube
@@ -1092,8 +1095,8 @@ class MLRModel():
 
     def _get_prediction_properties(self):
         """Get important properties of prediction input."""
-        datasets = select_metadata(
-            self._datasets['training'], var_type='label')
+        datasets = select_metadata(self._datasets['training'],
+                                   var_type='label')
         properties = {}
         for attr in ('dataset', 'exp', 'project', 'start_year', 'end_year'):
             attrs = list(group_metadata(datasets, attr).keys())
@@ -1133,8 +1136,8 @@ class MLRModel():
         """Get x data for a group of datasets."""
         msg = '' if group_attr is None else " for '{}'".format(group_attr)
         ref_cube = self._get_reference_cube(datasets, var_type, msg)
-        shape = (np.prod(ref_cube.shape, dtype=np.int),
-                 len(self.classes['features']))
+        shape = (np.prod(ref_cube.shape,
+                         dtype=np.int), len(self.classes['features']))
         attr_data = np.ma.empty(shape, dtype=self._cfg['dtype'])
 
         # Iterate over all features
@@ -1242,8 +1245,8 @@ class MLRModel():
             data=cube_data.astype(self._cfg['dtype'], casting='same_kind'))
         for coord in cube.coords():
             try:
-                coord.points = coord.points.astype(
-                    self._cfg['dtype'], casting='same_kind')
+                coord.points = coord.points.astype(self._cfg['dtype'],
+                                                   casting='same_kind')
             except TypeError:
                 logger.debug(
                     "Cannot convert dtype of coordinate array '%s' from '%s' "
@@ -1268,8 +1271,9 @@ class MLRModel():
         """Load input datasets (including ancestors)."""
         input_datasets = copy.deepcopy(list(self._cfg['input_data'].values()))
         input_datasets.extend(self._get_ancestor_datasets())
-        mlr.datasets_have_mlr_attributes(
-            input_datasets, log_level='warning', mode='only_var_type')
+        mlr.datasets_have_mlr_attributes(input_datasets,
+                                         log_level='warning',
+                                         mode='only_var_type')
 
         # Extract features and labels
         feature_datasets = select_metadata(input_datasets, var_type='feature')
@@ -1281,18 +1285,18 @@ class MLRModel():
                         metadata)
 
         # Prediction datasets
-        prediction_datasets = select_metadata(
-            input_datasets, var_type='prediction_input')
+        prediction_datasets = select_metadata(input_datasets,
+                                              var_type='prediction_input')
         training_datasets = feature_datasets + label_datasets
 
         # Check datasets
         msg = ("At least one '{}' dataset does not have necessary MLR "
                "attributes")
-        if not mlr.datasets_have_mlr_attributes(
-                training_datasets, log_level='error'):
+        if not mlr.datasets_have_mlr_attributes(training_datasets,
+                                                log_level='error'):
             raise ValueError(msg.format('training'))
-        if not mlr.datasets_have_mlr_attributes(
-                prediction_datasets, log_level='error'):
+        if not mlr.datasets_have_mlr_attributes(prediction_datasets,
+                                                log_level='error'):
             raise ValueError(msg.format('prediction'))
 
         # Check if data was found
@@ -1368,8 +1372,9 @@ class MLRModel():
                     'longitude' in cfg['mean']
             ]):
                 weights = self._get_area_weights(cube)
-            cube = cube.collapsed(
-                cfg['mean'], iris.analysis.MEAN, weights=weights)
+            cube = cube.collapsed(cfg['mean'],
+                                  iris.analysis.MEAN,
+                                  weights=weights)
             new_size = np.prod(cube.shape, dtype=np.int)
             n_points_mean = int(old_size / new_size)
 
@@ -1378,12 +1383,13 @@ class MLRModel():
             logger.debug("Calculating sum for coordinates %s", cfg['sum'])
             weights = None
             if all([
-                    calc_weights, 'latitude' in cfg['mean'],
-                    'longitude' in cfg['mean']
+                    calc_weights, 'latitude' in cfg['sum'],
+                    'longitude' in cfg['sum']
             ]):
                 weights = self._get_area_weights(cube)
-            cube = cube.collapsed(
-                cfg['sum'], iris.analysis.SUM, weights=weights)
+            cube = cube.collapsed(cfg['sum'],
+                                  iris.analysis.SUM,
+                                  weights=weights)
             cube.units *= Unit('m2')
 
         # Weights for covariance matrix
@@ -1423,12 +1429,11 @@ class MLRModel():
                             "Cannot postprocess all prediction cubes, "
                             "expected shapes %s or %s (for covariance), got "
                             "%s", ref_shape, cov_weights.shape, cube.shape)
-                        return
+                        continue
                 logger.debug("Collapsing covariance matrix")
-                cube = cube.collapsed(
-                    cube.coords(dim_coords=True),
-                    iris.analysis.SUM,
-                    weights=cov_weights)
+                cube = cube.collapsed(cube.coords(dim_coords=True),
+                                      iris.analysis.SUM,
+                                      weights=cov_weights)
                 cube.units *= Unit('m4')
             pp_cubes.append(cube)
 
@@ -1506,8 +1511,8 @@ class MLRModel():
         cube.attributes.update(self._get_prediction_properties())
         for (key, val) in self.parameters.items():
             cube.attributes[key] = str(val)
-        label = select_metadata(
-            self._datasets['training'], var_type='label')[0]
+        label = select_metadata(self._datasets['training'],
+                                var_type='label')[0]
         label_cube = self._load_cube(label)
         for attr in ('standard_name', 'var_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
@@ -1627,3 +1632,32 @@ class MLRModel():
             logger.info(
                 "Removed %i training point(s) where labels were missing", diff)
         return (new_x_data, new_y_data)
+
+    @staticmethod
+    def _units_power(units, power):
+        """Raise a :mod:`cf_units.Unit` to a given power preserving symbols."""
+        if round(power) != power:
+            raise TypeError(f"Expected integer power for units "
+                            f"exponentiation, got {power}")
+        if any([units.is_no_unit(), units.is_unknown()]):
+            logger.warning("Cannot raise units '%s' to power %i", units.origin,
+                           power)
+            return units
+        if units.definition.split()[0][0].isdigit():
+            logger.warning(
+                "Symbol-preserving exponentiation of units '%s' is not "
+                "supported yet because of leading numbers", units.origin)
+            return units**power
+        new_units_list = []
+        for split in units.origin.split():
+            for elem in split.split('.'):
+                if elem[-1].isdigit():
+                    exp = [int(d) for d in re.findall(r'-?\d+', elem)][0]
+                    val = ''.join(
+                        [abc for abc in re.findall(r'[A-Za-z]', elem)])
+                    print(val, exp, power)
+                    new_units_list.append(f'{val}{exp * power}')
+                else:
+                    new_units_list.append(f'{elem}{power}')
+        new_units = ' '.join(new_units_list)
+        return Unit(new_units)
