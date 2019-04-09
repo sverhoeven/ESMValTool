@@ -1255,16 +1255,14 @@ class MLRModel():
 
         # Convert and check units
         if dataset.get('convert_units_to'):
-            logger.debug("Converting units from '%s' to '%s'",
-                         cube.units.origin, dataset['convert_units_to'])
-            cube.convert_units(dataset['convert_units_to'])
+            self._convert_units_in_cube(cube, dataset['convert_units_to'])
         if not cube.units == Unit(dataset['units']):
             raise ValueError(
                 "Units of cube '{}' for {} '{}' differ from units given in "
                 "dataset list (retrieved from ancestors or metadata.yml), got "
                 "'{}' in cube and '{}' in dataset list".format(
                     dataset['filename'], dataset['var_type'], dataset['tag'],
-                    cube.units.origin, dataset['units']))
+                    cube.units.symbol, dataset['units']))
         return cube
 
     def _load_input_datasets(self, **metadata):
@@ -1306,8 +1304,8 @@ class MLRModel():
                 "No training data (features/labels){} found".format(msg))
 
         # Convert units
-        self._convert_units(training_datasets)
-        self._convert_units(prediction_datasets)
+        self._convert_units_in_metadata(training_datasets)
+        self._convert_units_in_metadata(prediction_datasets)
 
         # Set datasets
         self._datasets['training'] = self._group_by_attributes(
@@ -1357,40 +1355,35 @@ class MLRModel():
         flat_weights = None
         if calc_weights:
             flat_weights = self._get_area_weights(cube).ravel()
-            if np.ma.is_masked(cube.data):
-                mask = np.ma.getmaskarray(cube.data).ravel()
-                flat_weights = flat_weights[~mask]
+            flat_weights = flat_weights[~np.ma.getmaskarray(cube.data).ravel()]
+        ops = {'mean': iris.analysis.MEAN, 'sum': iris.analysis.SUM}
 
-        # Mean
+        # Perform desired postprocessing operations
         n_points_mean = None
-        if cfg.get('mean'):
-            logger.debug("Calculating mean for coordinates %s", cfg['mean'])
+        old_size = np.prod(cube.shape, dtype=np.int)
+        for (op_type, iris_op) in ops.items():
+            if not cfg.get(op_type):
+                continue
+            logger.debug("Calculating %s for coordinates %s", op_type,
+                         cfg[op_type])
             weights = None
-            old_size = np.prod(cube.shape, dtype=np.int)
             if all([
-                    calc_weights, 'latitude' in cfg['mean'],
-                    'longitude' in cfg['mean']
+                    calc_weights, 'latitude' in cfg[op_type],
+                    'longitude' in cfg[op_type]
             ]):
                 weights = self._get_area_weights(cube)
-            cube = cube.collapsed(cfg['mean'],
-                                  iris.analysis.MEAN,
-                                  weights=weights)
-            new_size = np.prod(cube.shape, dtype=np.int)
-            n_points_mean = int(old_size / new_size)
+            cube = cube.collapsed(cfg[op_type], iris_op, weights=weights)
+            if op_type == 'mean':
+                new_size = np.prod(cube.shape, dtype=np.int)
+                n_points_mean = int(old_size / new_size)
+            elif op_type == 'sum':
+                cube.units *= Unit('m2')
 
-        # Sum
-        if cfg.get('sum'):
-            logger.debug("Calculating sum for coordinates %s", cfg['sum'])
-            weights = None
-            if all([
-                    calc_weights, 'latitude' in cfg['sum'],
-                    'longitude' in cfg['sum']
-            ]):
-                weights = self._get_area_weights(cube)
-            cube = cube.collapsed(cfg['sum'],
-                                  iris.analysis.SUM,
-                                  weights=weights)
-            cube.units *= Unit('m2')
+        # Units conversion
+        if cfg.get('units'):
+            self._convert_units_in_cube(cube,
+                                        cfg['units'],
+                                        text='postprocessed prediction output')
 
         # Weights for covariance matrix
         cov_weights = None
@@ -1435,6 +1428,13 @@ class MLRModel():
                                       iris.analysis.SUM,
                                       weights=cov_weights)
                 cube.units *= Unit('m4')
+
+                # Units conversion
+                new_units = self._cfg['prediction_pp'].get('units')
+                if new_units:
+                    new_units = self._units_power(Unit(new_units), 2)
+                    self._convert_units_in_cube(
+                        cube, new_units, text='postprocessed covariance')
             pp_cubes.append(cube)
 
         # Save cubes
@@ -1547,7 +1547,23 @@ class MLRModel():
         return new_path
 
     @staticmethod
-    def _convert_units(datasets):
+    def _convert_units_in_cube(cube, new_units, text=None):
+        """Convert units of cube if possible."""
+        msg = '' if text is None else f' of {text}'
+        if isinstance(new_units, str):
+            new_units = Unit(new_units)
+        new_units_name = (new_units.symbol
+                          if new_units.origin is None else new_units.origin)
+        logger.debug("Converting units%s from '%s' to '%s'", msg,
+                     cube.units.symbol, new_units_name)
+        try:
+            cube.convert_units(new_units)
+        except ValueError:
+            logger.warning("Units conversion%s from '%s' to '%s' failed", msg,
+                           cube.units.symbol, new_units_name)
+
+    @staticmethod
+    def _convert_units_in_metadata(datasets):
         """Convert units of datasets if desired."""
         for dataset in datasets:
             if not dataset.get('convert_units_to'):
@@ -1640,13 +1656,18 @@ class MLRModel():
             raise TypeError(f"Expected integer power for units "
                             f"exponentiation, got {power}")
         if any([units.is_no_unit(), units.is_unknown()]):
-            logger.warning("Cannot raise units '%s' to power %i", units.origin,
+            logger.warning("Cannot raise units '%s' to power %i", units.name,
                            power)
             return units
         if units.definition.split()[0][0].isdigit():
             logger.warning(
                 "Symbol-preserving exponentiation of units '%s' is not "
-                "supported yet because of leading numbers", units.origin)
+                "supported yet because of leading numbers", units.symbol)
+            return units**power
+        if units.origin is None:
+            logger.warning(
+                "Symbol-preserving exponentiation of units '%s' is not "
+                "supported, origin is not given", units.symbol)
             return units**power
         new_units_list = []
         for split in units.origin.split():

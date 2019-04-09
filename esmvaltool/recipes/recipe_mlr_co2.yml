@@ -322,6 +322,7 @@ diagnostics:
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']
+          units: 'Gt yr-1'
         use_coords_as_feature: ['month_number', 'latitude', 'longitude']
 
       postprocess_mlr:
