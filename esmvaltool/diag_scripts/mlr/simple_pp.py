@@ -43,6 +43,7 @@ pattern : str, optional
 import copy
 import logging
 import os
+from functools import partial
 from pprint import pformat
 
 import iris
@@ -76,6 +77,7 @@ def _has_valid_coords(cube, coord_names):
     return True
 
 
+@partial(np.vectorize, excluded=['x_arr'], signature='(n),(n)->()')
 def _get_slope(x_arr, y_arr):
     """Get slope of linear regression of two (masked) arrays."""
     if np.ma.is_masked(y_arr):
@@ -197,10 +199,7 @@ def calculate_trend(cfg, cube, data):
         y_data = np.moveaxis(cube.data, cube.coord_dims('time')[0], -1)
 
         # Calculate slope for (vectorized function)
-        v_get_slope = np.vectorize(_get_slope,
-                                   excluded=['x_arr'],
-                                   signature='(n),(n)->()')
-        slopes = v_get_slope(x_data, y_data)
+        slopes = _get_slope(x_data, y_data)
         cube = cube.collapsed('time', iris.analysis.MEAN)
         cube.data = np.ma.masked_invalid(slopes)
         cube.units *= Unit(temp_units)

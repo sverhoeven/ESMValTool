@@ -1,4 +1,5 @@
 """General tests for the module :mod:`esmvaltool.diag_scripts.mlr.models`."""
+
 import os
 
 import mock
@@ -35,8 +36,8 @@ class TestMLRModel():
         MLRModel._MODELS = {}
 
     @mock.patch('esmvaltool.diag_scripts.mlr.models.MLRModel._load_mlr_models')
-    @mock.patch(
-        'esmvaltool.diag_scripts.mlr.models.MLRModel.__init__', autospec=True)
+    @mock.patch('esmvaltool.diag_scripts.mlr.models.MLRModel.__init__',
+                autospec=True)
     def test_create(self, mock_mlr_model_init, mock_load_mlr_models,
                     mock_logger):
         """Test creating subclasses."""

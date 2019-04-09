@@ -1,4 +1,5 @@
 """Unit tests for the module :mod:`esmvaltool.diag_scripts.mlr`."""
+
 import os
 
 import mock

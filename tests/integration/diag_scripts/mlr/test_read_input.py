@@ -1,4 +1,5 @@
 """Tests for reading data."""
+
 import os
 
 import mock
@@ -39,9 +40,8 @@ class SimplifiedMLRModel(MLRModel):
 
 
 with open(
-        os.path.join(
-            os.path.dirname(__file__), 'configs',
-            'test_load_input_datasets.yml')) as file_:
+        os.path.join(os.path.dirname(__file__), 'configs',
+                     'test_load_input_datasets.yml')) as file_:
     CONFIG = yaml.safe_load(file_)
 
 
