@@ -1525,12 +1525,12 @@ class MLRModel():
             if 'return_var' in self._cfg.get('predict_kwargs', {}):
                 cube.var_name += '_var'
                 cube.long_name += ' (variance)'
-                cube.units *= cube.units
+                cube.units = self._units_power(cube.units, 2)
                 suffix = 'var'
             elif 'return_cov' in self._cfg.get('predict_kwargs', {}):
                 cube.var_name += '_cov'
                 cube.long_name += ' (covariance)'
-                cube.units *= cube.units
+                cube.units = self._units_power(cube.units, 2)
                 suffix = 'cov'
         if suffix is None:
             cube.var_name += '_{:d}'.format(index)
@@ -1659,15 +1659,15 @@ class MLRModel():
             logger.warning("Cannot raise units '%s' to power %i", units.name,
                            power)
             return units
-        if units.definition.split()[0][0].isdigit():
-            logger.warning(
-                "Symbol-preserving exponentiation of units '%s' is not "
-                "supported yet because of leading numbers", units.symbol)
-            return units**power
         if units.origin is None:
             logger.warning(
                 "Symbol-preserving exponentiation of units '%s' is not "
                 "supported, origin is not given", units.symbol)
+            return units**power
+        if units.origin.split()[0][0].isdigit():
+            logger.warning(
+                "Symbol-preserving exponentiation of units '%s' is not "
+                "supported yet because of leading numbers", units.symbol)
             return units**power
         new_units_list = []
         for split in units.origin.split():
@@ -1676,7 +1676,6 @@ class MLRModel():
                     exp = [int(d) for d in re.findall(r'-?\d+', elem)][0]
                     val = ''.join(
                         [abc for abc in re.findall(r'[A-Za-z]', elem)])
-                    print(val, exp, power)
                     new_units_list.append(f'{val}{exp * power}')
                 else:
                     new_units_list.append(f'{elem}{power}')

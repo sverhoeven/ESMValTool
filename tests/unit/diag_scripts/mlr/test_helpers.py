@@ -69,6 +69,9 @@ TEST_UNITS_POWER = [
     (Unit(''), 1, Unit(''), True),
     (Unit('no unit'), 1, Unit('no unit'), True),
     (Unit('2.0 m s-1'), 3, Unit('2.0 m s-1')**3, True),
+    (Unit('m')**2, 2, Unit('m')**4, True),
+    (Unit('m')**2, 0, Unit('m')**0, True),
+    (Unit('m')**2, -3, Unit('m')**-6, True),
     (Unit('m'), 2, Unit('m2'), False),
     (Unit('m'), 0, Unit('m0'), False),
     (Unit('m'), -3, Unit('m-3'), False),
@@ -96,6 +99,12 @@ TEST_UNITS_POWER = [
     (Unit('W m-2.K-1'), 2, Unit('W2 m-4 K-2'), False),
     (Unit('W m-2.K-1'), 0, Unit('W0 m0 K0'), False),
     (Unit('W m-2.K-1'), -3, Unit('W-3 m6 K3'), False),
+    (Unit('kg yr-1'), 2, Unit('kg2 yr-2'), False),
+    (Unit('kg yr-1'), 0, Unit('kg0 yr0'), False),
+    (Unit('kg yr-1'), -3, Unit('kg-3 yr3'), False),
+    (Unit('kg.yr-1'), 2, Unit('kg2 yr-2'), False),
+    (Unit('kg.yr-1'), 0, Unit('kg0 yr0'), False),
+    (Unit('kg.yr-1'), -3, Unit('kg-3 yr3'), False),
 ]
 
 
@@ -109,6 +118,7 @@ def test_units_power(mock_logger, units_in, power, output, logger):
         return
     new_units = MLRModel._units_power(units_in, power)
     assert new_units == output
+    assert new_units.origin == output.origin
     if logger:
         mock_logger.warning.assert_called_once()
     else:
