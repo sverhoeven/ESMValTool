@@ -76,7 +76,8 @@ diagnostics:
       monthly_clim: &monthly_clim
         script: mlr/simple_pp.py
         aggregate_by:
-          month_number: mean
+          season: mean
+          # month_number: mean
         tag: T_c
         convert_units_to: celsius
 
@@ -289,6 +290,12 @@ diagnostics:
   diag_mlr:
     description: Perform MLR on input data.
     variables:
+      ref:
+        <<: *variable_settings_features
+        short_name: nbp_grid
+        mip: Lmon
+        derive: true
+        ref: true
       label: &variable_settings_label
         <<: *variable_settings_features
         short_name: nbp_grid
@@ -298,11 +305,13 @@ diagnostics:
         end_year: 2035
         derive: true
         var_type: label
-        tag: NBP
         convert_units_to: 'Gt km-2 yr-1'
     scripts:
       monthly_clim:
         <<: *monthly_clim
+        anomaly: ['dataset']
+        tag: NBP_change
+        convert_units_to: 'Gt km-2 yr-1'
       multiple_mlr_models:
         script: mlr/main_gpr.py
         ancestors: [
@@ -340,12 +349,22 @@ diagnostics:
   diag_mmm:
     description: Calculate simple multi-model mean of label data.
     variables:
+      ref:
+        <<: *variable_settings_features
+        short_name: nbp_grid
+        mip: Lmon
+        derive: true
+        ref: true
       label:
         <<: *variable_settings_label
     scripts:
       global_sum:
         script: mlr/simple_pp.py
+        mean: ['time']
         sum: ['latitude', 'longitude']
+        anomaly: ['dataset']
+        tag: NBP_change
+        convert_units_to: 'Gt yr-1'
       mmm:
         script: mlr/simple_multimodel_stats.py
         ancestors: ['diag_mmm/global_sum']

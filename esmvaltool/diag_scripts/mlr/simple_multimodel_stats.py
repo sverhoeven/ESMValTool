@@ -40,8 +40,10 @@ from pprint import pformat
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
-from esmvaltool.diag_scripts.shared import (
-    get_diagnostic_filename, get_plot_filename, io, run_diagnostic)
+
+from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
+                                            get_plot_filename, io,
+                                            run_diagnostic)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -64,14 +66,12 @@ def _plot_1d_cubes(cubes, datasets, error=None):
         else:
             lines = axes.plot(x_coord.points, cube.data, label=dataset)
             if error is not None:
-                label = f'{dataset} ± std'
-                axes.fill_between(
-                    x_coord.points,
-                    cube.data - error,
-                    cube.data + error,
-                    facecolor=lines[-1].get_color(),
-                    alpha=0.4,
-                    label=label)
+                axes.fill_between(x_coord.points,
+                                  cube.data - error,
+                                  cube.data + error,
+                                  facecolor=lines[-1].get_color(),
+                                  alpha=0.4,
+                                  label=f'{dataset} ± std')
     if iris.util.guess_coord_axis(x_coord) == 'T':
         time = x_coord.units
         (x_ticks, _) = plt.xticks()
@@ -79,12 +79,13 @@ def _plot_1d_cubes(cubes, datasets, error=None):
         x_labels = [label.strftime('%Y-%m-%d') for label in x_labels]
         plt.xticks(x_ticks, x_labels, rotation=45)
     else:
-        axes.set_xlabel(f'{x_coord.name()} / {x_coord.units.origin}')
-    legend = axes.legend(
-        loc='center left',
-        ncol=2,
-        bbox_to_anchor=[1.05, 0.5],
-        borderaxespad=0.0)
+        x_units = (x_coord.units.symbol
+                   if x_coord.units.origin is None else x_coord.units.origin)
+        axes.set_xlabel(f'{x_coord.name()} / {x_units}')
+    legend = axes.legend(loc='center left',
+                         ncol=2,
+                         bbox_to_anchor=[1.05, 0.5],
+                         borderaxespad=0.0)
     return (axes, legend)
 
 
@@ -97,8 +98,11 @@ def _plot_scalar_cubes(cubes, datasets, error=None):
         if dataset not in ('mean', 'median'):
             axes.scatter(x_data[idx], cube.data)
         else:
-            axes.errorbar(
-                x_data[idx], cube.data, yerr=error, fmt='ro', capsize=5)
+            axes.errorbar(x_data[idx],
+                          cube.data,
+                          yerr=error,
+                          fmt='ro',
+                          capsize=5)
             if error is not None:
                 datasets[idx] += ' ± std'
     plt.xticks(x_data, datasets, rotation=45)
@@ -128,13 +132,13 @@ def convert_units(cfg, cube, data):
         units_to = cfg_settings
         if data_settings:
             units_to = data_settings
-        logger.info("Converting units from '%s' to '%s'", cube.units.origin,
+        logger.info("Converting units from '%s' to '%s'", cube.units.symbol,
                     units_to)
         try:
             cube.convert_units(units_to)
         except ValueError:
             logger.warning("Cannot convert units from '%s' to '%s'",
-                           cube.units.origin, units_to)
+                           cube.units.symbol, units_to)
         else:
             data['units'] = units_to
     return (cube, data)
@@ -171,14 +175,15 @@ def plot(cfg, cubes, datasets):
     (axes, legend) = plot_func(cubes_to_plot, datasets_to_plot, error)
 
     # Set plot appearance and save it
-    axes.set_ylabel(f'{cubes[0].var_name} / {cubes[0].units.origin}')
+    y_units = (cubes[0].units.symbol
+               if cubes[0].units.origin is None else cubes[0].units.origin)
+    axes.set_ylabel(f'{cubes[0].var_name} / {y_units}')
     axes.set_title(f'{cubes[0].var_name} for multiple datasets')
     path = get_plot_filename('multi-model_stats', cfg)
-    plt.savefig(
-        path,
-        orientation='landscape',
-        bbox_inches='tight',
-        additional_artists=[legend])
+    plt.savefig(path,
+                orientation='landscape',
+                bbox_inches='tight',
+                additional_artists=[legend])
     logger.info("Wrote %s", path)
     plt.close()
 
@@ -189,8 +194,9 @@ def preprocess_cube(cube, dataset):
     cube.cell_methods = ()
     for coord in cube.coords(dim_coords=False):
         cube.remove_coord(coord)
-    dataset_coord = iris.coords.AuxCoord(
-        dataset, var_name='dataset', long_name='dataset')
+    dataset_coord = iris.coords.AuxCoord(dataset,
+                                         var_name='dataset',
+                                         long_name='dataset')
     cube.add_aux_coord(dataset_coord, [])
 
 
@@ -203,6 +209,9 @@ def main(cfg):
     logger.debug(pformat(paths))
     datasets = []
     cubes = iris.cube.CubeList()
+    if not input_data:
+        logger.error("No input data found")
+        return
 
     # Iterate over all data
     for data in input_data:
