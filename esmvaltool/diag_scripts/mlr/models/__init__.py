@@ -5,6 +5,7 @@ import importlib
 import logging
 import os
 import re
+from inspect import getfullargspec
 from pprint import pformat
 
 import iris
@@ -78,7 +79,9 @@ class MLRModel():
         i.e. `s__p` is the parameter `p` for step `s`.
     grid_search_cv_param_grid : dict or list of dict, optional
         Parameters (keys) and ranges (values) for exhaustive parameter search
-        using cross-validation.
+        using cross-validation. Have to be given for each step of the pipeline
+        seperated by two underscores, i.e. `s__p` is the parameter `p` for step
+        `s`.
     grid_search_cv_kwargs : dict, optional
         Keyword arguments for the grid search cross-validation, see
         <https://scikit-learn.org/stable/modules/generated/
@@ -344,6 +347,9 @@ class MLRModel():
             "classifier %s and parameter grid %s on %i training points",
             self._CLF_TYPE, parameter_grid, self._data['y_train'].size)
         gridsearch_kwargs = dict(self._cfg.get('grid_search_cv_kwargs', {}))
+        log_level = {'debug': 2, 'info': 1}
+        gridsearch_kwargs.setdefault('verbose',
+                                     log_level.get(self._cfg['log_level'], 0))
         gridsearch_kwargs.update(kwargs)
         if gridsearch_kwargs:
             logger.info(
@@ -417,7 +423,7 @@ class MLRModel():
 
         Parameters
         ----------
-        filename : str, optional (default: 'partial_dependece_of_{feature}')
+        filename : str, optional (default: 'partial_dependece_{feature}')
             Name of the plot file.
 
         """
@@ -425,7 +431,7 @@ class MLRModel():
             return
         logger.info("Plotting partial dependences")
         if filename is None:
-            filename = 'partial_dependece_of_{feature}'
+            filename = 'partial_dependece_{feature}'
         progressbar = True if self._cfg['log_level'] == 'debug' else False
 
         # Plot for every feature
@@ -1218,6 +1224,12 @@ class MLRModel():
         """Load parameters for classifier from recipe."""
         parameters = self._cfg.get('parameters', {})
         logger.debug("Found parameter(s) %s in recipe", parameters)
+        if 'verbose' in getfullargspec(self._CLF_TYPE).args:
+            log_level = {'debug': 1, 'info': 1}
+            parameters.setdefault('verbose',
+                                  log_level.get(self._cfg['log_level'], 0))
+            logger.debug("Set verbosity of classifier to %i",
+                         parameters['verbose'])
         return parameters
 
     def _load_classes(self):

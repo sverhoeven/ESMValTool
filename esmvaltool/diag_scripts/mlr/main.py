@@ -85,6 +85,8 @@ def main(cfg):
             mlr_model.plot_feature_importance()
             mlr_model.plot_partial_dependences()
         if model_type == 'gbr':
+            mlr_model.plot_gbr_feature_importance()
+            mlr_model.plot_gbr_partial_dependences()
             mlr_model.plot_prediction_error()
         if 'gpr' in model_type:
             mlr_model.print_kernel_info()

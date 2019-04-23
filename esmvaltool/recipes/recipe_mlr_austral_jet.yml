@@ -47,7 +47,7 @@ diagnostics:
         broadcast_from: [1, 2]
         additional_datasets: &datasets
           - {dataset: CanESM2}
-          - {dataset: IPSL-CM5A-LR}
+          # - {dataset: IPSL-CM5A-LR}
           # - {dataset: MIROC5}
           # - {dataset: MIROC-ESM}
           # - {dataset: MPI-ESM-LR}

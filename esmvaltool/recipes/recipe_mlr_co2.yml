@@ -21,18 +21,18 @@ DATASET_ANCHOR: &datasets
   # - {dataset: CCSM4}
   # - {dataset: CESM1-BGC}
   # - {dataset: GFDL-ESM2G}
-  # - {dataset: GFDL-ESM2M}
+  - {dataset: GFDL-ESM2M}
   # - {dataset: HadGEM2-CC}
   # - {dataset: HadGEM2-ES}
   - {dataset: inmcm4}
   # - {dataset: IPSL-CM5A-LR}
   # - {dataset: IPSL-CM5A-MR}
   # - {dataset: IPSL-CM5B-LR}
-  # - {dataset: MIROC-ESM}
+  - {dataset: MIROC-ESM}
   # - {dataset: MIROC-ESM-CHEM}
   # - {dataset: MPI-ESM-LR}
   # - {dataset: MPI-ESM-MR}
-  # - {dataset: NorESM1-M}
+  - {dataset: NorESM1-M}
   # - {dataset: NorESM1-ME}
 
 
@@ -46,9 +46,12 @@ preprocessors:
       end_latitude: 90.0
       start_longitude: 0.0
       end_longitude: 360.0
+
+  regrid:
+    <<: *mask_sea
     regrid:
       scheme: nearest
-      target_grid: 10x10
+      target_grid: 1x1
 
 
 diagnostics:
@@ -69,6 +72,7 @@ diagnostics:
         additional_datasets: *datasets
       prediction_input: &variable_settings_prediction_input
         <<: *variable_settings_features
+        preprocessor: regrid
         var_type: prediction_input
         additional_datasets:
           - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
@@ -76,8 +80,7 @@ diagnostics:
       monthly_clim: &monthly_clim
         script: mlr/simple_pp.py
         aggregate_by:
-          season: mean
-          # month_number: mean
+          month_number: mean
         tag: T_c
         convert_units_to: celsius
 
@@ -313,38 +316,42 @@ diagnostics:
         tag: NBP_change
         convert_units_to: 'Gt km-2 yr-1'
       multiple_mlr_models:
-        script: mlr/main_gpr.py
+        script: mlr/main.py
         ancestors: [
           'diag_mlr/monthly_clim',
           'diag_mlr_input_*/monthly_clim',
         ]
-        algorithm: george
+        mlr_model: gbr
         metadata_preselection:
           select:
             project: CMIP5
           group: dataset
+        grid_search_cv_param_grid:
+          transformed_target_regressor__regressor__learning_rate:
+            [0.01, 0.05, 0.001]
+          transformed_target_regressor__regressor__n_estimators:
+            [500, 1000, 1500, 2000, 2500, 3000]
         parameters:
-          white_noise: 0.05
-          n_restarts_optimizer: 5
-        predict_kwargs:
-          return_cov: true
+          loss: ls
+          max_depth: 4
+          min_samples_split: 2
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']
           units: 'Gt yr-1'
         use_coords_as_feature: ['month_number', 'latitude', 'longitude']
 
-      postprocess_mlr:
-        script: mlr/simple_pp.py
-        ancestors: ['diag_mlr/multiple_mlr_models']
-        sum: all
-        pattern: '*prediction*'
-      evaluate_mlr_models:
-        script: mlr/simple_multimodel_stats.py
-        ancestors: ['diag_mlr/postprocess_mlr']
-        pattern: '*prediction*mean*'
-        mean: true
-        std: true
+      # postprocess_mlr:
+      #   script: mlr/simple_pp.py
+      #   ancestors: ['diag_mlr/multiple_mlr_models']
+      #   sum: all
+      #   pattern: '*prediction*'
+      # evaluate_mlr_models:
+      #   script: mlr/simple_multimodel_stats.py
+      #   ancestors: ['diag_mlr/postprocess_mlr']
+      #   pattern: '*prediction*mean*'
+      #   mean: true
+      #   std: true
 
   diag_mmm:
     description: Calculate simple multi-model mean of label data.
