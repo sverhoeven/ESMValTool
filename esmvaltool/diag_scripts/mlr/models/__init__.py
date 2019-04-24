@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cf_units import Unit
 from skater.core.explanations import Interpretation
+from skater.core.local_interpretation.lime.lime_tabular import (
+    LimeTabularExplainer)
 from skater.model import InMemoryModel
 from sklearn import metrics
 from sklearn.exceptions import NotFittedError
@@ -313,7 +315,7 @@ class MLRModel():
         logger.debug(pformat(self.parameters))
 
         # Interpretation
-        self._load_skater_interpreter()
+        self._load_skater_interpreters()
 
     def grid_search_cv(self, param_grid=None, **kwargs):
         """Perform exhaustive parameter search using cross-validation.
@@ -382,7 +384,7 @@ class MLRModel():
         logger.debug(pformat(self.parameters))
 
         # Interpretation
-        self._load_skater_interpreter()
+        self._load_skater_interpreters()
 
     def plot_feature_importance(self, filename=None):
         """Plot feature importance.
@@ -403,7 +405,7 @@ class MLRModel():
         # Plot
         for method in ('model-scoring', 'prediction-variance'):
             logger.debug("Plotting feature importance for method '%s'", method)
-            (_, axes) = (self._skater['interpreter'].feature_importance.
+            (_, axes) = (self._skater['global_interpreter'].feature_importance.
                          plot_feature_importance(self._skater['model'],
                                                  method=method,
                                                  n_jobs=1,
@@ -417,6 +419,43 @@ class MLRModel():
             plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
             logger.info("Wrote %s", new_path)
             plt.close()
+
+    def plot_lime(self, filename=None):
+        """Plot LIME explanations.
+
+        Note
+        ----
+        LIME = Local Interpretable Model-agnostic Explanations.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'lime')
+            Name of the plot file.
+
+        """
+        if not self._is_ready_for_plotting():
+            return
+        logger.info("Plotting LIME")
+        if filename is None:
+            filename = 'lime'
+        new_filename_plot = filename + '.' + self._cfg['output_file_type']
+        new_filename_html = filename + '.html'
+        plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename_plot)
+        html_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename_html)
+
+        # LIME
+        explainer = self._skater['local_interpreter'].explain_instance(
+            self._data['x_test'][1217], self._clf.predict)
+        logger.info(pformat(explainer.as_list()))
+        logger.info(pformat(explainer.as_map()))
+        explainer.save_to_file(html_path)
+        logger.info("Wrote %s", html_path)
+
+        # Plot
+        explainer.as_pyplot_figure()
+        plt.savefig(plot_path, orientation='landscape', bbox_inches='tight')
+        logger.info("Wrote %s", plot_path)
+        plt.close()
 
     def plot_partial_dependences(self, filename=None):
         """Plot partial dependences for every feature.
@@ -437,12 +476,13 @@ class MLRModel():
         # Plot for every feature
         for feature_name in self.classes['features']:
             logger.debug("Plotting partial dependence of '%s'", feature_name)
-            ((_, axes), ) = (self._skater['interpreter'].partial_dependence.
-                             plot_partial_dependence([feature_name],
-                                                     self._skater['model'],
-                                                     n_jobs=1,
-                                                     progressbar=progressbar,
-                                                     with_variance=True))
+            ((_, axes), ) = (self._skater['global_interpreter'].
+                             partial_dependence.plot_partial_dependence(
+                                 [feature_name],
+                                 self._skater['model'],
+                                 n_jobs=1,
+                                 progressbar=progressbar,
+                                 with_variance=True))
             axes.set_title('Partial dependence ({} Model)'.format(
                 self._CLF_TYPE.__name__))
             axes.set_xlabel(feature_name)
@@ -579,7 +619,7 @@ class MLRModel():
             x_data = self._data[f'x_{data_type}']
             y_true = self._data[f'y_{data_type}']
             y_pred = self._clf.predict(x_data)
-            y_norm = np.mean(y_true)
+            y_norm = np.std(y_true)
             for metric in regression_metrics:
                 metric_function = getattr(metrics, metric)
                 value = metric_function(y_true, y_pred)
@@ -587,8 +627,8 @@ class MLRModel():
                     value = np.sqrt(value)
                     metric = f'root_{metric}'
                 if metric.endswith('_error'):
-                    metric = f'(normalized) {metric}'
                     value /= y_norm
+                    metric = f'{metric} (normalized by std)'
                 logger.info("%s: %s", metric, value)
 
     def reset_training_data(self):
@@ -1329,19 +1369,28 @@ class MLRModel():
         logger.debug("Found prediction data:")
         logger.debug(pformat(self._datasets['prediction']))
 
-    def _load_skater_interpreter(self):
+    def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
         x_train = np.copy(self._data['x_train'])
         y_train = np.copy(self._data['y_train'])
         if self._cfg['imputation_strategy'] != 'remove':
             x_train = self._clf.named_steps['imputer'].transform(x_train)
 
-        # Interpreter
-        self._skater['interpreter'] = Interpretation(
+        # Interpreters
+        self._skater['global_interpreter'] = Interpretation(
             x_train,
             training_labels=y_train,
             feature_names=self.classes['features'])
-        logger.debug("Loaded skater interpreter with new training data")
+        logger.debug("Loaded global skater interpreter with new training data")
+        self._skater['local_interpreter'] = LimeTabularExplainer(
+            x_train,
+            mode='regression',
+            training_labels=y_train,
+            feature_names=self.classes['features'],
+            verbose=(True if self._cfg['log_level'] == 'debug' else False),
+            class_names=[self.classes['label']])
+        logger.debug(
+            "Loaded local skater interpreter (LIME) with new training data")
 
         # Model
         example_size = min(y_train.size, 20)

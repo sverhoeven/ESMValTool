@@ -32,7 +32,7 @@ DATASET_ANCHOR: &datasets
   # - {dataset: MIROC-ESM-CHEM}
   # - {dataset: MPI-ESM-LR}
   # - {dataset: MPI-ESM-MR}
-  - {dataset: NorESM1-M}
+  # - {dataset: NorESM1-M}
   # - {dataset: NorESM1-ME}
 
 
@@ -81,7 +81,8 @@ diagnostics:
         script: mlr/simple_pp.py
         aggregate_by:
           month_number: mean
-        tag: T_c
+          # season: mean
+        tag: T
         convert_units_to: celsius
 
   diag_mlr_input_pr:
@@ -97,7 +98,7 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        tag: PR_c
+        tag: PR
         convert_units_to: 'kg m-2 day-1'
 
   # diag_mlr_input_rsds:
@@ -115,7 +116,7 @@ diagnostics:
   #   scripts:
   #     monthly_clim:
   #       <<: *monthly_clim
-  #       tag: SSRD_c
+  #       tag: SSRD
   #       convert_units_to: null
 
   # diag_mlr_input_rsus:
@@ -133,7 +134,7 @@ diagnostics:
   #   scripts:
   #     monthly_clim:
   #       <<: *monthly_clim
-  #       tag: SSRU_c
+  #       tag: SSRU
   #       convert_units_to: null
 
   # diag_mlr_input_rlds:
@@ -151,7 +152,7 @@ diagnostics:
   #   scripts:
   #     monthly_clim:
   #       <<: *monthly_clim
-  #       tag: SLRD_c
+  #       tag: SLRD
   #       convert_units_to: null
 
   # diag_mlr_input_rlus:
@@ -169,7 +170,7 @@ diagnostics:
   #   scripts:
   #     monthly_clim:
   #       <<: *monthly_clim
-  #       tag: SLRU_c
+  #       tag: SLRU
   #       convert_units_to: null
 
   diag_mlr_input_et:
@@ -187,7 +188,7 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        tag: ET_c
+        tag: ET
         convert_units_to: null
 
   # diag_mlr_input_cVeg:
@@ -207,8 +208,8 @@ diagnostics:
   #   scripts:
   #     monthly_clim:
   #       <<: *monthly_clim
-  #       tag: CVEG_c
-  #       convert_units_to: 'Gt km-2'
+  #       tag: CVEG
+  #       convert_units_to: 't km-2'
 
   # diag_mlr_input_cSoil:
   #   variables:
@@ -227,8 +228,8 @@ diagnostics:
   #   scripts:
   #     monthly_clim:
   #       <<: *monthly_clim
-  #       tag: CSOIL_c
-  #       convert_units_to: 'Gt km-2'
+  #       tag: CSOIL
+  #       convert_units_to: 't km-2'
 
   diag_mlr_input_nbp:
     variables:
@@ -247,8 +248,8 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        tag: NBP_c
-        convert_units_to: 'Gt km-2 yr-1'
+        tag: NBP
+        convert_units_to: 't km-2 yr-1'
 
   diag_mlr_input_gpp:
     variables:
@@ -267,8 +268,8 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        tag: GPP_c
-        convert_units_to: 'Gt km-2 yr-1'
+        tag: GPP
+        convert_units_to: 't km-2 yr-1'
 
   diag_mlr_input_lai:
     variables:
@@ -287,18 +288,18 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        tag: LAI_c
+        tag: LAI
         convert_units_to: null
 
   diag_mlr:
     description: Perform MLR on input data.
     variables:
-      ref:
-        <<: *variable_settings_features
-        short_name: nbp_grid
-        mip: Lmon
-        derive: true
-        ref: true
+      # ref:
+      #   <<: *variable_settings_features
+      #   short_name: nbp_grid
+      #   mip: Lmon
+      #   derive: true
+      #   ref: true
       label: &variable_settings_label
         <<: *variable_settings_features
         short_name: nbp_grid
@@ -308,13 +309,13 @@ diagnostics:
         end_year: 2035
         derive: true
         var_type: label
-        convert_units_to: 'Gt km-2 yr-1'
+        convert_units_to: 't km-2 yr-1'
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        anomaly: ['dataset']
-        tag: NBP_change
-        convert_units_to: 'Gt km-2 yr-1'
+        # anomaly: ['dataset']
+        tag: NBP_future
+        convert_units_to: 't km-2 yr-1'
       multiple_mlr_models:
         script: mlr/main.py
         ancestors: [
@@ -326,15 +327,20 @@ diagnostics:
           select:
             project: CMIP5
           group: dataset
-        grid_search_cv_param_grid:
-          transformed_target_regressor__regressor__learning_rate:
-            [0.01, 0.05, 0.001]
-          transformed_target_regressor__regressor__n_estimators:
-            [500, 1000, 1500, 2000, 2500, 3000]
+        # grid_search_cv_param_grid:
+        #   transformed_target_regressor__regressor__learning_rate:
+        #     [0.1, 0.05, 0.01, 0.005, 0.001]
+        #   transformed_target_regressor__regressor__n_estimators:
+        #     [1000, 2000, 3000, 4000, 5000]
+        # grid_search_cv_kwargs:
+        #   cv: 5
+        #   n_jobs: 4
         parameters:
           loss: ls
           max_depth: 4
           min_samples_split: 2
+          learning_rate: 0.05
+          n_estimators: 2500
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']
@@ -356,12 +362,12 @@ diagnostics:
   diag_mmm:
     description: Calculate simple multi-model mean of label data.
     variables:
-      ref:
-        <<: *variable_settings_features
-        short_name: nbp_grid
-        mip: Lmon
-        derive: true
-        ref: true
+      # ref:
+      #   <<: *variable_settings_features
+      #   short_name: nbp_grid
+      #   mip: Lmon
+      #   derive: true
+      #   ref: true
       label:
         <<: *variable_settings_label
     scripts:
@@ -369,8 +375,8 @@ diagnostics:
         script: mlr/simple_pp.py
         mean: ['time']
         sum: ['latitude', 'longitude']
-        anomaly: ['dataset']
-        tag: NBP_change
+        # anomaly: ['dataset']
+        tag: NBP_future
         convert_units_to: 'Gt yr-1'
       mmm:
         script: mlr/simple_multimodel_stats.py

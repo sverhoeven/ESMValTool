@@ -25,11 +25,12 @@ import logging
 import os
 from pprint import pformat
 
+from george import kernels as george_kernels
+from sklearn.gaussian_process import kernels as sklearn_kernels
+
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
-from george import kernels as george_kernels
-from sklearn.gaussian_process import kernels as sklearn_kernels
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -90,7 +91,8 @@ def main(cfg):
                 george_kernels.ExpSquaredKernel(
                     1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
                 george_kernels.ConstantKernel(
-                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)]))
+                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
+            )
             mlr_model.update_parameters(
                 transformed_target_regressor__regressor__kernel=new_kernel)
 
@@ -107,6 +109,7 @@ def main(cfg):
 
         # Output
         mlr_model.plot_scatterplots()
+        mlr_model.plot_lime()
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
             mlr_model.plot_partial_dependences()

@@ -81,6 +81,7 @@ def main(cfg):
 
         # Output
         mlr_model.plot_scatterplots()
+        mlr_model.plot_lime()
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
             mlr_model.plot_partial_dependences()
