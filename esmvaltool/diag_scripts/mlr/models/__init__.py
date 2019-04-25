@@ -13,13 +13,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cf_units import Unit
 from skater.core.explanations import Interpretation
-from skater.core.local_interpretation.lime.lime_tabular import (
-    LimeTabularExplainer)
+from skater.core.local_interpretation.lime.lime_tabular import \
+    LimeTabularExplainer
 from skater.model import InMemoryModel
 from sklearn import metrics
 from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
+from sklearn.model_selection import (GridSearchCV, LeaveOneOut,
+                                     cross_val_score, train_test_split)
 from sklearn.preprocessing import StandardScaler
 
 from esmvaltool.diag_scripts import mlr
@@ -75,6 +76,13 @@ class MLRModel():
         Internal data type which is used for all calculations, see
         <https://docs.scipy.org/doc/numpy/user/basics.types.html> for a list
         of allowed values.
+    estimate_prediction_error : dict, optional
+        Estimate (constant) prediction error using RMSE. This can be calculated
+        by a (holdout) test data set (`type: test`) or by cross-validation
+        from the training data (`type: cv'). The latter uses
+        :mod:`sklearn.model_selection.cross_val_score` (see
+        <https://scikit-learn.org/stable/modules/cross_validation.html>),
+        additional keyword arguments can be passed via the `kwargs` key.
     fit_kwargs : dict, optional
         Optional keyword arguments for the classifier's `fit()` function. Have
         to be given for each step of the pipeline seperated by two underscores,
@@ -445,7 +453,7 @@ class MLRModel():
 
         # LIME
         explainer = self._skater['local_interpreter'].explain_instance(
-            self._data['x_test'][1217], self._clf.predict)
+            self._data['x_test'][58], self._clf.predict)
         logger.info(pformat(explainer.as_list()))
         logger.info(pformat(explainer.as_map()))
         explainer.save_to_file(html_path)
@@ -584,21 +592,26 @@ class MLRModel():
             # Predict
             (x_pred, x_mask,
              x_cube) = self._extract_prediction_input(pred_name)
-            y_preds = self._get_prediction_array(x_pred, x_mask,
-                                                 **predict_kwargs)
+            pred_dict = self._get_prediction_arrays(x_pred, x_mask,
+                                                    **predict_kwargs)
+
+            # Estimate prediction error if desired
+            pred_dict = self._estimate_prediction_error(pred_dict)
 
             # Save data
             x_pred = np.ma.array(x_pred, mask=x_mask, copy=True)
             self._data['x_pred'][pred_name] = x_pred.filled(np.nan)
-            self._data['y_pred'][pred_name] = np.ma.copy(y_preds[0]).filled(
-                np.nan)
+            self._data['y_pred'][pred_name] = np.ma.copy(
+                pred_dict['pred']).filled(np.nan)
 
             # Get (and save) prediction cubes
             (predictions,
-             ref_path) = self._get_prediction_cubes(y_preds, pred_name, x_cube)
+             ref_path) = self._get_prediction_cubes(pred_dict, pred_name,
+                                                    x_cube)
 
             # Postprocess prediction cubes (if desired)
-            self._postprocess_predictions(predictions, ref_path)
+            self._postprocess_predictions(predictions, ref_path,
+                                          **predict_kwargs)
 
     def print_regression_metrics(self):
         """Print all available regression metrics for the test data."""
@@ -816,6 +829,54 @@ class MLRModel():
         self._clf = mlr.AdvancedPipeline(steps, memory=memory)
         self._parameters = self._get_clf_parameters()
         logger.debug("Created classifier")
+
+    def _estimate_prediction_error(self, pred_dict):
+        """Estimate prediction error."""
+        if not self._cfg.get('estimate_prediction_error'):
+            return pred_dict
+        cfg = copy.deepcopy(self._cfg['estimate_prediction_error'])
+        cfg.setdefault('type', 'cv')
+        cfg.setdefault('kwargs', {})
+        cfg['kwargs'].setdefault('cv', 5)
+        cfg['kwargs'].setdefault('scoring', 'neg_mean_squared_error')
+        logger.debug("Estimating prediction error using %s", cfg)
+        error = None
+
+        # Test data set
+        if cfg['type'] == 'test':
+            if 'x_test' in self._data and 'y_test' in self._data:
+                y_pred = self._clf.predict(self._data['x_test'])
+                error = np.sqrt(
+                    metrics.mean_squared_error(self._data['y_test'], y_pred))
+            else:
+                logger.warning(
+                    "Cannot estimate prediction error using 'type: test', "
+                    "no test data set given (use 'simple_train_test_split'), "
+                    "using cross-validation instead")
+                cfg['type'] = 'cv'
+
+        # CV
+        if cfg['type'] == 'cv':
+            error = cross_val_score(self._clf, self._data['x_train'],
+                                    self._data['y_train'], **cfg['kwargs'])
+            error = np.mean(error)
+            if cfg['kwargs']['scoring'].startswith('neg_'):
+                error = -error
+            if 'squared' in cfg['kwargs']['scoring']:
+                error = np.sqrt(error)
+
+        # Get correct shape and mask
+        if error is not None:
+            pred_error = np.ma.array(np.full_like(pred_dict['pred'], error),
+                                     mask=pred_dict['pred'].mask)
+            pred_dict[f"error_estim_{cfg['type']}"] = pred_error
+            logger.info("Estimated prediction error by %s using %s data",
+                        error, cfg['type'])
+            return pred_dict
+        logger.error(
+            "Got invalid type for prediction error estimation, got '%s', "
+            "expected 'test' or 'cv'", cfg['type'])
+        return pred_dict
 
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
@@ -1077,7 +1138,7 @@ class MLRModel():
             "data)", labels[0], units)
         return (labels[0], units)
 
-    def _get_prediction_array(self, x_data, x_mask, **kwargs):
+    def _get_prediction_arrays(self, x_data, x_mask, **kwargs):
         """Get (multi-dimensional) prediction output."""
         mask_1d = np.any(x_mask, axis=1)
         if self._cfg['imputation_strategy'] == 'remove':
@@ -1092,7 +1153,13 @@ class MLRModel():
         logger.info("Predicting %i point(s)", x_data.shape[0])
         y_preds = self._clf.predict(x_data, **kwargs)
 
-        # Create list of arrays with correct shape and mask and save them
+        # Create dict of arrays with correct shape and mask and save them
+        pred_dict = {}
+        idx_to_name = {0: 'pred'}
+        if 'return_var' in kwargs:
+            idx_to_name[1] = 'var'
+        elif 'return_cov' in kwargs:
+            idx_to_name[1] = 'cov'
         if not isinstance(y_preds, (list, tuple)):
             y_preds = [y_preds]
         y_preds = list(y_preds)
@@ -1102,19 +1169,19 @@ class MLRModel():
                                          dtype=self._cfg['dtype'])
                 new_y_pred[mask_1d] = np.ma.masked
                 new_y_pred[~mask_1d] = y_pred
-                y_preds[idx] = new_y_pred
+                pred_dict[idx_to_name.get(idx, idx)] = new_y_pred
             else:
-                y_preds[idx] = np.ma.array(y_pred)
+                pred_dict[idx_to_name.get(idx, idx)] = np.ma.array(y_pred)
         logger.info("Successfully created prediction array with %i point(s)",
-                    y_preds[0].size)
-        return y_preds
+                    pred_dict['pred'].size)
+        return pred_dict
 
-    def _get_prediction_cubes(self, y_predictions, pred_name, x_cube):
+    def _get_prediction_cubes(self, pred_dict, pred_name, x_cube):
         """Get (multi-dimensional) prediction output."""
         logger.debug("Creating output cubes")
         prediction_cubes = {}
         ref_path = None
-        for (pred_idx, y_pred) in enumerate(y_predictions):
+        for (pred_type, y_pred) in pred_dict.items():
             if y_pred.size == np.prod(x_cube.shape):
                 y_pred = y_pred.reshape(x_cube.shape)
                 if (self._cfg['imputation_strategy'] == 'remove'
@@ -1132,10 +1199,10 @@ class MLRModel():
                 pred_cube = iris.cube.Cube(y_pred,
                                            dim_coords_and_dims=dim_coords)
             new_path = self._set_prediction_cube_attributes(
-                pred_cube, index=pred_idx, pred_name=pred_name)
+                pred_cube, pred_type, pred_name=pred_name)
             prediction_cubes[new_path] = pred_cube
             io.save_iris_cube(pred_cube, new_path)
-            if pred_idx == 0:
+            if pred_type == 'pred':
                 ref_path = new_path
         return (prediction_cubes, ref_path)
 
@@ -1409,14 +1476,14 @@ class MLRModel():
         logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
         self.reset_training_data()
 
-    def _postprocess_cube(self, cube):
+    def _postprocess_cube(self, cube, return_cov_weights=False, **kwargs):
         """Postprocess single prediction cube."""
         cfg = self._cfg['prediction_pp']
         calc_weights = cfg.get('area_weights', True)
-        flat_weights = None
-        if calc_weights:
-            flat_weights = self._get_area_weights(cube).ravel()
-            flat_weights = flat_weights[~np.ma.getmaskarray(cube.data).ravel()]
+        cov_weights = None
+        if all([calc_weights, return_cov_weights, 'return_cov' in kwargs]):
+            cov_weights = self._get_area_weights(cube).ravel()
+            cov_weights = cov_weights[~np.ma.getmaskarray(cube.data).ravel()]
         ops = {'mean': iris.analysis.MEAN, 'sum': iris.analysis.SUM}
 
         # Perform desired postprocessing operations
@@ -1447,14 +1514,14 @@ class MLRModel():
                                         text='postprocessed prediction output')
 
         # Weights for covariance matrix
-        cov_weights = None
-        if flat_weights is not None:
-            cov_weights = np.outer(flat_weights, flat_weights)
+        if cov_weights is not None:
+            logger.debug("Calculating covariance weights (memory-intensive)")
+            cov_weights = np.outer(cov_weights, cov_weights)
             if n_points_mean is not None:
                 cov_weights /= n_points_mean**2
         return (cube, cov_weights)
 
-    def _postprocess_predictions(self, predictions, ref_path=None):
+    def _postprocess_predictions(self, predictions, ref_path=None, **kwargs):
         """Postprocess prediction cubes if desired."""
         if not self._cfg['prediction_pp']:
             return
@@ -1467,7 +1534,10 @@ class MLRModel():
         # Process reference cube
         ref_cube = predictions[ref_path]
         ref_shape = ref_cube.shape
-        (ref_cube, cov_weights) = self._postprocess_cube(ref_cube)
+        (ref_cube,
+         cov_weights) = self._postprocess_cube(ref_cube,
+                                               return_cov_weights=True,
+                                               **kwargs)
 
         # Process other cubes
         pp_cubes = [ref_cube]
@@ -1559,7 +1629,7 @@ class MLRModel():
         np.savetxt(path, csv_data, delimiter=',', header=header)
         logger.info("Wrote %s", path)
 
-    def _set_prediction_cube_attributes(self, cube, index=0, pred_name=None):
+    def _set_prediction_cube_attributes(self, cube, pred_type, pred_name=None):
         """Set the attributes of the prediction cube."""
         cube.attributes = {
             'classifier': str(self._CLF_TYPE),
@@ -1578,25 +1648,21 @@ class MLRModel():
         for attr in ('standard_name', 'var_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
 
-        # Modify variable name depending on index
-        suffix = None
-        if index == 0:
-            suffix = 'mean'
-        elif index == 1:
-            if 'return_var' in self._cfg.get('predict_kwargs', {}):
-                cube.var_name += '_var'
-                cube.long_name += ' (variance)'
-                cube.units = self._units_power(cube.units, 2)
-                suffix = 'var'
-            elif 'return_cov' in self._cfg.get('predict_kwargs', {}):
-                cube.var_name += '_cov'
-                cube.long_name += ' (covariance)'
-                cube.units = self._units_power(cube.units, 2)
-                suffix = 'cov'
-        if suffix is None:
-            cube.var_name += '_{:d}'.format(index)
-            cube.long_name += '_{:d}'.format(index)
-            suffix = index
+        # Modify variable name depending on prediction type
+        suffix = pred_type
+        if suffix in ('var', 'cov'):
+            cube.var_name += f'_{suffix}'
+            cube.long_name += (' (variance)'
+                               if suffix == 'var' else ' (covariance)')
+            cube.units = self._units_power(cube.units, 2)
+        if 'error_estim' in suffix:
+            cube.var_name += f'_{suffix}'
+            cube.long_name += (' (error estimation using {})'.format(
+                'cross-validation' if 'cv' in
+                suffix else 'holdout test data set'))
+        elif isinstance(suffix, int):
+            cube.var_name += '_{:d}'.format(suffix)
+            cube.long_name += '_{:d}'.format(suffix)
 
         # Get new path
         pred_str = '' if pred_name is None else f'_{pred_name}'

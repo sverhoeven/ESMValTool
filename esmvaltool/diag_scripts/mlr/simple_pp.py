@@ -213,6 +213,7 @@ def calculate_sum_and_mean(cfg, cube, data):
                 cfg[oper].remove('longitude')
                 if oper == 'sum' and area_weights is not None:
                     cube.units *= Unit('m2')
+                    data['units'] = cube.units.symbol
 
             # Time (weighted)
             time_weights = _get_time_weights(cfg, cube)
@@ -223,11 +224,12 @@ def calculate_sum_and_mean(cfg, cube, data):
                     time_units = (data['frequency']
                                   if data['frequency'] != 'mon' else 'month')
                     cube.units *= Unit(time_units)
+                    data['units'] = cube.units.symbol
 
             # Remaining operations
             if cfg[oper]:
                 cube = cube.collapsed(cfg[oper], iris_op)
-    return cube
+    return (cube, data)
 
 
 def calculate_trend(cfg, cube, data):
@@ -298,7 +300,7 @@ def main(cfg):
         cube = aggregate(cfg, cube)
 
         # Sum and mean
-        cube = calculate_sum_and_mean(cfg, cube, data)
+        (cube, data) = calculate_sum_and_mean(cfg, cube, data)
 
         # Trend
         (cube, data) = calculate_trend(cfg, cube, data)
