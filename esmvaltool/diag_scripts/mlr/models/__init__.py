@@ -3,6 +3,7 @@
 import copy
 import importlib
 import logging
+import multiprocessing as mp
 import os
 import re
 from inspect import getfullargspec
@@ -121,6 +122,9 @@ class MLRModel():
         Postprocess prediction output (e.g. combine best estimate and standard
         deviation in one cube). Accepts keywords `mean` and `sum` (followed by
         list of coordinates) and `area_weighted` (bool).
+    return_lime_importance : bool, optional (default: True)
+        Return cube with feature importance given by LIME (Local Interpretable
+        Model-agnostic Explanations).
     standardize_data : bool, optional (default: True)
         Linearly standardize input data by removing mean and scaling to unit
         variance.
@@ -217,6 +221,7 @@ class MLRModel():
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('imputation_strategy', 'remove')
         self._cfg.setdefault('prediction_pp', {})
+        self._cfg.setdefault('return_lime_importance', True)
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
 
@@ -428,8 +433,8 @@ class MLRModel():
             logger.info("Wrote %s", new_path)
             plt.close()
 
-    def plot_lime(self, filename=None):
-        """Plot LIME explanations.
+    def plot_lime(self, index=0, data_type='test', filename=None):
+        """Plot LIME explanations for specific input.
 
         Note
         ----
@@ -444,6 +449,16 @@ class MLRModel():
         if not self._is_ready_for_plotting():
             return
         logger.info("Plotting LIME")
+        x_type = f'x_{data_type}'
+        if x_type not in self._data:
+            logger.error("Cannot plot LIME, got invalid data type '%s'",
+                         data_type)
+            return
+        if index >= self._data[x_type].shape[0]:
+            logger.error(
+                "Cannot plot LIME, index %i is out of range for '%s' data",
+                index, data_type)
+            return
         if filename is None:
             filename = 'lime'
         new_filename_plot = filename + '.' + self._cfg['output_file_type']
@@ -453,7 +468,7 @@ class MLRModel():
 
         # LIME
         explainer = self._skater['local_interpreter'].explain_instance(
-            self._data['x_test'][58], self._clf.predict)
+            self._data[x_type][index], self._clf.predict)
         logger.info(pformat(explainer.as_list()))
         logger.info(pformat(explainer.as_map()))
         explainer.save_to_file(html_path)
@@ -589,13 +604,11 @@ class MLRModel():
             else:
                 logger.info("Started prediction for prediction %s", pred_name)
 
-            # Predict
+            # Prediction
             (x_pred, x_mask,
              x_cube) = self._extract_prediction_input(pred_name)
             pred_dict = self._get_prediction_arrays(x_pred, x_mask,
                                                     **predict_kwargs)
-
-            # Estimate prediction error if desired
             pred_dict = self._estimate_prediction_error(pred_dict)
 
             # Save data
@@ -1138,6 +1151,12 @@ class MLRModel():
             "data)", labels[0], units)
         return (labels[0], units)
 
+    def _get_lime_feature_importance(self, x_input):
+        """Get most important feature given by LIME."""
+        explainer = self._skater['local_interpreter'].explain_instance(
+            x_input, self._clf.predict, num_features=1, num_samples=100)
+        return explainer.as_map()[1][0][0]
+
     def _get_prediction_arrays(self, x_data, x_mask, **kwargs):
         """Get (multi-dimensional) prediction output."""
         mask_1d = np.any(x_mask, axis=1)
@@ -1149,9 +1168,19 @@ class MLRModel():
                     "Removed %i prediction input point(s) where "
                     "features were missing'", n_removed)
 
-        # Start prediction
+        # Get prediction and global feature importance (LIME)
         logger.info("Predicting %i point(s)", x_data.shape[0])
         y_preds = self._clf.predict(x_data, **kwargs)
+        if not isinstance(y_preds, (list, tuple)):
+            y_preds = [y_preds]
+        y_preds = list(y_preds)
+        if self._cfg['return_lime_importance']:
+            logger.info(
+                "Calculating global feature importance using LIME on "
+                "%i processes", mp.cpu_count())
+            pool = mp.Pool(processes=mp.cpu_count())
+            fi = pool.map(self._get_lime_feature_importance, x_data)
+            print(fi)
 
         # Create dict of arrays with correct shape and mask and save them
         pred_dict = {}
@@ -1160,9 +1189,6 @@ class MLRModel():
             idx_to_name[1] = 'var'
         elif 'return_cov' in kwargs:
             idx_to_name[1] = 'cov'
-        if not isinstance(y_preds, (list, tuple)):
-            y_preds = [y_preds]
-        y_preds = list(y_preds)
         for (idx, y_pred) in enumerate(y_preds):
             if y_pred.ndim == 1 and y_pred.shape[0] != x_mask.shape[0]:
                 new_y_pred = np.ma.empty(x_mask.shape[0],
@@ -1444,6 +1470,8 @@ class MLRModel():
             x_train = self._clf.named_steps['imputer'].transform(x_train)
 
         # Interpreters
+        verbosity = (True if self._cfg['log_level'] == 'debug'
+                     and not self._cfg['return_lime_importance'] else False)
         self._skater['global_interpreter'] = Interpretation(
             x_train,
             training_labels=y_train,
@@ -1454,7 +1482,7 @@ class MLRModel():
             mode='regression',
             training_labels=y_train,
             feature_names=self.classes['features'],
-            verbose=(True if self._cfg['log_level'] == 'debug' else False),
+            verbose=verbosity,
             class_names=[self.classes['label']])
         logger.debug(
             "Loaded local skater interpreter (LIME) with new training data")
