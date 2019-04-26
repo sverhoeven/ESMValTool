@@ -3,7 +3,6 @@
 import copy
 import importlib
 import logging
-import multiprocessing as mp
 import os
 import re
 from inspect import getfullargspec
@@ -12,6 +11,7 @@ from pprint import pformat
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
+import pathos.multiprocessing as mp
 from cf_units import Unit
 from skater.core.explanations import Interpretation
 from skater.core.local_interpretation.lime.lime_tabular import \
@@ -111,6 +111,8 @@ class MLRModel():
     matplotlib_style_file : str, optional
         Matplotlib style file (should be located in
         `esmvaltool.diag_scripts.shared.plot.styles_python.matplotlib`).
+    n_jobs : int, optional (default: 1)
+        Maximum number of jobs spawned by this class.
     parameters : dict, optional
         Parameters used in the **final** regressor. If these parameters are
         updated using the function `self.update_parameters()`, the new names
@@ -220,6 +222,7 @@ class MLRModel():
         # Default parameters
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('imputation_strategy', 'remove')
+        self._cfg.setdefault('n_jobs', 1)
         self._cfg.setdefault('prediction_pp', {})
         self._cfg.setdefault('return_lime_importance', True)
         plt.style.use(
@@ -249,7 +252,8 @@ class MLRModel():
         self._create_classifier()
 
         # Log successful initialization
-        logger.info("Initialized MLR model")
+        logger.info("Initialized MLR model (using at most %i processes)",
+                    self._cfg['n_jobs'])
         logger.debug("With parameters")
         logger.debug(pformat(self.parameters))
 
@@ -361,18 +365,21 @@ class MLRModel():
             "Performing exhaustive grid search cross-validation with final "
             "classifier %s and parameter grid %s on %i training points",
             self._CLF_TYPE, parameter_grid, self._data['y_train'].size)
-        gridsearch_kwargs = dict(self._cfg.get('grid_search_cv_kwargs', {}))
+
+        # Get keyword arguments
         log_level = {'debug': 2, 'info': 1}
-        gridsearch_kwargs.setdefault('verbose',
-                                     log_level.get(self._cfg['log_level'], 0))
+        gridsearch_kwargs = {
+            'n_jobs': self._cfg['n_jobs'],
+            'verbose': log_level.get(self._cfg['log_level'], 0),
+        }
+        gridsearch_kwargs.update(self._cfg.get('grid_search_cv_kwargs', {}))
         gridsearch_kwargs.update(kwargs)
-        if gridsearch_kwargs:
-            logger.info(
-                "Using additional keyword argument(s) %s given in "
-                "recipe and grid_search_cv() function", gridsearch_kwargs)
-            if isinstance(gridsearch_kwargs.get('cv'), str):
-                if gridsearch_kwargs['cv'].lower() == 'loo':
-                    gridsearch_kwargs['cv'] = LeaveOneOut()
+        logger.info(
+            "Using keyword argument(s) %s for grid_search_cv() "
+            "function", gridsearch_kwargs)
+        if isinstance(gridsearch_kwargs.get('cv'), str):
+            if gridsearch_kwargs['cv'].lower() == 'loo':
+                gridsearch_kwargs['cv'] = LeaveOneOut()
 
         # Create GridSearchCV instance
         clf = GridSearchCV(self._clf, parameter_grid, **gridsearch_kwargs)
@@ -421,7 +428,7 @@ class MLRModel():
             (_, axes) = (self._skater['global_interpreter'].feature_importance.
                          plot_feature_importance(self._skater['model'],
                                                  method=method,
-                                                 n_jobs=1,
+                                                 n_jobs=self._cfg['n_jobs'],
                                                  progressbar=progressbar))
             axes.set_title('Variable Importance ({} Model)'.format(
                 self._CLF_TYPE.__name__))
@@ -503,7 +510,7 @@ class MLRModel():
                              partial_dependence.plot_partial_dependence(
                                  [feature_name],
                                  self._skater['model'],
-                                 n_jobs=1,
+                                 n_jobs=self._cfg['n_jobs'],
                                  progressbar=progressbar,
                                  with_variance=True))
             axes.set_title('Partial dependence ({} Model)'.format(
@@ -607,8 +614,8 @@ class MLRModel():
             # Prediction
             (x_pred, x_mask,
              x_cube) = self._extract_prediction_input(pred_name)
-            pred_dict = self._get_prediction_arrays(x_pred, x_mask,
-                                                    **predict_kwargs)
+            pred_dict = self._get_prediction_dict(x_pred, x_mask,
+                                                  **predict_kwargs)
             pred_dict = self._estimate_prediction_error(pred_dict)
 
             # Save data
@@ -1154,11 +1161,11 @@ class MLRModel():
     def _get_lime_feature_importance(self, x_input):
         """Get most important feature given by LIME."""
         explainer = self._skater['local_interpreter'].explain_instance(
-            x_input, self._clf.predict, num_features=1, num_samples=100)
+            x_input, self._clf.predict, num_features=1, num_samples=200)
         return explainer.as_map()[1][0][0]
 
-    def _get_prediction_arrays(self, x_data, x_mask, **kwargs):
-        """Get (multi-dimensional) prediction output."""
+    def _get_prediction_dict(self, x_data, x_mask, **kwargs):
+        """Get prediction output in a dictionary."""
         mask_1d = np.any(x_mask, axis=1)
         if self._cfg['imputation_strategy'] == 'remove':
             x_data = x_data[~mask_1d]
@@ -1168,36 +1175,40 @@ class MLRModel():
                     "Removed %i prediction input point(s) where "
                     "features were missing'", n_removed)
 
-        # Get prediction and global feature importance (LIME)
+        # Get prediction
         logger.info("Predicting %i point(s)", x_data.shape[0])
         y_preds = self._clf.predict(x_data, **kwargs)
         if not isinstance(y_preds, (list, tuple)):
             y_preds = [y_preds]
-        y_preds = list(y_preds)
-        if self._cfg['return_lime_importance']:
-            logger.info(
-                "Calculating global feature importance using LIME on "
-                "%i processes", mp.cpu_count())
-            pool = mp.Pool(processes=mp.cpu_count())
-            fi = pool.map(self._get_lime_feature_importance, x_data)
-            print(fi)
 
-        # Create dict of arrays with correct shape and mask and save them
-        pred_dict = {}
+        # Create dictionary
         idx_to_name = {0: 'pred'}
         if 'return_var' in kwargs:
             idx_to_name[1] = 'var'
         elif 'return_cov' in kwargs:
             idx_to_name[1] = 'cov'
+        pred_dict = {}
         for (idx, y_pred) in enumerate(y_preds):
+            pred_dict[idx_to_name.get(idx, idx)] = y_pred
+
+        # LIME feature importance
+        if self._cfg['return_lime_importance']:
+            logger.info("Calculating global feature importance using LIME")
+            pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
+            pred_dict['lime'] = np.array(
+                pool.map(self._get_lime_feature_importance, x_data))
+
+        # Transform arrays correctly
+        for (pred_type, y_pred) in pred_dict.items():
             if y_pred.ndim == 1 and y_pred.shape[0] != x_mask.shape[0]:
                 new_y_pred = np.ma.empty(x_mask.shape[0],
                                          dtype=self._cfg['dtype'])
                 new_y_pred[mask_1d] = np.ma.masked
                 new_y_pred[~mask_1d] = y_pred
-                pred_dict[idx_to_name.get(idx, idx)] = new_y_pred
+                pred_dict[pred_type] = new_y_pred
             else:
-                pred_dict[idx_to_name.get(idx, idx)] = np.ma.array(y_pred)
+                pred_dict[pred_type] = np.ma.array(y_pred)
+            logger.debug("Found prediction type '%s'", pred_type)
         logger.info("Successfully created prediction array with %i point(s)",
                     pred_dict['pred'].size)
         return pred_dict
@@ -1570,7 +1581,7 @@ class MLRModel():
         # Process other cubes
         pp_cubes = [ref_cube]
         for (path, cube) in predictions.items():
-            if path == ref_path:
+            if path == ref_path or cube.attributes.get('skip_for_pp'):
                 continue
             if cube.shape == ref_shape:
                 (cube, _) = self._postprocess_cube(cube)
@@ -1678,19 +1689,32 @@ class MLRModel():
 
         # Modify variable name depending on prediction type
         suffix = pred_type
-        if suffix in ('var', 'cov'):
+        if isinstance(suffix, int):
+            cube.var_name += '_{:d}'.format(suffix)
+            cube.long_name += ' {:d}'.format(suffix)
+        elif suffix in ('var', 'cov'):
             cube.var_name += f'_{suffix}'
             cube.long_name += (' (variance)'
                                if suffix == 'var' else ' (covariance)')
             cube.units = self._units_power(cube.units, 2)
-        if 'error_estim' in suffix:
+        elif 'error_estim' in suffix:
             cube.var_name += f'_{suffix}'
             cube.long_name += (' (error estimation using {})'.format(
                 'cross-validation' if 'cv' in
                 suffix else 'holdout test data set'))
-        elif isinstance(suffix, int):
-            cube.var_name += '_{:d}'.format(suffix)
-            cube.long_name += '_{:d}'.format(suffix)
+        elif suffix == 'lime':
+            cube.var_name = 'lime_feature_importance'
+            cube.long_name = (f"Most important feature for predicting "
+                              f"'{self.classes['label']}' given by LIME")
+            cube.units = Unit('no_unit')
+            cube.attributes.update({
+                'features':
+                pformat(dict(enumerate(self.classes['features']))),
+                'skip_for_pp':
+                1,
+            })
+        else:
+            logger.warning("Got unknown prediction type '%s'", pred_type)
 
         # Get new path
         pred_str = '' if pred_name is None else f'_{pred_name}'
