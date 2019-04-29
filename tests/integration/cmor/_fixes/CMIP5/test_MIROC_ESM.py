@@ -30,27 +30,14 @@ class TestTro3(unittest.TestCase):
         self.assertEqual(cube.units, Unit('J'))
 
 
-class TestGpp(unittest.TestCase):
-    def setUp(self):
-        self.cube = Cube([1.0], var_name='gpp', units='J')
-        self.fix = gpp()
-
-    def test_fix_metadata(self):
-        cube = self.fix.fix_metadata([self.cube])[0]
-        self.assertEqual(cube.data[0], 1)
-        self.assertEqual(cube.units, Unit('g m-2 day-1'))
-
-
 class TestAll(unittest.TestCase):
     def setUp(self):
         self.cube = Cube([[1.0, 2.0], [3.0, 4.0]], var_name='co2', units='J')
         self.cube.add_dim_coord(
-            DimCoord(
-                [0, 1],
-                standard_name='time',
-                units=Unit(
-                    'days since 0000-01-01 00:00:00', calendar='gregorian')),
-            0)
+            DimCoord([0, 1],
+                     standard_name='time',
+                     units=Unit('days since 0000-01-01 00:00:00',
+                                calendar='gregorian')), 0)
         self.cube.add_dim_coord(DimCoord([0, 1], long_name='AR5PL35'), 1)
 
         self.fix = allvars()
