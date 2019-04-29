@@ -843,7 +843,14 @@ class MLRModel():
 
         # Final classifier
         if self._cfg.get('cache_intermediate_results', True):
-            memory = self._cfg['mlr_work_dir']
+            if self._cfg['n_jobs'] is None or self._cfg['n_jobs'] == 1:
+                memory = self._cfg['mlr_work_dir']
+            else:
+                logger.debug(
+                    "Caching intermediate results of Pipeline is not "
+                    "supported for multiple processes (using at most %i "
+                    "processes)", self._cfg['n_jobs'])
+                memory = None
         else:
             memory = None
         self._clf = mlr.AdvancedPipeline(steps, memory=memory)
@@ -1692,6 +1699,8 @@ class MLRModel():
         if isinstance(suffix, int):
             cube.var_name += '_{:d}'.format(suffix)
             cube.long_name += ' {:d}'.format(suffix)
+        elif suffix == 'pred':
+            pass
         elif suffix in ('var', 'cov'):
             cube.var_name += f'_{suffix}'
             cube.long_name += (' (variance)'

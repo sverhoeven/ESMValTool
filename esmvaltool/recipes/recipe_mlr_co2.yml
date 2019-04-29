@@ -20,19 +20,19 @@ DATASET_ANCHOR: &datasets
   - {dataset: CanESM2}
   # - {dataset: CCSM4}
   # - {dataset: CESM1-BGC}
-  # - {dataset: GFDL-ESM2G}
-  - {dataset: GFDL-ESM2M}
+  - {dataset: GFDL-ESM2G}
+  # - {dataset: GFDL-ESM2M}
   # - {dataset: HadGEM2-CC}
   # - {dataset: HadGEM2-ES}
   - {dataset: inmcm4}
   # - {dataset: IPSL-CM5A-LR}
-  # - {dataset: IPSL-CM5A-MR}
+  - {dataset: IPSL-CM5A-MR}
   # - {dataset: IPSL-CM5B-LR}
   - {dataset: MIROC-ESM}
   # - {dataset: MIROC-ESM-CHEM}
   # - {dataset: MPI-ESM-LR}
   # - {dataset: MPI-ESM-MR}
-  # - {dataset: NorESM1-M}
+  - {dataset: NorESM1-M}
   # - {dataset: NorESM1-ME}
 
 
@@ -52,6 +52,32 @@ preprocessors:
     regrid:
       scheme: nearest
       target_grid: 1x1
+
+
+# features: &variable_settings_features
+#   short_name: tas
+#   preprocessor: mask_sea
+#   project: CMIP5
+#   mip: Amon
+#   field: T2Ms
+#   exp: historical
+#   ensemble: r1i1p1
+#   start_year: 1991
+#   end_year: 2005
+#   var_type: feature
+#   additional_datasets: *datasets
+# prediction_input: &variable_settings_prediction_input
+#   <<: *variable_settings_features
+#   preprocessor: regrid
+#   var_type: prediction_input
+#   additional_datasets:
+#     - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
+# monthly_clim: &monthly_clim
+#   script: mlr/simple_pp.py
+#   aggregate_by:
+#     month_number: mean
+#   tag: T
+#   convert_units_to: celsius
 
 
 diagnostics:
@@ -100,6 +126,7 @@ diagnostics:
         tag: PR
         convert_units_to: 'kg m-2 day-1'
 
+  # No monthly data for prediction input
   # diag_mlr_input_rsds:
   #   variables:
   #     features:
@@ -118,6 +145,8 @@ diagnostics:
   #       tag: SSRD
   #       convert_units_to: null
 
+
+  # No monthly data for prediction input
   # diag_mlr_input_rsus:
   #   variables:
   #     features:
@@ -136,6 +165,7 @@ diagnostics:
   #       tag: SSRU
   #       convert_units_to: null
 
+  # No monthly data for prediction input
   # diag_mlr_input_rlds:
   #   variables:
   #     features:
@@ -154,6 +184,7 @@ diagnostics:
   #       tag: SLRD
   #       convert_units_to: null
 
+  # No monthly data for prediction input
   # diag_mlr_input_rlus:
   #   variables:
   #     features:
@@ -190,6 +221,7 @@ diagnostics:
         tag: ET
         convert_units_to: null
 
+  # No monthly data for prediction input
   # diag_mlr_input_cVeg:
   #   variables:
   #     features:
@@ -210,6 +242,7 @@ diagnostics:
   #       tag: CVEG
   #       convert_units_to: 't km-2'
 
+  # No monthly data for prediction input
   # diag_mlr_input_cSoil:
   #   variables:
   #     features:
@@ -324,11 +357,11 @@ diagnostics:
         n_jobs: 10
         grid_search_cv_param_grid:
           transformed_target_regressor__regressor__learning_rate:
-            [0.1, 0.05, 0.01, 0.005, 0.001]
+            [0.05, 0.01, 0.005]
           transformed_target_regressor__regressor__n_estimators:
-            [1000, 2000, 3000, 4000, 5000]
+            [2000, 3000, 4000, 5000]
         grid_search_cv_kwargs:
-          cv: 5
+          cv: 10
         parameters:
           loss: ls
           max_depth: 4
@@ -339,7 +372,8 @@ diagnostics:
           mean: ['time']
           sum: ['latitude', 'longitude']
           units: 'Gt yr-1'
-        use_coords_as_feature: ['month_number', 'latitude', 'longitude']
+        # use_coords_as_feature: ['month_number', 'latitude', 'longitude']
+        use_coords_as_feature: ['latitude', 'longitude']
 
       # postprocess_mlr:
       #   script: mlr/simple_pp.py
