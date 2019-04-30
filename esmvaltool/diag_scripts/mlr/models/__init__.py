@@ -5,6 +5,7 @@ import importlib
 import logging
 import os
 import re
+from functools import partial
 from inspect import getfullargspec
 from pprint import pformat
 
@@ -165,13 +166,13 @@ class MLRModel():
     @classmethod
     def register_mlr_model(cls, model):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
+        logger.debug("Found available MLR model '%s'", model)
 
         def decorator(subclass):
             """Decorate subclass."""
             cls._MODELS[model] = subclass
             return subclass
 
-        logger.debug("Found available MLR model '%s'", model)
         return decorator
 
     @classmethod
@@ -622,7 +623,7 @@ class MLRModel():
             x_pred = np.ma.array(x_pred, mask=x_mask, copy=True)
             self._data['x_pred'][pred_name] = x_pred.filled(np.nan)
             self._data['y_pred'][pred_name] = np.ma.copy(
-                pred_dict['pred']).filled(np.nan)
+                pred_dict[None]).filled(np.nan)
 
             # Get (and save) prediction cubes
             (predictions,
@@ -894,8 +895,8 @@ class MLRModel():
 
         # Get correct shape and mask
         if error is not None:
-            pred_error = np.ma.array(np.full_like(pred_dict['pred'], error),
-                                     mask=pred_dict['pred'].mask)
+            pred_error = np.ma.array(np.full_like(pred_dict[None], error),
+                                     mask=pred_dict[None].mask)
             pred_dict[f"error_estim_{cfg['type']}"] = pred_error
             logger.info("Estimated prediction error by %s using %s data",
                         error, cfg['type'])
@@ -1165,11 +1166,22 @@ class MLRModel():
             "data)", labels[0], units)
         return (labels[0], units)
 
-    def _get_lime_feature_importance(self, x_input):
+    def _get_lime_feature_importance(self, x_data):
         """Get most important feature given by LIME."""
-        explainer = self._skater['local_interpreter'].explain_instance(
-            x_input, self._clf.predict, num_features=1, num_samples=200)
-        return explainer.as_map()[1][0][0]
+        logger.info("Calculating global feature importance using LIME")
+
+        # Most important feature for single input
+        def _most_important_feature(x_input, self):
+            """Get most important feature for single input."""
+            explainer = self._skater['local_interpreter'].explain_instance(
+                x_input, self._clf.predict, num_features=1, num_samples=200)
+            return explainer.as_map()[1][0][0]
+
+        _most_important_feature = partial(_most_important_feature, self=self)
+
+        # Apply on whole input (using multiple processes)
+        pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
+        return np.array(pool.map(_most_important_feature, x_data))
 
     def _get_prediction_dict(self, x_data, x_mask, **kwargs):
         """Get prediction output in a dictionary."""
@@ -1182,28 +1194,14 @@ class MLRModel():
                     "Removed %i prediction input point(s) where "
                     "features were missing'", n_removed)
 
-        # Get prediction
+        # Get prediction dictionary
         logger.info("Predicting %i point(s)", x_data.shape[0])
         y_preds = self._clf.predict(x_data, **kwargs)
-        if not isinstance(y_preds, (list, tuple)):
-            y_preds = [y_preds]
-
-        # Create dictionary
-        idx_to_name = {0: 'pred'}
-        if 'return_var' in kwargs:
-            idx_to_name[1] = 'var'
-        elif 'return_cov' in kwargs:
-            idx_to_name[1] = 'cov'
-        pred_dict = {}
-        for (idx, y_pred) in enumerate(y_preds):
-            pred_dict[idx_to_name.get(idx, idx)] = y_pred
+        pred_dict = self._prediction_to_dict(y_preds, **kwargs)
 
         # LIME feature importance
         if self._cfg['return_lime_importance']:
-            logger.info("Calculating global feature importance using LIME")
-            pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
-            pred_dict['lime'] = np.array(
-                pool.map(self._get_lime_feature_importance, x_data))
+            pred_dict['lime'] = self._get_lime_feature_importance(x_data)
 
         # Transform arrays correctly
         for (pred_type, y_pred) in pred_dict.items():
@@ -1215,9 +1213,11 @@ class MLRModel():
                 pred_dict[pred_type] = new_y_pred
             else:
                 pred_dict[pred_type] = np.ma.array(y_pred)
-            logger.debug("Found prediction type '%s'", pred_type)
+            if pred_type is not None:
+                logger.debug("Found additional prediction type '%s'",
+                             pred_type)
         logger.info("Successfully created prediction array with %i point(s)",
-                    pred_dict['pred'].size)
+                    pred_dict[None].size)
         return pred_dict
 
     def _get_prediction_cubes(self, pred_dict, pred_name, x_cube):
@@ -1246,7 +1246,7 @@ class MLRModel():
                 pred_cube, pred_type, pred_name=pred_name)
             prediction_cubes[new_path] = pred_cube
             io.save_iris_cube(pred_cube, new_path)
-            if pred_type == 'pred':
+            if pred_type is None:
                 ref_path = new_path
         return (prediction_cubes, ref_path)
 
@@ -1695,26 +1695,28 @@ class MLRModel():
             setattr(cube, attr, getattr(label_cube, attr))
 
         # Modify variable name depending on prediction type
-        suffix = pred_type
-        if isinstance(suffix, int):
-            cube.var_name += '_{:d}'.format(suffix)
-            cube.long_name += ' {:d}'.format(suffix)
-        elif suffix == 'pred':
-            pass
-        elif suffix in ('var', 'cov'):
-            cube.var_name += f'_{suffix}'
+        suffix = f'_{pred_type}'
+        if pred_type is None:
+            suffix = ''
+        elif isinstance(pred_type, int):
+            cube.var_name += '_{:d}'.format(pred_type)
+            cube.long_name += ' {:d}'.format(pred_type)
+            logger.warning("Got unknown prediction type with index %i",
+                           pred_type)
+        elif pred_type in ('var', 'cov'):
+            cube.var_name += suffix
             cube.long_name += (' (variance)'
-                               if suffix == 'var' else ' (covariance)')
+                               if pred_type == 'var' else ' (covariance)')
             cube.units = self._units_power(cube.units, 2)
-        elif 'error_estim' in suffix:
-            cube.var_name += f'_{suffix}'
+        elif 'error_estim' in pred_type:
+            cube.var_name += suffix
             cube.long_name += (' (error estimation using {})'.format(
                 'cross-validation' if 'cv' in
-                suffix else 'holdout test data set'))
-        elif suffix == 'lime':
+                pred_type else 'holdout test data set'))
+        elif pred_type == 'lime':
             cube.var_name = 'lime_feature_importance'
             cube.long_name = (f"Most important feature for predicting "
-                              f"'{self.classes['label']}' given by LIME")
+                              f"{self.classes['label']} given by LIME")
             cube.units = Unit('no_unit')
             cube.attributes.update({
                 'features':
@@ -1723,13 +1725,13 @@ class MLRModel():
                 1,
             })
         else:
-            logger.warning("Got unknown prediction type '%s'", pred_type)
+            logger.error("Got unknown prediction type '%s'", pred_type)
 
         # Get new path
         pred_str = '' if pred_name is None else f'_{pred_name}'
         root_str = ('' if self._cfg['root_dir'] == '' else
                     f"{self._cfg['root_dir']}_")
-        filename = f'{root_str}prediction{pred_str}_{suffix}.nc'
+        filename = f'{root_str}prediction{pred_str}{suffix}.nc'
         new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
         cube.attributes['filename'] = new_path
         return new_path
@@ -1824,6 +1826,21 @@ class MLRModel():
         for dataset in datasets:
             dataset['group_attribute'] = None
         return group_metadata(datasets, 'prediction_name')
+
+    @staticmethod
+    def _prediction_to_dict(pred_out, **kwargs):
+        """Convert output of `clf.predict()` to `dict`."""
+        if not isinstance(pred_out, (list, tuple)):
+            pred_out = [pred_out]
+        idx_to_name = {0: None}
+        if 'return_var' in kwargs:
+            idx_to_name[1] = 'var'
+        elif 'return_cov' in kwargs:
+            idx_to_name[1] = 'cov'
+        pred_dict = {}
+        for (idx, pred) in enumerate(pred_out):
+            pred_dict[idx_to_name.get(idx, idx)] = pred
+        return pred_dict
 
     @staticmethod
     def _remove_missing_labels(x_data, y_data):
