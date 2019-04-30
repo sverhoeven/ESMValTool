@@ -48,6 +48,7 @@ REQUIREMENTS = {
         'xarray',
         'yamale',
         'pandas',
+        'pathos',
         'eofs',
         'scikit-learn',
     ],

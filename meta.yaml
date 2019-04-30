@@ -53,6 +53,7 @@ requirements:
     - numba
     - numpy
     - pandas
+    - pathos
     - pillow
     - prov
     - psutil
