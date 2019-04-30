@@ -1550,7 +1550,7 @@ class MLRModel():
             if op_type == 'mean':
                 new_size = np.prod(cube.shape, dtype=np.int)
                 n_points_mean = int(old_size / new_size)
-            elif op_type == 'sum':
+            elif op_type == 'sum' and weights is not None:
                 cube.units *= Unit('m2')
 
         # Units conversion

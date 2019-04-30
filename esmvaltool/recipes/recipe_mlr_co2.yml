@@ -19,10 +19,10 @@ DATASET_ANCHOR: &datasets
   # - {dataset: BNU-ESM}
   - {dataset: CanESM2}
   # - {dataset: CCSM4}
-  # - {dataset: CESM1-BGC}
+  - {dataset: CESM1-BGC}
   - {dataset: GFDL-ESM2G}
   # - {dataset: GFDL-ESM2M}
-  # - {dataset: HadGEM2-CC}
+  - {dataset: HadGEM2-CC}
   # - {dataset: HadGEM2-ES}
   - {dataset: inmcm4}
   # - {dataset: IPSL-CM5A-LR}
@@ -30,7 +30,7 @@ DATASET_ANCHOR: &datasets
   # - {dataset: IPSL-CM5B-LR}
   - {dataset: MIROC-ESM}
   # - {dataset: MIROC-ESM-CHEM}
-  # - {dataset: MPI-ESM-LR}
+  - {dataset: MPI-ESM-LR}
   # - {dataset: MPI-ESM-MR}
   - {dataset: NorESM1-M}
   # - {dataset: NorESM1-ME}
@@ -328,7 +328,7 @@ diagnostics:
     variables:
       label: &variable_settings_label
         <<: *variable_settings_features
-        short_name: nbp_grid
+        short_name: gpp_grid
         mip: Lmon
         exp: rcp45
         start_year: 2021
@@ -339,7 +339,7 @@ diagnostics:
       monthly_clim:
         <<: *monthly_clim
         # anomaly: ['dataset']
-        tag: NBP_future
+        tag: GPP_future
         convert_units_to: 't km-2 yr-1'
       multiple_mlr_models:
         script: mlr/main.py
@@ -354,12 +354,12 @@ diagnostics:
           select:
             project: CMIP5
           group: dataset
-        n_jobs: 10
+        n_jobs: 12
         grid_search_cv_param_grid:
           transformed_target_regressor__regressor__learning_rate:
-            [0.05, 0.01, 0.005]
+            [0.01, 0.05, 0.01, 0.005]
           transformed_target_regressor__regressor__n_estimators:
-            [2000, 3000, 4000, 5000]
+            [3000, 4000, 5000, 6000]
         grid_search_cv_kwargs:
           cv: 10
         parameters:
@@ -367,13 +367,12 @@ diagnostics:
           max_depth: 4
           min_samples_split: 2
           # learning_rate: 0.05
-          # n_estimators: 2500
+          # n_estimators: 4000
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']
           units: 'Gt yr-1'
-        # use_coords_as_feature: ['month_number', 'latitude', 'longitude']
-        use_coords_as_feature: ['latitude', 'longitude']
+        use_coords_as_feature: ['month_number', 'latitude', 'longitude']
 
       # postprocess_mlr:
       #   script: mlr/simple_pp.py
@@ -398,7 +397,7 @@ diagnostics:
         mean: ['time']
         sum: ['latitude', 'longitude']
         # anomaly: ['dataset']
-        tag: NBP_future
+        tag: GPP_future
         convert_units_to: 'Gt yr-1'
       mmm:
         script: mlr/simple_multimodel_stats.py

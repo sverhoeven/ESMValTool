@@ -236,7 +236,10 @@ def main(cfg):
         if cfg.get(stat):
             stats[stat] = iris_op
     for (stat, iris_op) in stats.items():
-        new_cube = mm_cube.collapsed('dataset', iris_op)
+        try:
+            new_cube = mm_cube.collapsed('dataset', iris_op)
+        except iris.exceptions.CoordinateCollapseError:
+            new_cube = mm_cube
         new_path = get_diagnostic_filename(stat, cfg)
         add_mm_cube_attributes(new_cube, input_data, stat, new_path)
         io.save_iris_cube(new_cube, new_path)
