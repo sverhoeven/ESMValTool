@@ -16,24 +16,24 @@ documentation:
 
 
 DATASET_ANCHOR: &datasets
-  # - {dataset: BNU-ESM}
+  - {dataset: BNU-ESM}
   - {dataset: CanESM2}
-  # - {dataset: CCSM4}
+  - {dataset: CCSM4}
   - {dataset: CESM1-BGC}
-  - {dataset: GFDL-ESM2G}
-  # - {dataset: GFDL-ESM2M}
+  # - {dataset: GFDL-ESM2G} (GPP for RCP4.5 missing)
+  - {dataset: GFDL-ESM2M}
   - {dataset: HadGEM2-CC}
-  # - {dataset: HadGEM2-ES}
+  - {dataset: HadGEM2-ES}
   - {dataset: inmcm4}
-  # - {dataset: IPSL-CM5A-LR}
+  - {dataset: IPSL-CM5A-LR}
   - {dataset: IPSL-CM5A-MR}
-  # - {dataset: IPSL-CM5B-LR}
+  - {dataset: IPSL-CM5B-LR}
   - {dataset: MIROC-ESM}
-  # - {dataset: MIROC-ESM-CHEM}
+  - {dataset: MIROC-ESM-CHEM}
   - {dataset: MPI-ESM-LR}
-  # - {dataset: MPI-ESM-MR}
+  - {dataset: MPI-ESM-MR}
   - {dataset: NorESM1-M}
-  # - {dataset: NorESM1-ME}
+  - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -263,25 +263,25 @@ diagnostics:
   #       tag: CSOIL
   #       convert_units_to: 't km-2'
 
-  diag_mlr_input_nbp:
-    variables:
-      features:
-        <<: *variable_settings_features
-        short_name: nbp_grid
-        mip: Lmon
-        derive: true
-      prediction_input:
-        <<: *variable_settings_prediction_input
-        short_name: nbp_grid
-        mip: Lmon
-        derive: true
-        additional_datasets:
-          - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
-    scripts:
-      monthly_clim:
-        <<: *monthly_clim
-        tag: NBP
-        convert_units_to: 't km-2 yr-1'
+  # diag_mlr_input_nbp:
+  #   variables:
+  #     features:
+  #       <<: *variable_settings_features
+  #       short_name: nbp_grid
+  #       mip: Lmon
+  #       derive: true
+  #     prediction_input:
+  #       <<: *variable_settings_prediction_input
+  #       short_name: nbp_grid
+  #       mip: Lmon
+  #       derive: true
+  #       additional_datasets:
+  #         - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
+  #   scripts:
+  #     monthly_clim:
+  #       <<: *monthly_clim
+  #       tag: NBP
+  #       convert_units_to: 't km-2 yr-1'
 
   diag_mlr_input_gpp:
     variables:
@@ -326,6 +326,12 @@ diagnostics:
   diag_mlr:
     description: Perform MLR on input data.
     variables:
+      ref: &variable_settings_ref
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        ref: true
       label: &variable_settings_label
         <<: *variable_settings_features
         short_name: gpp_grid
@@ -338,8 +344,8 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        # anomaly: ['dataset']
-        tag: GPP_future
+        anomaly: ['dataset']
+        tag: GPP_change
         convert_units_to: 't km-2 yr-1'
       multiple_mlr_models:
         script: mlr/main.py
@@ -389,6 +395,8 @@ diagnostics:
   diag_mmm:
     description: Calculate simple multi-model mean of label data.
     variables:
+      ref:
+        <<: *variable_settings_ref
       label:
         <<: *variable_settings_label
     scripts:
@@ -396,8 +404,8 @@ diagnostics:
         script: mlr/simple_pp.py
         mean: ['time']
         sum: ['latitude', 'longitude']
-        # anomaly: ['dataset']
-        tag: GPP_future
+        anomaly: ['dataset']
+        tag: GPP_change
         convert_units_to: 'Gt yr-1'
       mmm:
         script: mlr/simple_multimodel_stats.py
