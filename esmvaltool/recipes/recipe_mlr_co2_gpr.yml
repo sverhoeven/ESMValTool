@@ -367,5 +367,5 @@ diagnostics:
       mmm:
         script: mlr/simple_multimodel_stats.py
         ancestors: ['diag_mmm/global_sum']
-        mean: true
+        unweighted_mean: true
         std: true

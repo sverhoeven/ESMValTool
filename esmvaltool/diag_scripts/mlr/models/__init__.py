@@ -125,7 +125,7 @@ class MLRModel():
         Postprocess prediction output (e.g. combine best estimate and standard
         deviation in one cube). Accepts keywords `mean` and `sum` (followed by
         list of coordinates) and `area_weighted` (bool).
-    return_lime_importance : bool, optional (default: True)
+    return_lime_importance : bool, optional (default: False)
         Return cube with feature importance given by LIME (Local Interpretable
         Model-agnostic Explanations).
     standardize_data : bool, optional (default: True)
@@ -225,7 +225,7 @@ class MLRModel():
         self._cfg.setdefault('imputation_strategy', 'remove')
         self._cfg.setdefault('n_jobs', 1)
         self._cfg.setdefault('prediction_pp', {})
-        self._cfg.setdefault('return_lime_importance', True)
+        self._cfg.setdefault('return_lime_importance', False)
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
 
@@ -1522,8 +1522,24 @@ class MLRModel():
         logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
         self.reset_training_data()
 
+    def _postprocess_covariance(self, cube, cov_weights):
+        """Postprocess covariance prediction cube."""
+        logger.debug("Postprocessing covariance matrix")
+        cube = cube.collapsed(cube.coords(dim_coords=True),
+                              iris.analysis.SUM,
+                              weights=cov_weights)
+        cube.units *= Unit('m4')
+        new_units = self._cfg['prediction_pp'].get('units')
+        if new_units:
+            new_units = self._units_power(Unit(new_units), 2)
+            self._convert_units_in_cube(cube,
+                                        new_units,
+                                        text='postprocessed covariance')
+        return cube
+
     def _postprocess_cube(self, cube, return_cov_weights=False, **kwargs):
-        """Postprocess single prediction cube."""
+        """Postprocess regular prediction cube."""
+        logger.debug("Postprocessing regular prediction cube")
         cfg = self._cfg['prediction_pp']
         calc_weights = cfg.get('area_weights', True)
         cov_weights = None
@@ -1577,21 +1593,31 @@ class MLRModel():
                     self._cfg['prediction_pp'])
         logger.debug("Using reference cube at '%s'", ref_path)
 
-        # Process reference cube
+        # Process and save reference cube
         ref_cube = predictions[ref_path]
         ref_shape = ref_cube.shape
         (ref_cube,
          cov_weights) = self._postprocess_cube(ref_cube,
                                                return_cov_weights=True,
                                                **kwargs)
+        new_path = self._get_postprocessed_filename(ref_path, ref_path)
+        ref_cube.attributes['source'] = ref_path
+        ref_cube.attributes['filename'] = new_path  # TODO remove after merge
+        io.save_iris_cube(ref_cube, new_path)
 
         # Process other cubes
-        pp_cubes = [ref_cube]
+        new_path = ref_path.replace('.nc', '_pp.nc')
+        ref_cube.attributes['source'] = ref_path
+        ref_cube.attributes['filename'] = new_path  # TODO remove after merge
         for (path, cube) in predictions.items():
             if path == ref_path or cube.attributes.get('skip_for_pp'):
                 continue
+
+            # Regualar cubes
             if cube.shape == ref_shape:
                 (cube, _) = self._postprocess_cube(cube)
+
+            # Covariance
             else:
                 if cov_weights is not None:
                     if cube.shape != cov_weights.shape:
@@ -1600,23 +1626,13 @@ class MLRModel():
                             "expected shapes %s or %s (for covariance), got "
                             "%s", ref_shape, cov_weights.shape, cube.shape)
                         continue
-                logger.debug("Collapsing covariance matrix")
-                cube = cube.collapsed(cube.coords(dim_coords=True),
-                                      iris.analysis.SUM,
-                                      weights=cov_weights)
-                cube.units *= Unit('m4')
+                cube = self._postprocess_covariance(cube, cov_weights)
 
-                # Units conversion
-                new_units = self._cfg['prediction_pp'].get('units')
-                if new_units:
-                    new_units = self._units_power(Unit(new_units), 2)
-                    self._convert_units_in_cube(
-                        cube, new_units, text='postprocessed covariance')
-            pp_cubes.append(cube)
-
-        # Save cubes
-        new_path = ref_path.replace('.nc', '_pp.nc')
-        io.save_iris_cube(pp_cubes, new_path)
+            # Fix attributes and append
+            new_path = self._get_postprocessed_filename(path, ref_path)
+            cube.attributes['source'] = path
+            cube.attributes['filename'] = new_path  # TODO remove after merge
+            io.save_iris_cube(cube, new_path)
 
     def _remove_missing_features(self, x_data, y_data=None):
         """Remove missing values in the features data (if desired)."""
@@ -1819,6 +1835,14 @@ class MLRModel():
         if cube.shape == ():
             return cube.data
         return cube.data.ravel()
+
+    @staticmethod
+    def _get_postprocessed_filename(path, ref_path):
+        """Get name of postprocessed prediction file."""
+        path = path.replace('.nc', '')
+        ref_path = ref_path.replace('.nc', '')
+        suffix = path.replace(ref_path, '')
+        return f'{ref_path}_pp{suffix}.nc'
 
     @staticmethod
     def _group_prediction_datasets(datasets):

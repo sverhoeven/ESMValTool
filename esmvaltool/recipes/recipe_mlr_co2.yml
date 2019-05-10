@@ -19,21 +19,21 @@ DATASET_ANCHOR: &datasets
   - {dataset: BNU-ESM}
   - {dataset: CanESM2}
   - {dataset: CCSM4}
-  - {dataset: CESM1-BGC}
-  # - {dataset: GFDL-ESM2G} (GPP for RCP4.5 missing)
-  - {dataset: GFDL-ESM2M}
-  - {dataset: HadGEM2-CC}
-  - {dataset: HadGEM2-ES}
-  - {dataset: inmcm4}
-  - {dataset: IPSL-CM5A-LR}
-  - {dataset: IPSL-CM5A-MR}
-  - {dataset: IPSL-CM5B-LR}
-  - {dataset: MIROC-ESM}
-  - {dataset: MIROC-ESM-CHEM}
-  - {dataset: MPI-ESM-LR}
-  - {dataset: MPI-ESM-MR}
-  - {dataset: NorESM1-M}
-  - {dataset: NorESM1-ME}
+  # - {dataset: CESM1-BGC}
+  # # - {dataset: GFDL-ESM2G} (GPP for RCP4.5 missing)
+  # - {dataset: GFDL-ESM2M}
+  # - {dataset: HadGEM2-CC}
+  # - {dataset: HadGEM2-ES}
+  # - {dataset: inmcm4}
+  # - {dataset: IPSL-CM5A-LR}
+  # - {dataset: IPSL-CM5A-MR}
+  # - {dataset: IPSL-CM5B-LR}
+  # - {dataset: MIROC-ESM}
+  # - {dataset: MIROC-ESM-CHEM}
+  # - {dataset: MPI-ESM-LR}
+  # - {dataset: MPI-ESM-MR}
+  # - {dataset: NorESM1-M}
+  # - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -344,7 +344,9 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        anomaly: ['dataset']
+        anomaly:
+          matched_by: ['dataset']
+          mean: true
         tag: GPP_change
         convert_units_to: 't km-2 yr-1'
       multiple_mlr_models:
@@ -361,36 +363,31 @@ diagnostics:
             project: CMIP5
           group: dataset
         n_jobs: 12
-        grid_search_cv_param_grid:
-          transformed_target_regressor__regressor__learning_rate:
-            [0.01, 0.05, 0.01, 0.005]
-          transformed_target_regressor__regressor__n_estimators:
-            [3000, 4000, 5000, 6000]
+        # grid_search_cv_param_grid:
+        #   transformed_target_regressor__regressor__learning_rate:
+        #     [0.01, 0.05, 0.01, 0.005]
+        #   transformed_target_regressor__regressor__n_estimators:
+        #     [3000, 4000, 5000, 6000]
         grid_search_cv_kwargs:
           cv: 10
         parameters:
           loss: ls
           max_depth: 4
           min_samples_split: 2
-          # learning_rate: 0.05
-          # n_estimators: 4000
+          learning_rate: 0.05
+          n_estimators: 4000
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']
           units: 'Gt yr-1'
         use_coords_as_feature: ['month_number', 'latitude', 'longitude']
-
-      # postprocess_mlr:
-      #   script: mlr/simple_pp.py
-      #   ancestors: ['diag_mlr/multiple_mlr_models']
-      #   sum: all
-      #   pattern: '*prediction*'
-      # evaluate_mlr_models:
-      #   script: mlr/simple_multimodel_stats.py
-      #   ancestors: ['diag_mlr/postprocess_mlr']
-      #   pattern: '*prediction*mean*'
-      #   mean: true
-      #   std: true
+      evaluate_mlr_models:
+        script: mlr/simple_multimodel_stats.py
+        ancestors: ['diag_mlr/multiple_mlr_models']
+        pattern: '*pp.nc'
+        pattern_errors: '*pp_error_estim*'
+        std: true
+        unweighted_mean: true
 
   diag_mmm:
     description: Calculate simple multi-model mean of label data.
@@ -404,11 +401,13 @@ diagnostics:
         script: mlr/simple_pp.py
         mean: ['time']
         sum: ['latitude', 'longitude']
-        anomaly: ['dataset']
+        anomaly:
+          matched_by: ['dataset']
+          mean: true
         tag: GPP_change
         convert_units_to: 'Gt yr-1'
       mmm:
         script: mlr/simple_multimodel_stats.py
         ancestors: ['diag_mmm/global_sum']
-        mean: true
+        unweighted_mean: true
         std: true

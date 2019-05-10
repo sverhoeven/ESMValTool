@@ -20,9 +20,11 @@ Configuration options in recipe
 aggregate_by : dict, optional
     Aggregate over given coordinates (dict keys) using a desired aggregator
     (dict values). Allowed aggregators are `mean`, `median`, `std` and `var`.
-anomaly : list, optional
+anomaly : dict, optional
     Calculate anomalies using reference datasets indicated by `ref: true`. Two
-    datasets are matched using the list of metadata attributes given.
+    datasets are matched using the list of metadata attributes given by the
+    `matched_by` key. Additionally, the anomaly can be calculated relative to
+    the (total) mean of the reference dataset if `mean: true` is specified.
 area_weighted : bool, optional (default: True)
     Calculate weighted averages/sums for area (using grid cell boundaries).
 convert_units_to : str, optional
@@ -159,10 +161,11 @@ def aggregate(cfg, cube):
 
 def calculate_anomalies(cfg, input_data):
     """Calculate anomalies using reference datasets."""
-    metadata = cfg.get('anomaly')
-    if not metadata:
+    if not cfg.get('anomaly'):
         return input_data
-    logger.info("Calculating anomalies")
+    metadata = cfg['anomaly'].get('matched_by', [])
+    logger.info("Calculating anomalies using attributes %s to match datasets",
+                metadata)
     ref_data = select_metadata(input_data, ref=True)
     regular_data = select_metadata(input_data, ref=False)
     for data in regular_data:
@@ -176,11 +179,16 @@ def calculate_anomalies(cfg, input_data):
         if len(ref) > 1:
             logger.warning(
                 "Reference data for dataset %s is not unique, found %s. "
-                "Consider extending list of metadata for 'anomaly' option",
-                data, ref)
+                "Consider extending list of metadata for 'anomaly' option "
+                "specified by the 'matched_by' key", data, ref)
             continue
         ref = ref[0]
-        data['cube'].data -= ref['cube'].data
+        if cfg['anomaly'].get('mean') and ref['cube'].shape != ():
+            base = ref['cube'].collapsed(ref['cube'].coords(dim_coords=True),
+                                         iris.analysis.MEAN).data
+        else:
+            base = ref['cube'].data
+        data['cube'].data -= base
         data['standard_name'] += '_anomaly'
         data['short_name'] += '_anomaly'
         data['long_name'] += ' (anomaly)'

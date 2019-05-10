@@ -16,20 +16,22 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-mean : bool, optional (default: False)
-    Calculate multi-model mean.
+convert_units_to : str, optional
+    Convert units of the input data. Can also be given as dataset option.
+unweighted_mean : bool, optional (default: False)
+    Calculate unweighted multi-model mean.
 median : bool, optional (default: False)
     Calculate multi-model median.
 std : bool, optional (default: False)
     Calculate multi-model standard deviation.
-var : bool, optional (default: False)
-    Calculate multi-model variance.
+pattern : str, optional
+    Pattern matched against ancestor files to retrieve variables.
+pattern_errors : str, optional
+    Pattern matched against ancestor files to retrieve variable errors.
 plot : bool, optional (default: True)
     Plot results.
-convert_units_to : str, optional
-    Convert units of the input data. Can also be given as dataset option.
-pattern : str, optional
-    Pattern matched against ancestor files.
+var : bool, optional (default: False)
+    Calculate multi-model variance.
 
 """
 
@@ -43,35 +45,85 @@ import numpy as np
 
 from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
                                             get_plot_filename, io,
-                                            run_diagnostic)
+                                            run_diagnostic, select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
 STATS = {
-    'mean': iris.analysis.MEAN,
+    'unweighted_mean': iris.analysis.MEAN,
     'median': iris.analysis.MEDIAN,
     'std': iris.analysis.STD_DEV,
-    'var:': iris.analysis.VARIANCE,
+    'var': iris.analysis.VARIANCE,
 }
 
 
-def _plot_1d_cubes(cubes, datasets, error=None):
+def _extract_error_cube(cfg, error_data, dataset):
+    """Extract error cube for specific dataset."""
+    err_data = select_metadata(error_data, dataset=dataset)
+    if not err_data:
+        logger.warning("No errors for dataset '%s' available, skipping",
+                       dataset)
+        return None
+    if len(err_data) > 1:
+        logger.warning(
+            "Got multiple files (%s) for error of '%s', using first "
+            "one", [d['filename'] for d in err_data], dataset)
+    err_data = err_data[0]
+    err_cube = iris.load_cube(err_data['filename'])
+    convert_units(cfg, err_cube, err_data)
+    preprocess_cube(err_cube, dataset)
+    return err_cube
+
+
+def _get_plot_elements(cubes, error_cubes, datasets):
+    """Get elements needed for the plots."""
+    cubes_to_plot = {}
+    error_cubes_to_plot = {}
+    for (idx, dataset) in enumerate(datasets):
+        if dataset not in STATS.keys():
+            cubes_to_plot[dataset] = cubes[idx]
+            if error_cubes is None:
+                error_cubes_to_plot[dataset] = None
+            else:
+                error_cubes_to_plot[dataset] = error_cubes[idx]
+        elif dataset == 'median':
+            cubes_to_plot[dataset] = cubes[idx]
+            error_cubes_to_plot[dataset] = None
+        elif dataset == 'unweighted_mean':
+            if 'std' in datasets:
+                cubes_to_plot[dataset] = cubes[idx]
+                error_cubes_to_plot[dataset] = cubes[datasets.index('std')]
+            elif 'var' in datasets:
+                cubes_to_plot[dataset] = cubes[idx]
+                error_cubes_to_plot[dataset] = cubes[datasets.index('var')]
+                error_cubes_to_plot[dataset].data = np.ma.sqrt(
+                    error_cubes_to_plot[dataset].data)
+            else:
+                cubes_to_plot[dataset] = cubes[idx]
+                error_cubes_to_plot[dataset] = None
+    return (cubes_to_plot, error_cubes_to_plot)
+
+
+def _plot_1d_cubes(cubes, error_cubes):
     """Plot 1-dimensional cubes."""
     (_, axes) = plt.subplots()
-    x_coord = cubes[0].coord(dimensions=(0, ))
-    for (idx, dataset) in enumerate(datasets):
-        cube = cubes[idx]
-        if dataset not in ('mean', 'median'):
-            axes.plot(x_coord.points, cube.data, label=dataset, alpha=0.4)
+    x_coord = cubes[list(cubes.keys())[0]].coord(dimensions=(0, ))
+    for (dataset, cube) in cubes.items():
+        error_cube = error_cubes[dataset]
+        if dataset in ('unweighted_mean', 'median'):
+            alpha = 1.0
         else:
-            lines = axes.plot(x_coord.points, cube.data, label=dataset)
-            if error is not None:
-                axes.fill_between(x_coord.points,
-                                  cube.data - error,
-                                  cube.data + error,
-                                  facecolor=lines[-1].get_color(),
-                                  alpha=0.4,
-                                  label=f'{dataset} ± std')
+            alpha = 0.5
+        if error_cube is None:
+            axes.plot(x_coord.points, cube.data, label=dataset, alpha=alpha)
+        else:
+            lines = axes.plot(x_coord.points, cube.data, alpha=alpha)
+            axes.fill_between(x_coord.points,
+                              cube.data - error_cube.data,
+                              cube.data + error_cube.data,
+                              facecolor=lines[-1].get_color(),
+                              alpha=alpha - 0.3,
+                              label=f'{dataset} ± std')
     if iris.util.guess_coord_axis(x_coord) == 'T':
         time = x_coord.units
         (x_ticks, _) = plt.xticks()
@@ -89,23 +141,23 @@ def _plot_1d_cubes(cubes, datasets, error=None):
     return (axes, legend)
 
 
-def _plot_scalar_cubes(cubes, datasets, error=None):
+def _plot_scalar_cubes(cubes, error_cubes):
     """Plot scalar cubes."""
     (_, axes) = plt.subplots()
-    x_data = np.arange(len(cubes))
-    for (idx, dataset) in enumerate(datasets):
-        cube = cubes[idx]
-        if dataset not in ('mean', 'median'):
-            axes.scatter(x_data[idx], cube.data)
+    datasets = []
+    for (idx, (dataset, cube)) in enumerate(cubes.items()):
+        error_cube = error_cubes[dataset]
+        if error_cube is None:
+            axes.scatter(idx, cube.data)
+            datasets.append(dataset)
         else:
-            axes.errorbar(x_data[idx],
+            axes.errorbar(idx,
                           cube.data,
-                          yerr=error,
-                          fmt='ro',
+                          yerr=error_cube.data,
+                          fmt='o',
                           capsize=5)
-            if error is not None:
-                datasets[idx] += ' ± std'
-    plt.xticks(x_data, datasets, rotation=45)
+            datasets.append(f'{dataset} ± std')
+    plt.xticks(np.arange(len(cubes)), datasets, rotation=90)
     legend = None
     return (axes, legend)
 
@@ -139,12 +191,54 @@ def convert_units(cfg, cube, data):
         except ValueError:
             logger.warning("Cannot convert units from '%s' to '%s'",
                            cube.units.symbol, units_to)
-        else:
-            data['units'] = units_to
-    return (cube, data)
 
 
-def plot(cfg, cubes, datasets):
+def extract_data(cfg, input_data, error_data):
+    """Extract data."""
+    cubes = iris.cube.CubeList()
+    error_cubes = iris.cube.CubeList()
+    datasets = []
+    for data in input_data:
+        dataset = data['dataset']
+        logger.info("Processing '%s'", dataset)
+
+        # Error data
+        if error_data is not None:
+            err_cube = _extract_error_cube(cfg, error_data, dataset)
+            if err_cube is None:
+                continue
+            error_cubes.append(err_cube)
+
+        # Regular data
+        cube = iris.load_cube(data['filename'])
+        convert_units(cfg, cube, data)
+        preprocess_cube(cube, dataset)
+        datasets.append(dataset)
+        cubes.append(cube)
+    if not error_cubes:
+        error_cubes = None
+    return (cubes, error_cubes, datasets)
+
+
+def get_input_files(cfg):
+    """Get input files (including errors if desired)."""
+    input_data = list(cfg['input_data'].values())
+    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
+    paths = [d['filename'] for d in input_data]
+    logger.debug("Found regular files")
+    logger.debug(pformat(paths))
+
+    # Errors
+    error_data = None
+    if cfg.get('pattern_errors'):
+        error_data = io.netcdf_to_metadata(cfg, pattern=cfg['pattern_errors'])
+        erro_paths = [d['filename'] for d in error_data]
+        logger.debug("Found error files")
+        logger.debug(pformat(erro_paths))
+    return (input_data, error_data)
+
+
+def plot(cfg, cubes, error_cubes, datasets):
     """Plot calculated data."""
     if not cfg.get('plot', True):
         return
@@ -153,15 +247,8 @@ def plot(cfg, cubes, datasets):
             "Plotting not possible, 'write_plots' is set to 'False' in user "
             "configuration file")
         return
-    cubes_to_plot = []
-    datasets_to_plot = []
-    error = None
-    for (idx, dataset) in enumerate(datasets):
-        if dataset not in ('std', 'var'):
-            datasets_to_plot.append(dataset)
-            cubes_to_plot.append(cubes[idx])
-        if dataset == 'std':
-            error = cubes[idx].data
+    (cubes_to_plot,
+     error_cubes_to_plot) = _get_plot_elements(cubes, error_cubes, datasets)
 
     # Plot
     if cubes[0].ndim == 0:
@@ -172,7 +259,7 @@ def plot(cfg, cubes, datasets):
         logger.error("Plotting of %i-dimensional cubes is not supported yet",
                      cubes[0].ndim)
         return
-    (axes, legend) = plot_func(cubes_to_plot, datasets_to_plot, error)
+    (axes, legend) = plot_func(cubes_to_plot, error_cubes_to_plot)
 
     # Set plot appearance and save it
     y_units = (cubes[0].units.symbol
@@ -202,30 +289,16 @@ def preprocess_cube(cube, dataset):
 
 def main(cfg):
     """Run the diagnostic."""
-    input_data = list(cfg['input_data'].values())
-    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
-    paths = [d['filename'] for d in input_data]
-    logger.debug("Found files")
-    logger.debug(pformat(paths))
-    datasets = []
-    cubes = iris.cube.CubeList()
+    (input_data, error_data) = get_input_files(cfg)
     if not input_data:
         logger.error("No input data found")
         return
 
-    # Iterate over all data
-    for data in input_data:
-        logger.info("Processing %s", data['filename'])
-        data = dict(data)
-        cube = iris.load_cube(data['filename'])
-
-        # Convert units
-        (cube, data) = convert_units(cfg, cube, data)
-
-        # Add dataset coordinate and append to CubeList
-        preprocess_cube(cube, data['dataset'])
-        datasets.append(data['dataset'])
-        cubes.append(cube)
+    # Extract data
+    (cubes, error_cubes, datasets) = extract_data(cfg, input_data, error_data)
+    if not cubes:
+        logger.error("No input data with regular AND error data available")
+        return
 
     # Merge cubes
     mm_cube = cubes.merge_cube()
@@ -236,6 +309,7 @@ def main(cfg):
         if cfg.get(stat):
             stats[stat] = iris_op
     for (stat, iris_op) in stats.items():
+        logger.info("Calculating '%s'", stat)
         try:
             new_cube = mm_cube.collapsed('dataset', iris_op)
         except iris.exceptions.CoordinateCollapseError:
@@ -247,7 +321,7 @@ def main(cfg):
         cubes.append(new_cube)
 
     # Plot if desired
-    plot(cfg, cubes, datasets)
+    plot(cfg, cubes, error_cubes, datasets)
 
 
 # Run main function when this script is called
