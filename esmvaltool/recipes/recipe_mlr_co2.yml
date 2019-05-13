@@ -19,21 +19,21 @@ DATASET_ANCHOR: &datasets
   - {dataset: BNU-ESM}
   - {dataset: CanESM2}
   - {dataset: CCSM4}
-  # - {dataset: CESM1-BGC}
+  - {dataset: CESM1-BGC}
   # # - {dataset: GFDL-ESM2G} (GPP for RCP4.5 missing)
-  # - {dataset: GFDL-ESM2M}
-  # - {dataset: HadGEM2-CC}
-  # - {dataset: HadGEM2-ES}
-  # - {dataset: inmcm4}
-  # - {dataset: IPSL-CM5A-LR}
-  # - {dataset: IPSL-CM5A-MR}
-  # - {dataset: IPSL-CM5B-LR}
-  # - {dataset: MIROC-ESM}
-  # - {dataset: MIROC-ESM-CHEM}
-  # - {dataset: MPI-ESM-LR}
-  # - {dataset: MPI-ESM-MR}
-  # - {dataset: NorESM1-M}
-  # - {dataset: NorESM1-ME}
+  - {dataset: GFDL-ESM2M}
+  - {dataset: HadGEM2-CC}
+  - {dataset: HadGEM2-ES}
+  - {dataset: inmcm4}
+  - {dataset: IPSL-CM5A-LR}
+  - {dataset: IPSL-CM5A-MR}
+  - {dataset: IPSL-CM5B-LR}
+  - {dataset: MIROC-ESM}
+  - {dataset: MIROC-ESM-CHEM}
+  - {dataset: MPI-ESM-LR}
+  - {dataset: MPI-ESM-MR}
+  - {dataset: NorESM1-M}
+  - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -346,10 +346,9 @@ diagnostics:
         <<: *monthly_clim
         anomaly:
           matched_by: ['dataset']
-          mean: true
         tag: GPP_change
         convert_units_to: 't km-2 yr-1'
-      multiple_mlr_models:
+      mlr:
         script: mlr/main.py
         ancestors: [
           'diag_mlr/monthly_clim',
@@ -357,11 +356,12 @@ diagnostics:
         ]
         estimate_prediction_error:
           type: test
+        group_datasets_by_attributes: ['dataset']
         mlr_model: gbr
-        metadata_preselection:
-          select:
-            project: CMIP5
-          group: dataset
+        # metadata_preselection:
+        #   select:
+        #     project: CMIP5
+        #   group: dataset
         n_jobs: 12
         # grid_search_cv_param_grid:
         #   transformed_target_regressor__regressor__learning_rate:
@@ -383,7 +383,7 @@ diagnostics:
         use_coords_as_feature: ['month_number', 'latitude', 'longitude']
       evaluate_mlr_models:
         script: mlr/simple_multimodel_stats.py
-        ancestors: ['diag_mlr/multiple_mlr_models']
+        ancestors: ['diag_mlr/mlr']
         pattern: '*pp.nc'
         pattern_errors: '*pp_error_estim*'
         std: true
@@ -403,7 +403,6 @@ diagnostics:
         sum: ['latitude', 'longitude']
         anomaly:
           matched_by: ['dataset']
-          mean: true
         tag: GPP_change
         convert_units_to: 'Gt yr-1'
       mmm:

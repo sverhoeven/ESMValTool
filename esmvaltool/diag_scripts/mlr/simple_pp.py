@@ -84,16 +84,18 @@ def _has_valid_coords(cube, coord_names):
     return True
 
 
-@partial(np.vectorize, excluded=['x_arr'], signature='(n),(n)->()')
-def _get_slope(x_arr, y_arr):
-    """Get slope of linear regression of two (masked) arrays."""
-    if np.ma.is_masked(y_arr):
-        x_arr = x_arr[~y_arr.mask]
-        y_arr = y_arr[~y_arr.mask]
-    if len(y_arr) < 2:
-        return np.nan
-    reg = stats.linregress(x_arr, y_arr)
-    return reg.slope
+def _get_anomaly_base(cfg, cube):
+    """Get base value(s) for anomaly calculation."""
+    if cfg['anomaly'].get('mean') and cube.shape != ():
+        coords = [coord.standard_name for coord in cube.coords()]
+        if 'latitude' in coords and 'longitude' in coords:
+            weights = iris.analysis.cartography.area_weights(cube)
+        else:
+            weights = np.ones(cube.shape)
+        base = np.ma.average(cube.data, weights=weights)
+    else:
+        base = cube.data
+    return base
 
 
 def _get_area_weights(cfg, cube):
@@ -110,6 +112,18 @@ def _get_area_weights(cfg, cube):
             logger.debug("Calculating area weights")
             area_weights = iris.analysis.cartography.area_weights(cube)
     return area_weights
+
+
+@partial(np.vectorize, excluded=['x_arr'], signature='(n),(n)->()')
+def _get_slope(x_arr, y_arr):
+    """Get slope of linear regression of two (masked) arrays."""
+    if np.ma.is_masked(y_arr):
+        x_arr = x_arr[~y_arr.mask]
+        y_arr = y_arr[~y_arr.mask]
+    if len(y_arr) < 2:
+        return np.nan
+    reg = stats.linregress(x_arr, y_arr)
+    return reg.slope
 
 
 def _get_time_weights(cfg, cube):
@@ -183,11 +197,7 @@ def calculate_anomalies(cfg, input_data):
                 "specified by the 'matched_by' key", data, ref)
             continue
         ref = ref[0]
-        if cfg['anomaly'].get('mean') and ref['cube'].shape != ():
-            base = ref['cube'].collapsed(ref['cube'].coords(dim_coords=True),
-                                         iris.analysis.MEAN).data
-        else:
-            base = ref['cube'].data
+        base = _get_anomaly_base(cfg, ref['cube'])
         data['cube'].data -= base
         data['standard_name'] += '_anomaly'
         data['short_name'] += '_anomaly'
