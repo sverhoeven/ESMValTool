@@ -51,6 +51,7 @@ REQUIREMENTS = {
         'pathos',
         'eofs',
         'scikit-learn',
+        'xgboost',
     ],
     # Test dependencies
     # Execute 'python setup.py test' to run tests

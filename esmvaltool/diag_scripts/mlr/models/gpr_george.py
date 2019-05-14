@@ -5,13 +5,14 @@ import os
 from pprint import pformat
 
 import numpy as np
-from esmvaltool.diag_scripts.mlr.models import MLRModel
 from george import GP
 from scipy.optimize import fmin_l_bfgs_b
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.exceptions import NotFittedError
 from sklearn.utils import check_random_state
 from sklearn.utils.validation import check_array, check_X_y
+
+from esmvaltool.diag_scripts.mlr.models import MLRModel
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -75,8 +76,10 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
     def fit(self, x_train, y_train):
         """Fit regressor using given training data."""
-        (x_train, y_train) = check_X_y(
-            x_train, y_train, multi_output=True, y_numeric=True)
+        (x_train, y_train) = check_X_y(x_train,
+                                       y_train,
+                                       multi_output=True,
+                                       y_numeric=True)
         self._x_train = np.copy(x_train) if self.copy_X_train else x_train
         self._y_train = np.copy(y_train) if self.copy_X_train else y_train
         self._gp.compute(self._x_train)
@@ -204,30 +207,32 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
         """
         if self.optimizer == 'fmin_l_bfgs_b':
-            (theta_opt, func_min, convergence_dict) = fmin_l_bfgs_b(
-                obj_func, initial_theta, bounds=bounds)
+            (theta_opt, func_min,
+             convergence_dict) = fmin_l_bfgs_b(obj_func,
+                                               initial_theta,
+                                               bounds=bounds)
             if convergence_dict["warnflag"] != 0:
                 logger.warning(
                     "fmin_l_bfgs_b terminated abnormally with the state: %s",
                     convergence_dict)
         elif callable(self.optimizer):
-            (theta_opt, func_min) = self.optimizer(
-                obj_func, initial_theta, bounds=bounds)
+            (theta_opt, func_min) = self.optimizer(obj_func,
+                                                   initial_theta,
+                                                   bounds=bounds)
         else:
             raise ValueError(f"Unknown optimizer {self.optimizer}")
         return (theta_opt, func_min)
 
     def _init_gp(self):
         """Initialize :mod:`george.GP` instance."""
-        self._gp = GP(
-            kernel=self.kernel,
-            fit_kernel=self.fit_kernel,
-            mean=self.mean,
-            fit_mean=self.fit_mean,
-            white_noise=self.white_noise,
-            fit_white_noise=self.fit_white_noise,
-            solver=self.solver,
-            **self.kwargs)
+        self._gp = GP(kernel=self.kernel,
+                      fit_kernel=self.fit_kernel,
+                      mean=self.mean,
+                      fit_mean=self.fit_mean,
+                      white_noise=self.white_noise,
+                      fit_white_noise=self.fit_white_noise,
+                      solver=self.solver,
+                      **self.kwargs)
         logger.debug("Initialized george GP member of <%s>",
                      self.__class__.__name__)
 
@@ -242,7 +247,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
         return string.replace(cls._GEORGE_SEP, cls._SKLEARN_SEP)
 
 
-@MLRModel.register_mlr_model('george_gpr')
+@MLRModel.register_mlr_model('gpr_george')
 class GeorgeGPRModel(MLRModel):
     """Gaussian Process Regression model (:mod:`george` implementation).
 

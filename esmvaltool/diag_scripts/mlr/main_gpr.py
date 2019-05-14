@@ -66,12 +66,12 @@ def main(cfg):
     cfg.setdefault('parameters', {})
     algorithm = cfg.get('algorithm', 'sklearn')
     if algorithm == 'sklearn':
-        model_type = 'sklearn_gpr'
+        model_type = 'gpr_sklearn'
         kernel = (sklearn_kernels.ConstantKernel(1.0, (1e-5, 1e5)) *
                   sklearn_kernels.RBF(1.0, (1e-5, 1e5)))
         cfg['parameters']['kernel'] = kernel
     elif algorithm == 'george':
-        model_type = 'george_gpr'
+        model_type = 'gpr_george'
     else:
         logger.error("Got unknown GPR algorithm '%s'", algorithm)
         return
@@ -91,8 +91,7 @@ def main(cfg):
                 george_kernels.ExpSquaredKernel(
                     1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
                 george_kernels.ConstantKernel(
-                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
-            )
+                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)]))
             mlr_model.update_parameters(
                 transformed_target_regressor__regressor__kernel=new_kernel)
 

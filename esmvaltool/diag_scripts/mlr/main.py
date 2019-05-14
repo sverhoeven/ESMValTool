@@ -60,7 +60,7 @@ def get_grouped_datasets(cfg):
 
 def main(cfg):
     """Run the diagnostic."""
-    model_type = cfg.get('mlr_model', 'gbr')
+    model_type = cfg.get('mlr_model', 'gbr_sklearn')
     (group, grouped_datasets) = get_grouped_datasets(cfg)
     for attr in grouped_datasets:
         if attr is not None:

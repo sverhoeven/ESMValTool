@@ -120,7 +120,7 @@ diagnostics:
         script: mlr/main.py
         ancestors: ['feature_*', 'prediction_input_*', 'label',
                     'diag_external_ua/*']
-        mlr_model: gbr
+        mlr_model: gbr_sklearn
         imputation_strategy: mean
         use_coords_as_feature: ['air_pressure', 'latitude', 'longitude']
         metadata_preselection:
@@ -137,7 +137,7 @@ diagnostics:
         script: mlr/main.py
         ancestors: ['feature_*', 'prediction_input_*', 'label',
                     'diag_external_ua/*']
-        mlr_model: gbr
+        mlr_model: gbr_sklearn
         imputation_strategy: mean
         use_coords_as_feature: ['air_pressure', 'latitude', 'longitude']
         group_datasets_by_attributes: ['dataset']

@@ -5,7 +5,6 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.ensemble.partial_dependence import plot_partial_dependence
 
 from esmvaltool.diag_scripts.mlr.models import MLRModel
@@ -13,9 +12,8 @@ from esmvaltool.diag_scripts.mlr.models import MLRModel
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-@MLRModel.register_mlr_model('gbr')
 class GBRModel(MLRModel):
-    """Gradient Boosting Regression model.
+    """Base class for Gradient Boosting Regression models.
 
     Note
     ----
@@ -23,7 +21,7 @@ class GBRModel(MLRModel):
 
     """
 
-    _CLF_TYPE = GradientBoostingRegressor
+    _CLF_TYPE = None
 
     def plot_gbr_feature_importance(self, filename=None):
         """Plot GBR feature importance.

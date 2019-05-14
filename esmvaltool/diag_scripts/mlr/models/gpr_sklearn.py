@@ -3,13 +3,14 @@
 import logging
 import os
 
-from esmvaltool.diag_scripts.mlr.models import MLRModel
 from sklearn.gaussian_process import GaussianProcessRegressor
+
+from esmvaltool.diag_scripts.mlr.models import MLRModel
 
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-@MLRModel.register_mlr_model('sklearn_gpr')
+@MLRModel.register_mlr_model('gpr_sklearn')
 class SklearnGPRModel(MLRModel):
     """Gaussian Process Regression model (:mod:`sklearn` implementation).
 

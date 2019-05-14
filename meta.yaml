@@ -65,6 +65,7 @@ requirements:
     - six
     - vmprof
     - xarray
+    - xgboost
     - yamale  # in birdhouse channel
     # Multi language support:
     - ncl
