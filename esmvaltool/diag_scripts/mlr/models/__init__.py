@@ -432,7 +432,7 @@ class MLRModel():
                                                  n_jobs=self._cfg['n_jobs'],
                                                  progressbar=progressbar))
             axes.set_title('Variable Importance ({} Model)'.format(
-                self._CLF_TYPE.__name__))
+                str(self._CLF_TYPE)))
             axes.set_xlabel('Relative Importance')
             new_filename = (filename.format(method=method) + '.' +
                             self._cfg['output_file_type'])
@@ -477,10 +477,20 @@ class MLRModel():
         # LIME
         explainer = self._skater['local_interpreter'].explain_instance(
             self._data[x_type][index], self._clf.predict)
-        logger.info(pformat(explainer.as_list()))
-        logger.info(pformat(explainer.as_map()))
-        explainer.save_to_file(html_path)
-        logger.info("Wrote %s", html_path)
+        logger.debug("Local feature importance at index %i of '%s' data",
+                     index, data_type)
+        logger.debug(pformat(explainer.as_list()))
+
+        # Html
+        pred_dtype = self._get_prediction_dtype()
+        if pred_dtype == 'float64':
+            explainer.save_to_file(html_path)
+            logger.info("Wrote %s", html_path)
+        else:
+            logger.warning(
+                "Saving LIME output in HTML format is only supported for "
+                "classifiers which save predictions as dtype 'float64', "
+                "%s writes '%s'", str(self._CLF_TYPE), pred_dtype)
 
         # Plot
         explainer.as_pyplot_figure()
@@ -515,7 +525,7 @@ class MLRModel():
                                  progressbar=progressbar,
                                  with_variance=True))
             axes.set_title('Partial dependence ({} Model)'.format(
-                self._CLF_TYPE.__name__))
+                str(self._CLF_TYPE)))
             axes.set_xlabel(feature_name)
             axes.set_ylabel(self.classes['label'])
             axes.get_legend().remove()
@@ -1250,6 +1260,12 @@ class MLRModel():
                 ref_path = new_path
         return (prediction_cubes, ref_path)
 
+    def _get_prediction_dtype(self):
+        """Get `dtype` of the output of `predict()` of the classifier."""
+        x_data = self._data['x_data'][0].reshape(1, -1)
+        y_pred = self._clf.predict(x_data)
+        return y_pred.dtype
+
     def _get_prediction_properties(self):
         """Get important properties of prediction input."""
         datasets = select_metadata(self._datasets['training'],
@@ -1375,12 +1391,32 @@ class MLRModel():
         """Load parameters for classifier from recipe."""
         parameters = self._cfg.get('parameters', {})
         logger.debug("Found parameter(s) %s in recipe", parameters)
-        if 'verbose' in getfullargspec(self._CLF_TYPE).args:
-            log_level = {'debug': 1, 'info': 1}
-            parameters.setdefault('verbose',
-                                  log_level.get(self._cfg['log_level'], 0))
-            logger.debug("Set verbosity of classifier to %i",
-                         parameters['verbose'])
+        verbosity_params = {
+            'silent': {
+                'debug': False,
+                'info': False,
+                'default': True,
+            },
+            'verbose': {
+                'debug': 1,
+                'info': 1,
+                'default': 0,
+            },
+            'verbosity': {
+                'debug': 2,
+                'info': 1,
+                'default': 0,
+            },
+        }
+        for (verbosity_param, log_level) in verbosity_params.items():
+            if verbosity_param in getfullargspec(self._CLF_TYPE).args:
+                parameters.setdefault(
+                    verbosity_param,
+                    log_level.get(self._cfg['log_level'],
+                                  log_level['default']))
+                logger.debug(
+                    "Set verbosity parameter '%s' of classifier to '%s'",
+                    verbosity_param, parameters[verbosity_param])
         return parameters
 
     def _load_classes(self):
@@ -1403,9 +1439,8 @@ class MLRModel():
                     dataset['filename'], cube.dtype))
 
         # Convert dtypes
-        cube_data = cube.core_data()
-        cube = cube.copy(
-            data=cube_data.astype(self._cfg['dtype'], casting='same_kind'))
+        cube.data = cube.core_data().astype(self._cfg['dtype'],
+                                            casting='same_kind')
         for coord in cube.coords():
             try:
                 coord.points = coord.points.astype(self._cfg['dtype'],
@@ -1471,14 +1506,17 @@ class MLRModel():
         self._convert_units_in_metadata(prediction_datasets)
 
         # Set datasets
+        logger.info(
+            "Found %i training dataset(s) and %i prediction dataset(s)",
+            len(training_datasets), len(prediction_datasets))
+        logger.debug("Training datasets:")
+        logger.debug(pformat([d['filename'] for d in training_datasets]))
+        logger.debug("Prediction datasets:")
+        logger.debug(pformat([d['filename'] for d in prediction_datasets]))
         self._datasets['training'] = self._group_by_attributes(
             training_datasets)
         self._datasets['prediction'] = self._group_prediction_datasets(
             prediction_datasets)
-        logger.debug("Found training data:")
-        logger.debug(pformat(self._datasets['training']))
-        logger.debug("Found prediction data:")
-        logger.debug(pformat(self._datasets['prediction']))
 
     def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
@@ -1633,6 +1671,22 @@ class MLRModel():
             cube.attributes['source'] = path
             cube.attributes['filename'] = new_path  # TODO remove after merge
             io.save_iris_cube(cube, new_path)
+
+    def _prediction_to_dict(self, pred_out, **kwargs):
+        """Convert output of `clf.predict()` to `dict`."""
+        if not isinstance(pred_out, (list, tuple)):
+            pred_out = [pred_out]
+        idx_to_name = {0: None}
+        if 'return_var' in kwargs:
+            idx_to_name[1] = 'var'
+        elif 'return_cov' in kwargs:
+            idx_to_name[1] = 'cov'
+        pred_dict = {}
+        for (idx, pred) in enumerate(pred_out):
+            pred_dict[idx_to_name.get(idx,
+                                      idx)] = pred.astype(self._cfg['dtype'],
+                                                          casting='same_kind')
+        return pred_dict
 
     def _remove_missing_features(self, x_data, y_data=None):
         """Remove missing values in the features data (if desired)."""
@@ -1850,21 +1904,6 @@ class MLRModel():
         for dataset in datasets:
             dataset['group_attribute'] = None
         return group_metadata(datasets, 'prediction_name')
-
-    @staticmethod
-    def _prediction_to_dict(pred_out, **kwargs):
-        """Convert output of `clf.predict()` to `dict`."""
-        if not isinstance(pred_out, (list, tuple)):
-            pred_out = [pred_out]
-        idx_to_name = {0: None}
-        if 'return_var' in kwargs:
-            idx_to_name[1] = 'var'
-        elif 'return_cov' in kwargs:
-            idx_to_name[1] = 'cov'
-        pred_dict = {}
-        for (idx, pred) in enumerate(pred_out):
-            pred_dict[idx_to_name.get(idx, idx)] = pred
-        return pred_dict
 
     @staticmethod
     def _remove_missing_labels(x_data, y_data):
