@@ -69,7 +69,6 @@ def main(cfg):
         mlr_model = MLRModel.create(model_type, cfg, root_dir=attr, **metadata)
 
         # Fit and predict
-        mlr_model.simple_train_test_split()
         if cfg.get('grid_search_cv_param_grid'):
             mlr_model.grid_search_cv()
         else:
@@ -85,9 +84,10 @@ def main(cfg):
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
             mlr_model.plot_partial_dependences()
-        if model_type == 'gbr':
-            mlr_model.plot_gbr_feature_importance()
+        if model_type == 'gbr_sklearn':
             mlr_model.plot_gbr_partial_dependences()
+        if 'gbr' in model_type:
+            mlr_model.plot_gbr_feature_importance()
             mlr_model.plot_prediction_error()
         if 'gpr' in model_type:
             mlr_model.print_kernel_info()

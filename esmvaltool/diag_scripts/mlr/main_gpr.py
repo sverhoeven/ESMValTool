@@ -91,12 +91,12 @@ def main(cfg):
                 george_kernels.ExpSquaredKernel(
                     1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
                 george_kernels.ConstantKernel(
-                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)]))
+                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
+            )
             mlr_model.update_parameters(
                 transformed_target_regressor__regressor__kernel=new_kernel)
 
         # Fit and predict
-        mlr_model.simple_train_test_split()
         if cfg.get('grid_search_cv_param_grid'):
             mlr_model.grid_search_cv()
         else:
