@@ -121,6 +121,7 @@ class MLRModel():
         have to be given for each step of the pipeline seperated by two
         underscores, i.e. `s__p` is the parameter `p` for step `s`.
     pca : bool, optional (default: True)
+        Preprocess input features using PCA.
     predict_kwargs : dict, optional
         Optional keyword arguments for the classifier's `predict()` function.
     prediction_pp : dict, optional
@@ -226,6 +227,7 @@ class MLRModel():
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('imputation_strategy', 'remove')
         self._cfg.setdefault('n_jobs', 1)
+        self._cfg.setdefault('pca', True)
         self._cfg.setdefault('prediction_pp', {})
         self._cfg.setdefault('return_lime_importance', False)
         self._cfg.setdefault('standardize_data', True)
@@ -844,6 +846,11 @@ class MLRModel():
         x_scaler = StandardScaler(with_mean=scale_data, with_std=scale_data)
         y_scaler = StandardScaler(with_mean=scale_data, with_std=scale_data)
         steps.append(('x_scaler', x_scaler))
+
+        # PCA
+        if self._cfg['pca']:
+            pca = PCA()
+            steps.append(('pca', pca))
 
         # Regressor
         regressor = self._CLF_TYPE(**self.parameters)

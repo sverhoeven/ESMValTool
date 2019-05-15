@@ -18,10 +18,10 @@ documentation:
 DATASET_ANCHOR: &datasets
   - {dataset: BNU-ESM}
   - {dataset: CanESM2}
-  # - {dataset: CCSM4}
-  # - {dataset: CESM1-BGC}
-  # # - {dataset: GFDL-ESM2G} (GPP for RCP4.5 missing)
-  # - {dataset: GFDL-ESM2M}
+  - {dataset: CCSM4}
+  - {dataset: CESM1-BGC}
+  # - {dataset: GFDL-ESM2G} (GPP for RCP4.5 missing)
+  - {dataset: GFDL-ESM2M}
   # - {dataset: HadGEM2-CC}
   # - {dataset: HadGEM2-ES}
   # - {dataset: inmcm4}
@@ -378,7 +378,7 @@ diagnostics:
           loss: ls
           max_depth: 6
           learning_rate: 0.05
-          n_estimators: 2000
+          n_estimators: 3000
           subsample: 0.5
         prediction_pp:
           mean: ['time']
