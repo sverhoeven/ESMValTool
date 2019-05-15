@@ -266,7 +266,7 @@ class GeorgeGPRModel(MLRModel):
             logger.error("Printing kernel not possible because the model is "
                          "not fitted yet, call fit() first")
             return
-        clf = self._clf.named_steps[self._PIPELINE_FINAL_STEP].regressor_
+        clf = self._clf.steps[-1][1].regressor_
         logger.info("Fitted kernel: %s", clf.kernel)
         logger.info("All fitted log-hyperparameters:")
         for (hyper_param, value) in clf.get_george_params().items():
@@ -275,8 +275,7 @@ class GeorgeGPRModel(MLRModel):
     def _get_clf_parameters(self, deep=True):
         """Get parameters of classifier."""
         params = super()._get_clf_parameters(deep)
-        prefix = f'{self._PIPELINE_FINAL_STEP}__regressor__'
-        params.update(self._clf.named_steps[
-            self._PIPELINE_FINAL_STEP].regressor.get_george_params(
-                include_frozen=True, prefix=prefix))
+        prefix = f'{self._clf.steps[-1][0]}__regressor__'
+        params.update(self._clf.steps[-1][1].regressor.get_george_params(
+            include_frozen=True, prefix=prefix))
         return params

@@ -28,8 +28,7 @@ class SklearnGPRModel(MLRModel):
             logger.error("Printing kernel not possible because the model is "
                          "not fitted yet, call fit() first")
             return
-        kernel = self._clf.named_steps[
-            self._PIPELINE_FINAL_STEP].regressor_.kernel_
+        kernel = self._clf.steps[-1][1].regressor_.kernel_
         logger.info("Fitted kernel: %s", kernel)
         logger.info("All fitted log-hyperparameters:")
         for (idx, hyper_param) in enumerate(kernel.hyperparameters):
