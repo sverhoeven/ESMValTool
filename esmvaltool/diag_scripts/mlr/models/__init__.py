@@ -19,6 +19,7 @@ from skater.core.local_interpretation.lime.lime_tabular import \
     LimeTabularExplainer
 from skater.model import InMemoryModel
 from sklearn import metrics
+from sklearn.decomposition import PCA
 from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import (GridSearchCV, LeaveOneOut,
@@ -119,6 +120,7 @@ class MLRModel():
         updated using the function `self.update_parameters()`, the new names
         have to be given for each step of the pipeline seperated by two
         underscores, i.e. `s__p` is the parameter `p` for step `s`.
+    pca : bool, optional (default: True)
     predict_kwargs : dict, optional
         Optional keyword arguments for the classifier's `predict()` function.
     prediction_pp : dict, optional
@@ -132,8 +134,8 @@ class MLRModel():
         Linearly standardize input data by removing mean and scaling to unit
         variance.
     test_size : float, optional (default: 0.25)
-        Fraction of feature/label data which is used as test data and not for
-        training (if desired).
+        If given, exclude the desired fraction of input data from training and
+        use it as test data.
     use_coords_as_feature : list, optional
         Use coordinates (e.g. 'air_pressure' or 'latitude') as features.
     use_only_coords_as_features : bool, optional (default: False)
@@ -143,7 +145,6 @@ class MLRModel():
 
     _CLF_TYPE = None
     _MODELS = {}
-    _PIPELINE_FINAL_STEP = 'transformed_target_regressor'
 
     @staticmethod
     def _load_mlr_models():
@@ -221,11 +222,15 @@ class MLRModel():
         self._parameters = self._load_cfg_parameters()
 
         # Default parameters
+        self._cfg.setdefault('cache_intermediate_results', True)
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('imputation_strategy', 'remove')
         self._cfg.setdefault('n_jobs', 1)
         self._cfg.setdefault('prediction_pp', {})
         self._cfg.setdefault('return_lime_importance', False)
+        self._cfg.setdefault('standardize_data', True)
+        self._cfg.setdefault('test_size', 0.25)
+        self._cfg['prediction_pp'].setdefault('area_weights', True)
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
 
@@ -247,7 +252,7 @@ class MLRModel():
         # Load datasets, classes and training data
         self._load_input_datasets(**metadata)
         self._load_classes()
-        self._load_training_data()
+        self._load_data()
 
         # Create classifier (with all preprocessor steps)
         self._create_classifier()
@@ -322,6 +327,7 @@ class MLRModel():
                 fit_kwargs)
 
         # Create MLR model with desired parameters and fit it
+        fit_kwargs = self._update_fit_kwargs(fit_kwargs)
         self._clf.fit(self._data['x_train'], self._data['y_train'],
                       **fit_kwargs)
         self._parameters = self._get_clf_parameters()
@@ -605,6 +611,7 @@ class MLRModel():
             logger.error(
                 "Prediction not possible, MLR model is not fitted yet")
             return
+        logger.info("Started prediction")
         predict_kwargs = dict(self._cfg.get('predict_kwargs', {}))
         predict_kwargs.update(kwargs)
         if predict_kwargs:
@@ -617,10 +624,8 @@ class MLRModel():
             logger.error("Prediction not possible, no 'prediction_input' "
                          "datasets given")
         for pred_name in self._datasets['prediction']:
-            if pred_name is None:
-                logger.info("Started prediction")
-            else:
-                logger.info("Started prediction for prediction %s", pred_name)
+            if pred_name is not None:
+                logger.info("Predicting '%s'", pred_name)
 
             # Prediction
             (x_pred, x_mask,
@@ -637,11 +642,11 @@ class MLRModel():
 
             # Get (and save) prediction cubes
             (predictions,
-             ref_path) = self._get_prediction_cubes(pred_dict, pred_name,
-                                                    x_cube)
+             pred_types) = self._get_prediction_cubes(pred_dict, pred_name,
+                                                      x_cube)
 
             # Postprocess prediction cubes (if desired)
-            self._postprocess_predictions(predictions, ref_path,
+            self._postprocess_predictions(predictions, pred_types,
                                           **predict_kwargs)
 
     def print_regression_metrics(self):
@@ -659,6 +664,9 @@ class MLRModel():
             'r2_score',
         ]
         for data_type in ('train', 'test'):
+            if not (f'x_{data_type}' in self._data
+                    and f'y_{data_type}' in self._data):
+                continue
             logger.info("Evaluating regression metrics for %s data", data_type)
             x_data = self._data[f'x_{data_type}']
             y_true = self._data[f'y_{data_type}']
@@ -674,33 +682,6 @@ class MLRModel():
                     value /= y_norm
                     metric = f'{metric} (normalized by std)'
                 logger.info("%s: %s", metric, value)
-
-    def reset_training_data(self):
-        """Reset training and test data."""
-        self._data['x_train'] = np.copy(self._data['x_data'])
-        self._data['y_train'] = np.copy(self._data['y_data'])
-        for data_type in ('x_test', 'y_test'):
-            self._data.pop(data_type, None)
-        logger.debug("Resetted input data")
-
-    def simple_train_test_split(self, test_size=None):
-        """Split input data into training and test data.
-
-        Parameters
-        ----------
-        test_size : float, optional (default: 0.25)
-            Fraction of feature/label data which is used as test data and not
-            for training. Overwrites default and recipe settings.
-
-        """
-        if test_size is None:
-            test_size = self._cfg.get('test_size', 0.25)
-        (self._data['x_train'], self._data['x_test'], self._data['y_train'],
-         self._data['y_test']) = train_test_split(self._data['x_data'],
-                                                  self._data['y_data'],
-                                                  test_size=test_size)
-        logger.info("Used %i%% of the input data as test data (%i point(s))",
-                    int(test_size * 100), self._data['y_test'].size)
 
     def update_parameters(self, **params):
         """Update parameters of the classifier.
@@ -827,6 +808,24 @@ class MLRModel():
             return False
         return True
 
+    def _convert_units_in_cube(self, cube, new_units, power=None, text=None):
+        """Convert units of cube if possible."""
+        msg = '' if text is None else f' of {text}'
+        if isinstance(new_units, str):
+            new_units = Unit(new_units)
+        if power:
+            logger.debug("Raising target units of cube by power of %i", power)
+            new_units = self._units_power(new_units, power)
+        new_units_name = (new_units.symbol
+                          if new_units.origin is None else new_units.origin)
+        logger.debug("Converting units%s from '%s' to '%s'", msg,
+                     cube.units.symbol, new_units_name)
+        try:
+            cube.convert_units(new_units)
+        except ValueError:
+            logger.warning("Units conversion%s from '%s' to '%s' failed", msg,
+                           cube.units.symbol, new_units_name)
+
     def _create_classifier(self):
         """Create classifier with correct settings."""
         if not self._clf_is_valid(text='Creating classifier'):
@@ -841,7 +840,7 @@ class MLRModel():
             steps.append(('imputer', imputer))
 
         # Scaler
-        scale_data = self._cfg.get('standardize_data', True)
+        scale_data = self._cfg['standardize_data']
         x_scaler = StandardScaler(with_mean=scale_data, with_std=scale_data)
         y_scaler = StandardScaler(with_mean=scale_data, with_std=scale_data)
         steps.append(('x_scaler', x_scaler))
@@ -850,10 +849,10 @@ class MLRModel():
         regressor = self._CLF_TYPE(**self.parameters)
         transformed_regressor = mlr.AdvancedTransformedTargetRegressor(
             transformer=y_scaler, regressor=regressor)
-        steps.append((self._PIPELINE_FINAL_STEP, transformed_regressor))
+        steps.append(('transformed_target_regressor', transformed_regressor))
 
         # Final classifier
-        if self._cfg.get('cache_intermediate_results', True):
+        if self._cfg['cache_intermediate_results']:
             if self._cfg['n_jobs'] is None or self._cfg['n_jobs'] == 1:
                 memory = self._cfg['mlr_work_dir']
             else:
@@ -1234,7 +1233,7 @@ class MLRModel():
         """Get (multi-dimensional) prediction output."""
         logger.debug("Creating output cubes")
         prediction_cubes = {}
-        ref_path = None
+        prediction_types = {}
         for (pred_type, y_pred) in pred_dict.items():
             if y_pred.size == np.prod(x_cube.shape):
                 y_pred = y_pred.reshape(x_cube.shape)
@@ -1255,10 +1254,9 @@ class MLRModel():
             new_path = self._set_prediction_cube_attributes(
                 pred_cube, pred_type, pred_name=pred_name)
             prediction_cubes[new_path] = pred_cube
+            prediction_types[new_path] = pred_type
             io.save_iris_cube(pred_cube, new_path)
-            if pred_type is None:
-                ref_path = new_path
-        return (prediction_cubes, ref_path)
+        return (prediction_cubes, prediction_types)
 
     def _get_prediction_dtype(self):
         """Get `dtype` of the output of `predict()` of the classifier."""
@@ -1281,7 +1279,7 @@ class MLRModel():
                     properties[attr] = max(attrs)
                 else:
                     properties[attr] = '|'.join(attrs)
-                logger.info(
+                logger.debug(
                     "Attribute '%s' of label data is not unique, got values "
                     "%s, using %s for prediction cubes", attr, attrs,
                     properties[attr])
@@ -1463,6 +1461,27 @@ class MLRModel():
                     cube.units.symbol, dataset['units']))
         return cube
 
+    def _load_data(self):
+        """Load train/test data (features/labels)."""
+        (self._data['x_data'],
+         self._data['y_data']) = self._extract_features_and_labels()
+        logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
+
+        # Split train/test data if desired
+        test_size = self._cfg['test_size']
+        if test_size:
+            (self._data['x_train'], self._data['x_test'],
+             self._data['y_train'],
+             self._data['y_test']) = train_test_split(self._data['x_data'],
+                                                      self._data['y_data'],
+                                                      test_size=test_size)
+            logger.info(
+                "Used %i%% of the input data as test data (%i point(s))",
+                int(test_size * 100), self._data['y_test'].size)
+        else:
+            self._data['x_train'] = np.copy(self._data['x_data'])
+            self._data['y_train'] = np.copy(self._data['y_data'])
+
     def _load_input_datasets(self, **metadata):
         """Load input datasets (including ancestors)."""
         input_datasets = copy.deepcopy(list(self._cfg['input_data'].values()))
@@ -1553,13 +1572,6 @@ class MLRModel():
         )
         logger.debug("Loaded skater model with new classifier")
 
-    def _load_training_data(self):
-        """Load training data (features/labels)."""
-        (self._data['x_data'],
-         self._data['y_data']) = self._extract_features_and_labels()
-        logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
-        self.reset_training_data()
-
     def _postprocess_covariance(self, cube, cov_weights):
         """Postprocess covariance prediction cube."""
         logger.debug("Postprocessing covariance matrix")
@@ -1569,19 +1581,20 @@ class MLRModel():
         cube.units *= Unit('m4')
         new_units = self._cfg['prediction_pp'].get('units')
         if new_units:
-            new_units = self._units_power(Unit(new_units), 2)
             self._convert_units_in_cube(cube,
                                         new_units,
+                                        power=2,
                                         text='postprocessed covariance')
         return cube
 
-    def _postprocess_cube(self, cube, return_cov_weights=False, **kwargs):
+    def _postprocess_cube(self, cube, pred_type, **kwargs):
         """Postprocess regular prediction cube."""
-        logger.debug("Postprocessing regular prediction cube")
-        cfg = self._cfg['prediction_pp']
-        calc_weights = cfg.get('area_weights', True)
+        logger.debug("Postprocessing regular prediction cube%s",
+                     '' if pred_type is None else f" of type '{pred_type}'")
+        cfg = dict(self._cfg['prediction_pp'])
+        calc_weights = cfg['area_weights']
         cov_weights = None
-        if all([calc_weights, return_cov_weights, 'return_cov' in kwargs]):
+        if all([calc_weights, pred_type is None, 'return_cov' in kwargs]):
             cov_weights = self._get_area_weights(cube).ravel()
             cov_weights = cov_weights[~np.ma.getmaskarray(cube.data).ravel()]
         ops = {'mean': iris.analysis.MEAN, 'sum': iris.analysis.SUM}
@@ -1599,19 +1612,22 @@ class MLRModel():
                     calc_weights, 'latitude' in cfg[op_type],
                     'longitude' in cfg[op_type]
             ]):
-                weights = self._get_area_weights(cube)
+                weights = self._get_area_weights(cube, pred_type)
             cube = cube.collapsed(cfg[op_type], iris_op, weights=weights)
             if op_type == 'mean':
                 new_size = np.prod(cube.shape, dtype=np.int)
                 n_points_mean = int(old_size / new_size)
             elif op_type == 'sum' and weights is not None:
-                cube.units *= Unit('m2')
+                cube.units *= Unit('m4' if pred_type == 'var' else 'm2')
 
         # Units conversion
         if cfg.get('units'):
-            self._convert_units_in_cube(cube,
-                                        cfg['units'],
-                                        text='postprocessed prediction output')
+            self._convert_units_in_cube(
+                cube,
+                cfg['units'],
+                power=(2 if pred_type == 'var' else None),
+                text='postprocessed prediction output{}'.format(
+                    '' if pred_type is None else f" of type '{pred_type}'"))
 
         # Weights for covariance matrix
         if cov_weights is not None:
@@ -1621,12 +1637,12 @@ class MLRModel():
                 cov_weights /= n_points_mean**2
         return (cube, cov_weights)
 
-    def _postprocess_predictions(self, predictions, ref_path=None, **kwargs):
+    def _postprocess_predictions(self, predictions, pred_types, **kwargs):
         """Postprocess prediction cubes if desired."""
         if not self._cfg['prediction_pp']:
             return
-        if ref_path is None:
-            return
+        ref_path = list(pred_types.keys())[list(
+            pred_types.values()).index(None)]
         logger.info("Postprocessing prediction output using %s",
                     self._cfg['prediction_pp'])
         logger.debug("Using reference cube at '%s'", ref_path)
@@ -1635,9 +1651,7 @@ class MLRModel():
         ref_cube = predictions[ref_path]
         ref_shape = ref_cube.shape
         (ref_cube,
-         cov_weights) = self._postprocess_cube(ref_cube,
-                                               return_cov_weights=True,
-                                               **kwargs)
+         cov_weights) = self._postprocess_cube(ref_cube, None, **kwargs)
         new_path = self._get_postprocessed_filename(ref_path, ref_path)
         ref_cube.attributes['source'] = ref_path
         ref_cube.attributes['filename'] = new_path  # TODO remove after merge
@@ -1653,7 +1667,7 @@ class MLRModel():
 
             # Regualar cubes
             if cube.shape == ref_shape:
-                (cube, _) = self._postprocess_cube(cube)
+                (cube, _) = self._postprocess_cube(cube, pred_types[path])
 
             # Covariance
             else:
@@ -1806,21 +1820,9 @@ class MLRModel():
         cube.attributes['filename'] = new_path
         return new_path
 
-    @staticmethod
-    def _convert_units_in_cube(cube, new_units, text=None):
-        """Convert units of cube if possible."""
-        msg = '' if text is None else f' of {text}'
-        if isinstance(new_units, str):
-            new_units = Unit(new_units)
-        new_units_name = (new_units.symbol
-                          if new_units.origin is None else new_units.origin)
-        logger.debug("Converting units%s from '%s' to '%s'", msg,
-                     cube.units.symbol, new_units_name)
-        try:
-            cube.convert_units(new_units)
-        except ValueError:
-            logger.warning("Units conversion%s from '%s' to '%s' failed", msg,
-                           cube.units.symbol, new_units_name)
+    def _update_fit_kwargs(self, fit_kwargs):
+        """Update fit kwargs (only used for some models)."""
+        return fit_kwargs
 
     @staticmethod
     def _convert_units_in_metadata(datasets):
@@ -1842,7 +1844,7 @@ class MLRModel():
                 dataset['units'] = dataset['convert_units_to']
 
     @staticmethod
-    def _get_area_weights(cube):
+    def _get_area_weights(cube, pred_type=None):
         """Get area weights for a cube."""
         logger.debug("Calculating area weights")
         area_weights = None
@@ -1855,6 +1857,8 @@ class MLRModel():
             logger.warning(
                 "Calculation of area weights for prediction cubes failed")
             logger.warning(str(exc))
+        if pred_type == 'var':
+            area_weights *= area_weights
         return area_weights
 
     @staticmethod

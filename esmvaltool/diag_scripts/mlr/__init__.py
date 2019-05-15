@@ -3,9 +3,14 @@
 import logging
 import os
 
-from esmvaltool.diag_scripts.shared import io
+from sklearn.base import clone
 from sklearn.compose import TransformedTargetRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
+from sklearn.utils import check_array
+from sklearn.utils.validation import check_is_fitted
+
+from esmvaltool.diag_scripts.shared import io
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -24,6 +29,15 @@ VAR_TYPES = [
 class AdvancedPipeline(Pipeline):
     """Expand `sklearn.pipeline.Pipeline` class."""
 
+    def fit_transformers_only(self, x_data, y_data, **fit_kwargs):
+        """Fit only `transform` steps of Pipeline."""
+        transformers_kwargs = {}
+        for (param_name, param_val) in fit_kwargs.items():
+            step = param_name.split('__')[0]
+            if step in self.steps[:-1]:
+                transformers_kwargs[param_name] = param_val
+        return self._fit(x_data, y_data, **transformers_kwargs)
+
     def transform_only(self, x_data):
         """Only perform `transform` steps of Pipeline."""
         for (_, transformer) in self.steps[:-1]:
@@ -34,25 +48,133 @@ class AdvancedPipeline(Pipeline):
 class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
     """Expand `sklearn.compose.TransformedTargetRegressor` class."""
 
-    def predict(self, x_data, return_var=False, return_cov=False):
-        """Expand `predict()` method."""
+    def fit(self, x_data, y_data, **fit_kwargs):
+        """Expand `fit()` method to accept kwargs."""
+        y_data = check_array(y_data,
+                             accept_sparse=False,
+                             force_all_finite=True,
+                             ensure_2d=False,
+                             dtype='numeric')
+        self._training_dim = y_data.ndim
+
+        # Process kwargs
+        (_, regressor_kwargs) = self._get_fit_kwargs(fit_kwargs)
+
+        # Transformers are designed to modify X which is 2D, modify y_data
+        # FIXME: Transformer does NOT use transformer_kwargs
+        if y_data.ndim == 1:
+            y_2d = y_data.reshape(-1, 1)
+        else:
+            y_2d = y_data
+        self._fit_transformer(y_2d)
+
+        # Transform y and convert back to 1d array if needed
+        y_trans = self.transformer_.transform(y_2d)
+        if y_trans.ndim == 2 and y_trans.shape[1] == 1:
+            y_trans = y_trans.squeeze(axis=1)
+
+        # Perform linear regression if regressor is not given
+        if self.regressor is None:
+            self.regressor_ = LinearRegression()
+        else:
+            self.regressor_ = clone(self.regressor)
+
+        # Fit regressor with kwargs
+        self.regressor_.fit(x_data, y_trans, **regressor_kwargs)
+        return self
+
+    def fit_transformer_only(self, y_data, **fit_kwargs):
+        """Fit only `transformer` step."""
+        y_data = check_array(y_data,
+                             accept_sparse=False,
+                             force_all_finite=True,
+                             ensure_2d=False,
+                             dtype='numeric')
+        self._training_dim = y_data.ndim
+
+        # Process kwargs
+        (_, _) = self._get_fit_kwargs(fit_kwargs, verbose=False)
+
+        # Transformers are designed to modify X which is 2D, modify y_data
+        # FIXME: Transformer does NOT use transformer_kwargs
+        if y_data.ndim == 1:
+            y_2d = y_data.reshape(-1, 1)
+        else:
+            y_2d = y_data
+        self._fit_transformer(y_2d)
+
+    def predict(self, x_data, **predict_kwargs):
+        """Expand `predict()` method to accept kwargs."""
+        predict_kwargs = dict(predict_kwargs)
+        check_is_fitted(self, "regressor_")
+
+        # Kwargs for returning variance or covariance
+        return_var = predict_kwargs.pop('return_var', False)
+        return_cov = predict_kwargs.pop('return_cov', False)
         if return_var and return_cov:
             logger.warning(
                 "Cannot return variance and full covariance matrix for "
                 "prediction, returning only variance")
             return_cov = False
-        y_pred = super().predict(x_data)
+
+        # Main prediction
+        pred = self.regressor_.predict(x_data, **predict_kwargs)
+        if pred.ndim == 1:
+            pred_trans = self.transformer_.inverse_transform(
+                pred.reshape(-1, 1))
+        else:
+            pred_trans = self.transformer_.inverse_transform(pred)
+        if (self._training_dim == 1 and pred_trans.ndim == 2
+                and pred_trans.shape[1] == 1):
+            pred_trans = pred_trans.squeeze(axis=1)
         if not (return_var or return_cov):
-            return y_pred
+            return pred_trans
+
+        # Return variance or covariance if desired
         scale = self.transformer_.scale_
         if return_var:
-            (_, y_err) = self.regressor_.predict(x_data, return_std=True)
+            (_, y_err) = self.regressor_.predict(x_data,
+                                                 return_std=True,
+                                                 **predict_kwargs)
             y_err *= y_err
         else:
-            (_, y_err) = self.regressor_.predict(x_data, return_cov=True)
+            (_, y_err) = self.regressor_.predict(x_data,
+                                                 return_cov=True,
+                                                 **predict_kwargs)
         if scale is not None:
             y_err *= scale**2
-        return (y_pred, y_err)
+        return (pred_trans, y_err)
+
+    @staticmethod
+    def _get_fit_kwargs(fit_kwargs, verbose=True):
+        """Separate `transformer` and `regressor` kwargs."""
+        transformer_kwargs = {}
+        regressor_kwargs = {}
+        for (param_name, param_val) in fit_kwargs.items():
+            param_split = param_name.split('__', 1)
+            if len(param_split) != 2:
+                logger.warning(
+                    "Fit parameters for 'AdvancedTransformedTargetRegressor' "
+                    "have to be given as 'transformer__{param}' or "
+                    "'regressor__{param}', got '%s'", param_name)
+                continue
+            if param_split[0] == 'transformer':
+                transformer_kwargs[param_split[1]] = param_val
+            elif param_split[0] == 'regressor':
+                regressor_kwargs[param_split[1]] = param_val
+            else:
+                if verbose:
+                    logger.warning(
+                        "Allowed prefixes for fit parameters given to "
+                        "'AdvancedTransformedTargetRegressor' are "
+                        "'transformer' and 'regressor', got '%s'",
+                        param_split[0])
+        # FIXME
+        if transformer_kwargs:
+            logger.warning(
+                "Keyword arguments for transformer of "
+                "'AdvancedTransformedTargetRegressor' are not supported yet")
+        return (transformer_kwargs, regressor_kwargs)
 
 
 def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
