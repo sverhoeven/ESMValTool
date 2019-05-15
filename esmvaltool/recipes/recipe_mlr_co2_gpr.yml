@@ -308,7 +308,8 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        anomaly: ['dataset']
+        anomaly:
+          matched_by: ['dataset']
         tag: NBP_change
         convert_units_to: 'Gt km-2 yr-1'
       multiple_mlr_models:
@@ -361,7 +362,8 @@ diagnostics:
         script: mlr/simple_pp.py
         mean: ['time']
         sum: ['latitude', 'longitude']
-        anomaly: ['dataset']
+        anomaly:
+          matched_by: ['dataset']
         tag: NBP_change
         convert_units_to: 'Gt yr-1'
       mmm:
