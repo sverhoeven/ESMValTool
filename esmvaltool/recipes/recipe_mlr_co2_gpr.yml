@@ -328,6 +328,7 @@ diagnostics:
           white_noise: 0.05
           n_restarts_optimizer: 5
         predict_kwargs:
+          return_var: true
           return_cov: true
         prediction_pp:
           mean: ['time']

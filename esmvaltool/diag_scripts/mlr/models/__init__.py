@@ -83,9 +83,9 @@ class MLRModel():
         <https://docs.scipy.org/doc/numpy/user/basics.types.html> for a list
         of allowed values.
     estimate_prediction_error : dict, optional
-        Estimate (constant) prediction error using RMSE. This can be calculated
-        by a (holdout) test data set (`type: test`) or by cross-validation
-        from the training data (`type: cv'). The latter uses
+        Estimate (constant) squared prediction error using RMSE. This can be
+        calculated by a (holdout) test data set (`type: test`) or by cross-
+        validation from the training data (`type: cv'). The latter uses
         :mod:`sklearn.model_selection.cross_val_score` (see
         <https://scikit-learn.org/stable/modules/cross_validation.html>),
         additional keyword arguments can be passed via the `kwargs` key.
@@ -130,7 +130,7 @@ class MLRModel():
     prediction_pp : dict, optional
         Postprocess prediction output (e.g. combine best estimate and standard
         deviation in one cube). Accepts keywords `mean` and `sum` (followed by
-        list of coordinates) and `area_weighted` (bool).
+        list of coordinates) and `area_weights` (bool, default: True).
     return_lime_importance : bool, optional (default: False)
         Return cube with feature importance given by LIME (Local Interpretable
         Model-agnostic Explanations) during prediction.
@@ -232,11 +232,10 @@ class MLRModel():
         self._cfg.setdefault('return_lime_importance', False)
         self._cfg.setdefault('standardize_data', True)
         self._cfg.setdefault('test_size', 0.25)
-        self._cfg['prediction_pp'].setdefault('area_weights', True)
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
-        logger.info(
-            "Using imputation strategy '%s'", self._cfg['imputation_strategy'])
+        logger.info("Using imputation strategy '%s'",
+                    self._cfg['imputation_strategy'])
 
         # Adapt output directories
         if root_dir is None:
@@ -901,7 +900,7 @@ class MLRModel():
                      list(self._clf.named_steps.keys()))
 
     def _estimate_prediction_error(self, pred_dict):
-        """Estimate prediction error."""
+        """Estimate squared prediction error."""
         if not self._cfg.get('estimate_prediction_error'):
             return pred_dict
         cfg = copy.deepcopy(self._cfg['estimate_prediction_error'])
@@ -909,19 +908,18 @@ class MLRModel():
         cfg.setdefault('kwargs', {})
         cfg['kwargs'].setdefault('cv', 5)
         cfg['kwargs'].setdefault('scoring', 'neg_mean_squared_error')
-        logger.debug("Estimating prediction error using %s", cfg)
+        logger.debug("Estimating squared prediction error using %s", cfg)
         error = None
 
         # Test data set
         if cfg['type'] == 'test':
             if 'x_test' in self.data and 'y_test' in self.data:
                 y_pred = self._clf.predict(self.data['x_test'])
-                error = np.sqrt(
-                    metrics.mean_squared_error(self.data['y_test'], y_pred))
+                error = metrics.mean_squared_error(self.data['y_test'], y_pred)
             else:
                 logger.warning(
-                    "Cannot estimate prediction error using 'type: test', "
-                    "no test data set given (use 'simple_train_test_split'), "
+                    "Cannot estimate squared prediction error using 'type: "
+                    "test', no test data set given (use 'test_size' option), "
                     "using cross-validation instead")
                 cfg['type'] = 'cv'
 
@@ -932,16 +930,19 @@ class MLRModel():
             error = np.mean(error)
             if cfg['kwargs']['scoring'].startswith('neg_'):
                 error = -error
-            if 'squared' in cfg['kwargs']['scoring']:
-                error = np.sqrt(error)
+            if 'squared' not in cfg['kwargs']['scoring']:
+                error *= error
 
         # Get correct shape and mask
         if error is not None:
+            units = self._units_power(self.classes['label_units'], 2)
             pred_error = np.ma.array(np.full_like(pred_dict[None], error),
                                      mask=pred_dict[None].mask)
-            pred_dict[f"error_estim_{cfg['type']}"] = pred_error
-            logger.info("Estimated prediction error by %s using %s data",
-                        error, cfg['type'])
+            pred_dict[f"squared_error_estim_{cfg['type']}"] = pred_error
+            logger.info(
+                "Estimated squared prediction error by %s %s using %s data",
+                error, units.symbol if units.origin is None else units.origin,
+                cfg['type'])
             return pred_dict
         logger.error(
             "Got invalid type for prediction error estimation, got '%s', "
@@ -1056,6 +1057,24 @@ class MLRModel():
                 logger.debug("Skipping %s", dataset['filename'])
         return valid_datasets
 
+    def _get_area_weights(self, cube, pred_type=None):
+        """Get area weights for a cube."""
+        logger.debug("Calculating area weights")
+        area_weights = None
+        for coord in cube.coords(dim_coords=True):
+            if not coord.has_bounds():
+                coord.guess_bounds()
+        try:
+            area_weights = iris.analysis.cartography.area_weights(cube)
+        except ValueError as exc:
+            logger.warning(
+                "Calculation of area weights for prediction cube '%s' failed",
+                cube.summary(shorten=True))
+            logger.warning(str(exc))
+        power = self._pred_type_to_power(pred_type)
+        area_weights = area_weights**power
+        return area_weights
+
     def _get_broadcasted_cube(self, dataset, ref_cube, text=None):
         """Get broadcasted cube."""
         msg = 'data' if text is None else text
@@ -1091,6 +1110,7 @@ class MLRModel():
 
     def _get_features(self):
         """Extract all features from the `prediction_input` datasets."""
+        logger.debug("Extracting features from 'prediction_input' datasets")
         pred_name = list(self._datasets['prediction'].keys())[0]
         datasets = self._datasets['prediction'][pred_name]
         msg = ('' if pred_name is None else
@@ -1175,13 +1195,16 @@ class MLRModel():
 
     def _get_group_attributes(self):
         """Get all group attributes from `label` datasets."""
+        logger.debug("Extracting group attributes from 'label' datasets")
         datasets = select_metadata(self._datasets['training'],
                                    var_type='label')
         grouped_datasets = group_metadata(datasets,
                                           'group_attribute',
                                           sort=True)
         group_attributes = list(grouped_datasets.keys())
-        if group_attributes != [None]:
+        if group_attributes == [None]:
+            logger.debug("No group attributes given")
+        else:
             logger.info(
                 "Found %i group attribute(s) (defined in 'label' data)",
                 len(group_attributes))
@@ -1190,6 +1213,7 @@ class MLRModel():
 
     def _get_label(self):
         """Extract label from training data."""
+        logger.debug("Extracting label from training datasets")
         datasets = select_metadata(self._datasets['training'],
                                    var_type='label')
         if not datasets:
@@ -1425,6 +1449,7 @@ class MLRModel():
 
     def _load_cube(self, dataset):
         """Load iris cube, check data type and convert units if desired."""
+        logger.debug("Loading %s", dataset['filename'])
         cube = iris.load_cube(dataset['filename'])
 
         # Check dtype
@@ -1625,9 +1650,12 @@ class MLRModel():
         logger.debug("Postprocessing regular prediction cube%s",
                      '' if pred_type is None else f" of type '{pred_type}'")
         cfg = dict(self._cfg['prediction_pp'])
-        calc_weights = cfg['area_weights']
         cov_weights = None
-        if all([calc_weights, pred_type is None, 'return_cov' in kwargs]):
+        if all([
+                cfg['area_weights'],
+                pred_type is None,
+                'return_cov' in kwargs,
+        ]):
             cov_weights = self._get_area_weights(cube).ravel()
             cov_weights = cov_weights[~np.ma.getmaskarray(cube.data).ravel()]
         ops = {'mean': iris.analysis.MEAN, 'sum': iris.analysis.SUM}
@@ -1635,6 +1663,7 @@ class MLRModel():
         # Perform desired postprocessing operations
         n_points_mean = None
         old_size = np.prod(cube.shape, dtype=np.int)
+        power = self._pred_type_to_power(pred_type)
         for (op_type, iris_op) in ops.items():
             if not cfg.get(op_type):
                 continue
@@ -1642,8 +1671,9 @@ class MLRModel():
                          cfg[op_type])
             weights = None
             if all([
-                    calc_weights, 'latitude' in cfg[op_type],
-                    'longitude' in cfg[op_type]
+                    cfg['area_weights'],
+                    'latitude' in cfg[op_type],
+                    'longitude' in cfg[op_type],
             ]):
                 weights = self._get_area_weights(cube, pred_type)
             cube = cube.collapsed(cfg[op_type], iris_op, weights=weights)
@@ -1651,14 +1681,14 @@ class MLRModel():
                 new_size = np.prod(cube.shape, dtype=np.int)
                 n_points_mean = int(old_size / new_size)
             elif op_type == 'sum' and weights is not None:
-                cube.units *= Unit('m4' if pred_type == 'var' else 'm2')
+                cube.units *= self._units_power(Unit('m2'), power)
 
         # Units conversion
         if cfg.get('units'):
             self._convert_units_in_cube(
                 cube,
                 cfg['units'],
-                power=(2 if pred_type == 'var' else None),
+                power=power,
                 text='postprocessed prediction output{}'.format(
                     '' if pred_type is None else f" of type '{pred_type}'"))
 
@@ -1674,6 +1704,7 @@ class MLRModel():
         """Postprocess prediction cubes if desired."""
         if not self._cfg['prediction_pp']:
             return
+        self._cfg['prediction_pp'].setdefault('area_weights', True)
         ref_path = list(pred_types.keys())[list(
             pred_types.values()).index(None)]
         logger.info("Postprocessing prediction output using %s",
@@ -1825,11 +1856,12 @@ class MLRModel():
             cube.long_name += (' (variance)'
                                if pred_type == 'var' else ' (covariance)')
             cube.units = self._units_power(cube.units, 2)
-        elif 'error_estim' in pred_type:
+        elif 'squared_error_estim' in pred_type:
             cube.var_name += suffix
-            cube.long_name += (' (error estimation using {})'.format(
+            cube.long_name += (' (squared error estimation using {})'.format(
                 'cross-validation' if 'cv' in
                 pred_type else 'holdout test data set'))
+            cube.units = self._units_power(cube.units, 2)
         elif pred_type == 'lime':
             cube.var_name = 'lime_feature_importance'
             cube.long_name = (f"Most important feature for predicting "
@@ -1842,7 +1874,9 @@ class MLRModel():
                 1,
             })
         else:
-            logger.error("Got unknown prediction type '%s'", pred_type)
+            logger.warning(
+                "Got unknown prediction type '%s', setting correct attributes "
+                "not possible", pred_type)
 
         # Get new path
         pred_str = '' if pred_name is None else f'_{pred_name}'
@@ -1875,25 +1909,6 @@ class MLRModel():
                 dataset.pop('convert_units_to')
             else:
                 dataset['units'] = dataset['convert_units_to']
-
-    @staticmethod
-    def _get_area_weights(cube, pred_type=None):
-        """Get area weights for a cube."""
-        logger.debug("Calculating area weights")
-        area_weights = None
-        for coord in cube.coords(dim_coords=True):
-            if not coord.has_bounds():
-                coord.guess_bounds()
-        try:
-            area_weights = iris.analysis.cartography.area_weights(cube)
-        except ValueError as exc:
-            logger.warning(
-                "Calculation of area weights for prediction cube '%s' failed",
-                cube.summary(shorten=True))
-            logger.warning(str(exc))
-        if pred_type == 'var':
-            area_weights *= area_weights
-        return area_weights
 
     @staticmethod
     def _get_coordinate_data(ref_cube, var_type, tag, text=None):
@@ -1942,6 +1957,21 @@ class MLRModel():
         for dataset in datasets:
             dataset['group_attribute'] = None
         return group_metadata(datasets, 'prediction_name')
+
+    @staticmethod
+    def _pred_type_to_power(pred_type):
+        """Get power for predictiony type (e.g. 2 for variance)."""
+        if pred_type is None:
+            return 1
+        if pred_type in ('cov', 'var'):
+            return 2
+        if 'squared_error_estim' in pred_type:
+            return 2
+        default = 1
+        logger.debug(
+            "No specific power for prediction type '%s' defined, defaulting "
+            "to %i", pred_type, default)
+        return default
 
     @staticmethod
     def _remove_missing_labels(x_data, y_data):

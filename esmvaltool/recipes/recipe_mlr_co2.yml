@@ -17,11 +17,10 @@ documentation:
 
 DATASET_ANCHOR: &datasets
   - {dataset: BNU-ESM}
-  # - {dataset: CanESM2}
-  # - {dataset: CCSM4}
-  # - {dataset: CESM1-BGC}
-  # - {dataset: GFDL-ESM2G} (GPP for RCP4.5 missing)
-  # - {dataset: GFDL-ESM2M}
+  - {dataset: CanESM2}
+  - {dataset: CCSM4}
+  - {dataset: CESM1-BGC}
+  - {dataset: GFDL-ESM2M}
   # - {dataset: HadGEM2-CC}
   # - {dataset: HadGEM2-ES}
   # - {dataset: inmcm4}
@@ -42,8 +41,10 @@ preprocessors:
     mask_landsea:
       mask_out: sea
     extract_region:
-      start_latitude: -60.0
-      end_latitude: 90.0
+      # start_latitude: -60.0
+      # end_latitude: 90.0
+      start_latitude: -30.0
+      end_latitude: 30.0
       start_longitude: 0.0
       end_longitude: 360.0
 
@@ -359,17 +360,17 @@ diagnostics:
           type: test
         grid_search_cv_kwargs:
           cv: 5
-        # grid_search_cv_param_grid:
-        #   transformed_target_regressor__regressor__learning_rate:
-        #     [0.1, 0.05, 0.01, 0.005]
-        #   transformed_target_regressor__regressor__max_depth:
-        #     [4, 6, 8]
-        #   transformed_target_regressor__regressor__n_estimators:
-        #     [3000, 4000, 5000, 6000]
-        #   transformed_target_regressor__regressor__subsample:
-        #     [0.2, 0.5, 1.0]
+        grid_search_cv_param_grid:
+          transformed_target_regressor__regressor__learning_rate:
+            [0.1, 0.05, 0.01]
+          transformed_target_regressor__regressor__max_depth:
+            [4, 6, 8]
+          transformed_target_regressor__regressor__n_estimators:
+            [1000, 2000, 3000]
+          transformed_target_regressor__regressor__subsample:
+            [0.2, 0.5, 1.0]
         group_datasets_by_attributes: ['dataset']
-        mlr_model: gbr_xgboost
+        mlr_model: gbr_sklearn
         # metadata_preselection:
         #   select:
         #     project: CMIP5
@@ -377,10 +378,10 @@ diagnostics:
         n_jobs: 12
         parameters_final_regressor:
           loss: ls
-          max_depth: 6
-          learning_rate: 0.1
-          n_estimators: 500
-          subsample: 0.5
+          # max_depth: 6
+          # learning_rate: 0.1
+          # n_estimators: 500
+          # subsample: 0.5
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']

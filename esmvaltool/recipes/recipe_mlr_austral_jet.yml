@@ -47,7 +47,7 @@ diagnostics:
         broadcast_from: [1, 2]
         additional_datasets: &datasets
           - {dataset: CanESM2}
-          # - {dataset: IPSL-CM5A-LR}
+          - {dataset: IPSL-CM5A-LR}
           # - {dataset: MIROC5}
           # - {dataset: MIROC-ESM}
           # - {dataset: MPI-ESM-LR}
@@ -87,6 +87,7 @@ diagnostics:
         field: T2Ms
         tag: TAS
         broadcast_from: [1, 2]
+        convert_units_to: celsius
       prediction_input_tas:
         <<: *variable_settings
         short_name: tas
@@ -94,6 +95,7 @@ diagnostics:
         tag: TAS
         var_type: prediction_input
         broadcast_from: [1, 2]
+        convert_units_to: celsius
         additional_datasets:
           - {dataset: ERA-Interim, project: OBS, type: reanaly, version: 1, tier: 3}
       feature_ua:
@@ -128,20 +130,20 @@ diagnostics:
             project: CMIP5
           group: dataset
         parameters_final_regressor: &params
-          learning_rate: 0.01
+          learning_rate: 0.1
           loss: ls
           max_depth: 4
           min_samples_split: 2
-          n_estimators: 2000
-      single_mlr_model:
-        script: mlr/main.py
-        ancestors: ['feature_*', 'prediction_input_*', 'label',
-                    'diag_external_ua/*']
-        coords_as_features: ['air_pressure', 'latitude', 'longitude']
-        mlr_model: gbr_sklearn
-        imputation_strategy: mean
-        group_datasets_by_attributes: ['dataset']
-        parameters_final_regressor: *params
+          n_estimators: 400
+      # single_mlr_model:
+      #   script: mlr/main.py
+      #   ancestors: ['feature_*', 'prediction_input_*', 'label',
+      #               'diag_external_ua/*']
+      #   coords_as_features: ['air_pressure', 'latitude', 'longitude']
+      #   mlr_model: gbr_sklearn
+      #   imputation_strategy: mean
+      #   group_datasets_by_attributes: ['dataset']
+      #   parameters_final_regressor: *params
 
   diag_austral_jet_position:
     description: Calculate Austral Jet position.
@@ -150,5 +152,5 @@ diagnostics:
         script: austral_jet/calc_jet_position.py
         ancestors: [
           'diag_mlr/multiple_mlr_models',
-          'diag_mlr/single_mlr_model',
+          # 'diag_mlr/single_mlr_model',
         ]
