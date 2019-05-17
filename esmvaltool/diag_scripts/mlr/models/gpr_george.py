@@ -273,7 +273,7 @@ class GeorgeGPRModel(MLRModel):
             logger.info("%s: %s", hyper_param, value)
 
     def _get_clf_parameters(self, deep=True):
-        """Get parameters of classifier."""
+        """Get parameters of regressor."""
         params = super()._get_clf_parameters(deep)
         prefix = f'{self._clf.steps[-1][0]}__regressor__'
         params.update(self._clf.steps[-1][1].regressor.get_george_params(

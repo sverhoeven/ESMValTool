@@ -52,7 +52,7 @@ class SklearnGBRModel(GBRModel):
 
         # Plot for every feature
         for (idx, feature_name) in enumerate(self.classes['features']):
-            (_, [axes]) = plot_partial_dependence(clf, self._data['x_train'],
+            (_, [axes]) = plot_partial_dependence(clf, self.data['x_train'],
                                                   [idx])
             axes.set_title(f'Partial dependence ({str(self._CLF_TYPE)} Model)')
             axes.set_xlabel(f'(Scaled) {feature_name}')
@@ -76,11 +76,11 @@ class SklearnGBRModel(GBRModel):
         clf = self._clf.steps[-1][1].regressor_
         train_score = clf.train_score_
         test_score = None
-        if 'x_test' in self._data and 'y_test' in self._data:
+        if 'x_test' in self.data and 'y_test' in self.data:
             test_score = np.zeros((len(clf.train_score_), ), dtype=np.float64)
-            x_test = self._clf.transform_only(self._data['x_test'])
+            x_test = self._clf.transform_only(self.data['x_test'])
             y_test = self._clf.steps[-1][1].transformer_.transform(
-                np.expand_dims(self._data['y_test'], axis=-1))
+                np.expand_dims(self.data['y_test'], axis=-1))
             y_test = y_test[:, 0]
             for (idx, y_pred) in enumerate(clf.staged_predict(x_test)):
                 test_score[idx] = clf.loss_(y_test, y_pred)

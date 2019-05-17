@@ -55,7 +55,7 @@ class MLRModel():
     Prediction data
     ---------------
     All `tags` specified for `prediction_input` datasets must also be given for
-    the `feature` datasets (except `allow_missing_features`) is set to `True`.
+    the `feature` datasets (except `allow_missing_features` is set to `True`).
     Multiple predictions can be specified by `prediction_name`. Within these
     predictions, all `prediction_input` datasets must have the same shape,
     except the attribute `broadcast_from` is given.
@@ -75,6 +75,9 @@ class MLRModel():
         Allow missing features in the training data.
     cache_intermediate_results : bool, optional (default: True)
         Cache the intermediate results of the pipeline's transformers.
+    coords_as_features : list, optional
+        If given, specify a list of coordinates which should be used as
+        features.
     dtype : str, optional (default: 'float64')
         Internal data type which is used for all calculations, see
         <https://docs.scipy.org/doc/numpy/user/basics.types.html> for a list
@@ -87,18 +90,18 @@ class MLRModel():
         <https://scikit-learn.org/stable/modules/cross_validation.html>),
         additional keyword arguments can be passed via the `kwargs` key.
     fit_kwargs : dict, optional
-        Optional keyword arguments for the classifier's `fit()` function. Have
-        to be given for each step of the pipeline seperated by two underscores,
-        i.e. `s__p` is the parameter `p` for step `s`.
+        Optional keyword arguments for the pipeline's `fit()` function. These
+        arguments have to be given for each step of the pipeline seperated by
+        two underscores, i.e. `s__p` is the parameter `p` for step `s`.
+    grid_search_cv_kwargs : dict, optional
+        Keyword arguments for the grid search cross-validation, see
+        <https://scikit-learn.org/stable/modules/generated/
+        sklearn.model_selection.GridSearchCV.html>.
     grid_search_cv_param_grid : dict or list of dict, optional
         Parameters (keys) and ranges (values) for exhaustive parameter search
         using cross-validation. Have to be given for each step of the pipeline
         seperated by two underscores, i.e. `s__p` is the parameter `p` for step
         `s`.
-    grid_search_cv_kwargs : dict, optional
-        Keyword arguments for the grid search cross-validation, see
-        <https://scikit-learn.org/stable/modules/generated/
-        sklearn.model_selection.GridSearchCV.html>.
     group_datasets_by_attributes : list of str, optional
         List of dataset attributes which are used to group input data for
         `features` and `labels`, e.g. specify `dataset` to use the different
@@ -106,41 +109,37 @@ class MLRModel():
     imputation_strategy : str, optional (default: 'remove')
         Strategy for the imputation of missing values in the features. Must be
         one of `remove`, `mean`, `median`, `most_frequent` or `constant`.
-    imputation_constant : str or numerical value, optional (default: None)
-        When imputation strategy is `constant`, replace missing values with
-        this value. If `None`, replace numerical values by 0 and others by
-        `missing_value`.
     matplotlib_style_file : str, optional
         Matplotlib style file (should be located in
         `esmvaltool.diag_scripts.shared.plot.styles_python.matplotlib`).
     n_jobs : int, optional (default: 1)
         Maximum number of jobs spawned by this class.
     parameters : dict, optional
-        Parameters used in the **final** regressor. If these parameters are
+        Parameters used for the whole pipeline. Have to be given for each step
+        of the pipeline seperated by two underscores, i.e. `s__p` is the
+        parameter `p` for step `s`.
+    parameters_final_regressor : dict, optional
+        Parameters used for the **final** regressor. If these parameters are
         updated using the function `self.update_parameters()`, the new names
         have to be given for each step of the pipeline seperated by two
         underscores, i.e. `s__p` is the parameter `p` for step `s`.
     pca : bool, optional (default: True)
         Preprocess input features using PCA.
     predict_kwargs : dict, optional
-        Optional keyword arguments for the classifier's `predict()` function.
+        Optional keyword arguments for the regressor's `predict()` function.
     prediction_pp : dict, optional
         Postprocess prediction output (e.g. combine best estimate and standard
         deviation in one cube). Accepts keywords `mean` and `sum` (followed by
         list of coordinates) and `area_weighted` (bool).
     return_lime_importance : bool, optional (default: False)
         Return cube with feature importance given by LIME (Local Interpretable
-        Model-agnostic Explanations).
+        Model-agnostic Explanations) during prediction.
     standardize_data : bool, optional (default: True)
         Linearly standardize input data by removing mean and scaling to unit
         variance.
     test_size : float, optional (default: 0.25)
         If given, exclude the desired fraction of input data from training and
         use it as test data.
-    use_coords_as_feature : list, optional
-        Use coordinates (e.g. 'air_pressure' or 'latitude') as features.
-    use_only_coords_as_features : bool, optional (default: False)
-        Use only the specified coordinates as features.
 
     """
 
@@ -193,7 +192,7 @@ class MLRModel():
                 "diag_scripts.mlr.models', using default model "
                 "'%s'", model, default_model)
             model = default_model
-        logger.info("Created MLR model '%s' with classifier %s", model,
+        logger.info("Created MLR model '%s' with final regressor %s", model,
                     cls._MODELS[model]._CLF_TYPE)
         return cls._MODELS[model](*args, **kwargs)
 
@@ -220,13 +219,14 @@ class MLRModel():
         self._datasets = {}
         self._skater = {}
         self._classes = {}
-        self._parameters = self._load_cfg_parameters()
+        self._parameters = {}
 
-        # Default parameters
+        # Default settings
         self._cfg.setdefault('cache_intermediate_results', True)
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('imputation_strategy', 'remove')
         self._cfg.setdefault('n_jobs', 1)
+        self._cfg.setdefault('parameters', {})
         self._cfg.setdefault('pca', True)
         self._cfg.setdefault('prediction_pp', {})
         self._cfg.setdefault('return_lime_importance', False)
@@ -235,6 +235,8 @@ class MLRModel():
         self._cfg['prediction_pp'].setdefault('area_weights', True)
         plt.style.use(
             plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
+        logger.info(
+            "Using imputation strategy '%s'", self._cfg['imputation_strategy'])
 
         # Adapt output directories
         if root_dir is None:
@@ -256,8 +258,12 @@ class MLRModel():
         self._load_classes()
         self._load_data()
 
-        # Create classifier (with all preprocessor steps)
-        self._create_classifier()
+        # Create pipeline (with all preprocessor steps and final regressor)
+        self._create_pipeline()
+        if self._cfg['parameters']:
+            logger.debug("Found parameter(s) in recipe: %s",
+                         self._cfg['parameters'])
+        self.update_parameters(**self._cfg['parameters'])
 
         # Log successful initialization
         logger.info("Initialized MLR model (using at most %i processes)",
@@ -269,6 +275,11 @@ class MLRModel():
     def classes(self):
         """Classes of the model (read-only), e.g. features, label, etc."""
         return self._classes
+
+    @property
+    def data(self):
+        """Input data of the model (read-only)."""
+        return self._data
 
     @property
     def parameters(self):
@@ -285,7 +296,7 @@ class MLRModel():
 
         """
         for data_type in ('x_pred', 'y_pred'):
-            for pred_name in self._data[data_type]:
+            for pred_name in self.data[data_type]:
                 self._save_csv_file(data_type,
                                     filename,
                                     is_prediction=True,
@@ -319,24 +330,22 @@ class MLRModel():
         if not self._clf_is_valid(text='Fitting MLR model'):
             return
         logger.info(
-            "Fitting MLR model with final classifier %s on %i training "
-            "point(s)", self._CLF_TYPE, self._data['y_train'].size)
+            "Fitting MLR model with final regressor %s on %i training "
+            "point(s)", self._CLF_TYPE, self.data['y_train'].size)
         fit_kwargs = dict(self._cfg.get('fit_kwargs', {}))
         fit_kwargs.update(kwargs)
         if fit_kwargs:
-            logger.info(
-                "Using additional keyword argument(s) %s for fit() function",
-                fit_kwargs)
+            logger.info("Using keyword argument(s) %s for fit() function",
+                        fit_kwargs)
+        fit_kwargs = self._update_fit_kwargs(fit_kwargs)
 
         # Create MLR model with desired parameters and fit it
-        fit_kwargs = self._update_fit_kwargs(fit_kwargs)
-        self._clf.fit(self._data['x_train'], self._data['y_train'],
-                      **fit_kwargs)
+        self._clf.fit(self.data['x_train'], self.data['y_train'], **fit_kwargs)
         self._parameters = self._get_clf_parameters()
         logger.info("Successfully fitted MLR model on %i training point(s)",
-                    self._data['y_train'].size)
+                    self.data['y_train'].size)
         logger.debug("Pipeline steps:")
-        logger.debug(pformat(self._clf.named_steps))
+        logger.debug(pformat(list(self._clf.named_steps.keys())))
         logger.debug("Parameters:")
         logger.debug(pformat(self.parameters))
 
@@ -372,33 +381,46 @@ class MLRModel():
             return
         logger.info(
             "Performing exhaustive grid search cross-validation with final "
-            "classifier %s and parameter grid %s on %i training points",
-            self._CLF_TYPE, parameter_grid, self._data['y_train'].size)
+            "regressor %s and parameter grid %s on %i training points",
+            self._CLF_TYPE, parameter_grid, self.data['y_train'].size)
 
         # Get keyword arguments
         log_level = {'debug': 2, 'info': 1}
-        gridsearch_kwargs = {
+        cv_kwargs = {
             'n_jobs': self._cfg['n_jobs'],
             'verbose': log_level.get(self._cfg['log_level'], 0),
         }
-        gridsearch_kwargs.update(self._cfg.get('grid_search_cv_kwargs', {}))
-        gridsearch_kwargs.update(kwargs)
-        logger.info(
-            "Using keyword argument(s) %s for grid_search_cv() "
-            "function", gridsearch_kwargs)
-        if isinstance(gridsearch_kwargs.get('cv'), str):
-            if gridsearch_kwargs['cv'].lower() == 'loo':
-                gridsearch_kwargs['cv'] = LeaveOneOut()
+        cv_kwargs.update(self._cfg.get('grid_search_cv_kwargs', {}))
+        cv_kwargs.update(kwargs)
+        logger.info("Using keyword argument(s) %s for GridSearchCV class",
+                    cv_kwargs)
+        if isinstance(cv_kwargs.get('cv'), str):
+            if cv_kwargs['cv'].lower() == 'loo':
+                cv_kwargs['cv'] = LeaveOneOut()
+        fit_kwargs = dict(self._cfg.get('fit_kwargs', {}))
+        if fit_kwargs:
+            logger.info("Using keyword argument(s) %s for fit() function",
+                        fit_kwargs)
+        fit_kwargs = self._update_fit_kwargs(fit_kwargs)
 
-        # Create GridSearchCV instance
-        clf = GridSearchCV(self._clf, parameter_grid, **gridsearch_kwargs)
-        clf.fit(self._data['x_train'], self._data['y_train'])
-        self._parameters.update(clf.best_params_)
+        # Create and fit GridSearchCV instance
+        clf = GridSearchCV(self._clf, parameter_grid, **cv_kwargs)
+        clf.fit(self.data['x_train'], self.data['y_train'], **fit_kwargs)
+
+        # Try to find best estimator
         if hasattr(clf, 'best_estimator_'):
             self._clf = clf.best_estimator_
+        elif hasattr(clf, 'best_params_'):
+            self.update_parameters(**clf.best_params_)
+            self._clf.fit(self.data['x_train'], self.data['y_train'],
+                          **fit_kwargs)
         else:
-            self._clf = self._CLF_TYPE(**self.parameters)
-            self._clf.fit(self._data['x_train'], self._data['y_train'])
+            raise ValueError(
+                "GridSearchCV not successful, cannot determine best estimator "
+                "(neither using 'best_estimator_' nor 'best_params_'), "
+                "adapt 'grid_search_cv_kwargs' accordingly (see "
+                "<https://scikit-learn.org/stable/modules/generated/"
+                "sklearn.model_selection.GridSearchCV.html> for help)")
         self._parameters = self._get_clf_parameters()
         logger.info(
             "Exhaustive grid search successful, found best parameter(s) %s",
@@ -406,9 +428,9 @@ class MLRModel():
         logger.debug("CV results:")
         logger.debug(pformat(clf.cv_results_))
         logger.info("Successfully fitted MLR model on %i training point(s)",
-                    self._data['y_train'].size)
+                    self.data['y_train'].size)
         logger.debug("Pipeline steps:")
-        logger.debug(pformat(self._clf.named_steps))
+        logger.debug(pformat(list(self._clf.named_steps.keys())))
         logger.debug("Parameters:")
         logger.debug(pformat(self.parameters))
 
@@ -440,7 +462,7 @@ class MLRModel():
                                                  n_jobs=self._cfg['n_jobs'],
                                                  progressbar=progressbar))
             axes.set_title('Variable Importance ({} Model)'.format(
-                str(self._CLF_TYPE)))
+                self._CLF_TYPE))
             axes.set_xlabel('Relative Importance')
             new_filename = (filename.format(method=method) + '.' +
                             self._cfg['output_file_type'])
@@ -466,11 +488,11 @@ class MLRModel():
             return
         logger.info("Plotting LIME")
         x_type = f'x_{data_type}'
-        if x_type not in self._data:
+        if x_type not in self.data:
             logger.error("Cannot plot LIME, got invalid data type '%s'",
                          data_type)
             return
-        if index >= self._data[x_type].shape[0]:
+        if index >= self.data[x_type].shape[0]:
             logger.error(
                 "Cannot plot LIME, index %i is out of range for '%s' data",
                 index, data_type)
@@ -484,7 +506,7 @@ class MLRModel():
 
         # LIME
         explainer = self._skater['local_interpreter'].explain_instance(
-            self._data[x_type][index], self._clf.predict)
+            self.data[x_type][index], self._clf.predict)
         logger.debug("Local feature importance at index %i of '%s' data",
                      index, data_type)
         logger.debug(pformat(explainer.as_list()))
@@ -497,8 +519,8 @@ class MLRModel():
         else:
             logger.warning(
                 "Saving LIME output in HTML format is only supported for "
-                "classifiers which save predictions as dtype 'float64', "
-                "%s writes '%s'", str(self._CLF_TYPE), pred_dtype)
+                "regressors which save predictions as dtype 'float64', "
+                "%s writes '%s'", self._CLF_TYPE, pred_dtype)
 
         # Plot
         explainer.as_pyplot_figure()
@@ -533,7 +555,7 @@ class MLRModel():
                                  progressbar=progressbar,
                                  with_variance=True))
             axes.set_title('Partial dependence ({} Model)'.format(
-                str(self._CLF_TYPE)))
+                self._CLF_TYPE))
             axes.set_xlabel(feature_name)
             axes.set_ylabel(self.classes['label'])
             axes.get_legend().remove()
@@ -566,10 +588,10 @@ class MLRModel():
             if self._cfg.get('accept_only_scalar_data'):
                 for (g_idx, group_attr) in enumerate(
                         self.classes['group_attributes']):
-                    axes.scatter(self._data['x_data'][g_idx, f_idx],
-                                 self._data['y_data'][g_idx],
+                    axes.scatter(self.data['x_data'][g_idx, f_idx],
+                                 self.data['y_data'][g_idx],
                                  label=group_attr)
-                for (pred_name, x_pred) in self._data['x_pred'].items():
+                for (pred_name, x_pred) in self.data['x_pred'].items():
                     axes.axvline(x_pred[0, f_idx],
                                  linestyle='--',
                                  color='black',
@@ -580,7 +602,7 @@ class MLRModel():
                                      bbox_to_anchor=[1.05, 0.5],
                                      borderaxespad=0.0)
             else:
-                axes.plot(self._data['x_data'][:, f_idx], self._data['y_data'],
+                axes.plot(self.data['x_data'][:, f_idx], self.data['y_data'],
                           '.')
                 legend = None
             axes.set_title(feature)
@@ -666,12 +688,12 @@ class MLRModel():
             'r2_score',
         ]
         for data_type in ('train', 'test'):
-            if not (f'x_{data_type}' in self._data
-                    and f'y_{data_type}' in self._data):
+            if not (f'x_{data_type}' in self.data
+                    and f'y_{data_type}' in self.data):
                 continue
             logger.info("Evaluating regression metrics for %s data", data_type)
-            x_data = self._data[f'x_{data_type}']
-            y_true = self._data[f'y_{data_type}']
+            x_data = self.data[f'x_{data_type}']
+            y_true = self.data[f'y_{data_type}']
             y_pred = self._clf.predict(x_data)
             y_norm = np.std(y_true)
             for metric in regression_metrics:
@@ -686,12 +708,12 @@ class MLRModel():
                 logger.info("%s: %s", metric, value)
 
     def update_parameters(self, **params):
-        """Update parameters of the classifier.
+        """Update parameters of the whole pipeline.
 
         Parameters
         ----------
         **params : keyword arguments, optional
-            Paramaters of the classifier which should be updated.
+            Paramaters for the pipeline which should be updated.
 
         Note
         ----
@@ -700,16 +722,20 @@ class MLRModel():
         step `s`.
 
         """
+        if not self._clf_is_valid(text='Updating parameters of MLR model'):
+            return
+        allowed_params = self._get_clf_parameters()
         new_params = {}
         for (key, val) in params.items():
-            if key in self.parameters:
+            if key in allowed_params:
                 new_params[key] = val
             else:
                 logger.warning(
-                    "'%s' is not a valid parameter for the classifier")
+                    "'%s' is not a valid parameter for the pipeline", key)
         self._clf.set_params(**new_params)
         self._parameters = self._get_clf_parameters()
-        logger.info("Updated classifier with parameters %s", new_params)
+        if new_params:
+            logger.info("Updated pipeline with parameters %s", new_params)
 
     def _check_cube_coords(self, cube, expected_coords, text=None):
         """Check shape and coordinates of a given cube."""
@@ -751,7 +777,7 @@ class MLRModel():
                             expected_coord.points)
 
     def _check_dataset(self, datasets, var_type, tag, text=None):
-        """Check if datasets are exist and are valid."""
+        """Check if datasets exist and are valid."""
         datasets = select_metadata(datasets, tag=tag)
         msg = '' if text is None else text
         if not datasets:
@@ -799,7 +825,7 @@ class MLRModel():
                                   self.classes['label_units']))
 
     def _clf_is_valid(self, text=None):
-        """Check if valid classifier type is given."""
+        """Check if valid regressor type is given."""
         msg = '' if text is None else '{} not possible: '.format(text)
         if self._CLF_TYPE is None:
             logger.error(
@@ -816,7 +842,8 @@ class MLRModel():
         if isinstance(new_units, str):
             new_units = Unit(new_units)
         if power:
-            logger.debug("Raising target units of cube by power of %i", power)
+            logger.debug("Raising target units of cube '%s' by power of %i",
+                         cube.summary(shorten=True), power)
             new_units = self._units_power(new_units, power)
         new_units_name = (new_units.symbol
                           if new_units.origin is None else new_units.origin)
@@ -828,17 +855,15 @@ class MLRModel():
             logger.warning("Units conversion%s from '%s' to '%s' failed", msg,
                            cube.units.symbol, new_units_name)
 
-    def _create_classifier(self):
-        """Create classifier with correct settings."""
-        if not self._clf_is_valid(text='Creating classifier'):
+    def _create_pipeline(self):
+        """Create pipeline with correct settings."""
+        if not self._clf_is_valid(text='Creating pipeline'):
             return
         steps = []
 
         # Imputer
         if self._cfg['imputation_strategy'] != 'remove':
-            imputer = SimpleImputer(
-                strategy=self._cfg['imputation_strategy'],
-                fill_value=self._cfg.get('imputation_constant'))
+            imputer = SimpleImputer(strategy=self._cfg['imputation_strategy'])
             steps.append(('imputer', imputer))
 
         # Scaler
@@ -853,12 +878,13 @@ class MLRModel():
             steps.append(('pca', pca))
 
         # Regressor
-        regressor = self._CLF_TYPE(**self.parameters)
+        final_parameters = self._load_final_parameters()
+        regressor = self._CLF_TYPE(**final_parameters)
         transformed_regressor = mlr.AdvancedTransformedTargetRegressor(
             transformer=y_scaler, regressor=regressor)
         steps.append(('transformed_target_regressor', transformed_regressor))
 
-        # Final classifier
+        # Final pipeline
         if self._cfg['cache_intermediate_results']:
             if self._cfg['n_jobs'] is None or self._cfg['n_jobs'] == 1:
                 memory = self._cfg['mlr_work_dir']
@@ -871,8 +897,8 @@ class MLRModel():
         else:
             memory = None
         self._clf = mlr.AdvancedPipeline(steps, memory=memory)
-        self._parameters = self._get_clf_parameters()
-        logger.debug("Created classifier")
+        logger.debug("Created pipeline with steps %s",
+                     list(self._clf.named_steps.keys()))
 
     def _estimate_prediction_error(self, pred_dict):
         """Estimate prediction error."""
@@ -888,10 +914,10 @@ class MLRModel():
 
         # Test data set
         if cfg['type'] == 'test':
-            if 'x_test' in self._data and 'y_test' in self._data:
-                y_pred = self._clf.predict(self._data['x_test'])
+            if 'x_test' in self.data and 'y_test' in self.data:
+                y_pred = self._clf.predict(self.data['x_test'])
                 error = np.sqrt(
-                    metrics.mean_squared_error(self._data['y_test'], y_pred))
+                    metrics.mean_squared_error(self.data['y_test'], y_pred))
             else:
                 logger.warning(
                     "Cannot estimate prediction error using 'type: test', "
@@ -901,8 +927,8 @@ class MLRModel():
 
         # CV
         if cfg['type'] == 'cv':
-            error = cross_val_score(self._clf, self._data['x_train'],
-                                    self._data['y_train'], **cfg['kwargs'])
+            error = cross_val_score(self._clf, self.data['x_train'],
+                                    self.data['y_train'], **cfg['kwargs'])
             error = np.mean(error)
             if cfg['kwargs']['scoring'].startswith('neg_'):
                 error = -error
@@ -1040,7 +1066,7 @@ class MLRModel():
             new_axis_pos = np.delete(np.arange(len(target_shape)),
                                      dataset['broadcast_from'])
         except IndexError:
-            raise ValueError(
+            raise IndexError(
                 "Broadcasting to shape {} failed{}, index out of bounds".
                 format(target_shape, msg))
         logger.info("Broadcasting %s from %s to %s", msg,
@@ -1060,7 +1086,7 @@ class MLRModel():
         return new_cube
 
     def _get_clf_parameters(self, deep=True):
-        """Get parameters of classifier."""
+        """Get parameters of pipeline."""
         return self._clf.get_params(deep=deep)
 
     def _get_features(self):
@@ -1076,9 +1102,7 @@ class MLRModel():
         # Check if features were found
         if not features:
             raise ValueError(
-                "No features for 'prediction_input' data{} found, 'use_only_"
-                "coords_as_features' can only be used when at least one "
-                "coordinate for 'use_coords_as_feature' is given".format(msg))
+                "No features for 'prediction_input' data{} found".format(msg))
 
         # Check for wrong options
         if self._cfg.get('accept_only_scalar_data'):
@@ -1088,7 +1112,7 @@ class MLRModel():
                     "'accept_only_scalar_data' is given")
             if 'coordinate' in types:
                 raise TypeError(
-                    "The use of 'use_coords_as_feature' is not possible if "
+                    "The use of 'coords_as_features' is not possible if "
                     "'accept_only_scalar_data' is given")
 
         # Sort
@@ -1118,13 +1142,12 @@ class MLRModel():
             cube = self._load_cube(dataset)
             if 'broadcast_from' not in dataset:
                 ref_cube = cube
-            if not self._cfg.get('use_only_coords_as_features'):
-                features.append(tag)
-                units.append(Unit(dataset['units']))
-                if 'broadcast_from' in dataset:
-                    types.append('broadcasted')
-                else:
-                    types.append('regular')
+            features.append(tag)
+            units.append(Unit(dataset['units']))
+            if 'broadcast_from' in dataset:
+                types.append('broadcasted')
+            else:
+                types.append('regular')
 
         # Check if reference cube was given
         if ref_cube is None:
@@ -1137,13 +1160,13 @@ class MLRModel():
                     "'broadcast_from'".format(var_type, msg))
 
         # Coordinate features
-        for coord_name in self._cfg.get('use_coords_as_feature', []):
+        for coord_name in self._cfg.get('coords_as_features', []):
             try:
                 coord = ref_cube.coord(coord_name)
             except iris.exceptions.CoordinateNotFoundError:
                 raise iris.exceptions.CoordinateNotFoundError(
-                    "Coordinate '{}' given in 'use_coords_as_feature' not "
-                    "found in '{}' data{}".format(coord_name, msg, var_type))
+                    "Coordinate '{}' given in 'coords_as_features' not found "
+                    "in '{}' data{}".format(coord_name, var_type, msg))
             features.append(coord_name)
             units.append(coord.units)
             types.append('coordinate')
@@ -1266,8 +1289,8 @@ class MLRModel():
         return (prediction_cubes, prediction_types)
 
     def _get_prediction_dtype(self):
-        """Get `dtype` of the output of `predict()` of the classifier."""
-        x_data = self._data['x_data'][0].reshape(1, -1)
+        """Get `dtype` of the output of `predict()` of the final regressor."""
+        x_data = self.data['x_data'][0].reshape(1, -1)
         y_pred = self._clf.predict(x_data)
         return y_pred.dtype
 
@@ -1304,7 +1327,7 @@ class MLRModel():
                 logger.debug(
                     "For var_type '%s'%s, use reference cube with tag '%s'",
                     var_type, msg, tag)
-                logger.debug(ref_cube)
+                logger.debug(ref_cube.summary(shorten=True))
                 return ref_cube
         raise ValueError(
             "No {} data{} without the option 'broadcast_from' found".format(
@@ -1392,38 +1415,6 @@ class MLRModel():
             return False
         return True
 
-    def _load_cfg_parameters(self):
-        """Load parameters for classifier from recipe."""
-        parameters = self._cfg.get('parameters', {})
-        logger.debug("Found parameter(s) %s in recipe", parameters)
-        verbosity_params = {
-            'silent': {
-                'debug': False,
-                'info': False,
-                'default': True,
-            },
-            'verbose': {
-                'debug': 1,
-                'info': 1,
-                'default': 0,
-            },
-            'verbosity': {
-                'debug': 2,
-                'info': 1,
-                'default': 0,
-            },
-        }
-        for (verbosity_param, log_level) in verbosity_params.items():
-            if verbosity_param in getfullargspec(self._CLF_TYPE).args:
-                parameters.setdefault(
-                    verbosity_param,
-                    log_level.get(self._cfg['log_level'],
-                                  log_level['default']))
-                logger.debug(
-                    "Set verbosity parameter '%s' of classifier to '%s'",
-                    verbosity_param, parameters[verbosity_param])
-        return parameters
-
     def _load_classes(self):
         """Populate self.classes and check for errors."""
         self._classes['group_attributes'] = self._get_group_attributes()
@@ -1472,22 +1463,57 @@ class MLRModel():
         """Load train/test data (features/labels)."""
         (self._data['x_data'],
          self._data['y_data']) = self._extract_features_and_labels()
-        logger.info("Loaded %i input data point(s)", self._data['y_data'].size)
+        logger.info("Loaded %i input data point(s)", self.data['y_data'].size)
 
         # Split train/test data if desired
         test_size = self._cfg['test_size']
         if test_size:
             (self._data['x_train'], self._data['x_test'],
              self._data['y_train'],
-             self._data['y_test']) = train_test_split(self._data['x_data'],
-                                                      self._data['y_data'],
+             self._data['y_test']) = train_test_split(self.data['x_data'],
+                                                      self.data['y_data'],
                                                       test_size=test_size)
             logger.info(
                 "Used %i%% of the input data as test data (%i point(s))",
-                int(test_size * 100), self._data['y_test'].size)
+                int(test_size * 100), self.data['y_test'].size)
+            logger.info("%i point(s) remain(s) for training",
+                        self.data['y_train'].size)
         else:
-            self._data['x_train'] = np.copy(self._data['x_data'])
-            self._data['y_train'] = np.copy(self._data['y_data'])
+            self._data['x_train'] = np.copy(self.data['x_data'])
+            self._data['y_train'] = np.copy(self.data['y_data'])
+
+    def _load_final_parameters(self):
+        """Load parameters for final regressor from recipe."""
+        parameters = self._cfg.get('parameters_final_regressor', {})
+        logger.debug("Found parameter(s) for final regressor in recipe: %s",
+                     parameters)
+        verbosity_params = {
+            'silent': {
+                'debug': False,
+                'info': False,
+                'default': True,
+            },
+            'verbose': {
+                'debug': 1,
+                'info': 1,
+                'default': 0,
+            },
+            'verbosity': {
+                'debug': 2,
+                'info': 1,
+                'default': 0,
+            },
+        }
+        for (verbosity_param, log_level) in verbosity_params.items():
+            if verbosity_param in getfullargspec(self._CLF_TYPE).args:
+                parameters.setdefault(
+                    verbosity_param,
+                    log_level.get(self._cfg['log_level'],
+                                  log_level['default']))
+                logger.debug(
+                    "Set verbosity parameter '%s' of final regressor to '%s'",
+                    verbosity_param, parameters[verbosity_param])
+        return parameters
 
     def _load_input_datasets(self, **metadata):
         """Load input datasets (including ancestors)."""
@@ -1546,8 +1572,8 @@ class MLRModel():
 
     def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
-        x_train = np.copy(self._data['x_train'])
-        y_train = np.copy(self._data['y_train'])
+        x_train = np.copy(self.data['x_train'])
+        y_train = np.copy(self.data['y_train'])
         if self._cfg['imputation_strategy'] != 'remove':
             x_train = self._clf.named_steps['imputer'].transform(x_train)
 
@@ -1577,7 +1603,7 @@ class MLRModel():
             examples=x_train[:example_size],
             model_type='regressor',
         )
-        logger.debug("Loaded skater model with new classifier")
+        logger.debug("Loaded skater model with new regressor")
 
     def _postprocess_covariance(self, cube, cov_weights):
         """Postprocess covariance prediction cube."""
@@ -1736,14 +1762,14 @@ class MLRModel():
                        is_prediction=False,
                        pred_name=None):
         """Save CSV file."""
-        if data_type not in self._data:
+        if data_type not in self.data:
             return
         if is_prediction:
-            if pred_name not in self._data[data_type]:
+            if pred_name not in self.data[data_type]:
                 return
-            csv_data = self._data[data_type][pred_name]
+            csv_data = self.data[data_type][pred_name]
         else:
-            csv_data = self._data[data_type]
+            csv_data = self.data[data_type]
 
         # Filename and path
         if filename is None:
@@ -1769,7 +1795,7 @@ class MLRModel():
     def _set_prediction_cube_attributes(self, cube, pred_type, pred_name=None):
         """Set the attributes of the prediction cube."""
         cube.attributes = {
-            'classifier': str(self._CLF_TYPE),
+            'regressor': str(self._CLF_TYPE),
             'description': 'MLR model prediction',
             'tag': self.classes['label'],
             'var_type': 'prediction_output',
@@ -1862,7 +1888,8 @@ class MLRModel():
             area_weights = iris.analysis.cartography.area_weights(cube)
         except ValueError as exc:
             logger.warning(
-                "Calculation of area weights for prediction cubes failed")
+                "Calculation of area weights for prediction cube '%s' failed",
+                cube.summary(shorten=True))
             logger.warning(str(exc))
         if pred_type == 'var':
             area_weights *= area_weights
@@ -1876,8 +1903,8 @@ class MLRModel():
             coord = ref_cube.coord(tag)
         except iris.exceptions.CoordinateNotFoundError:
             raise iris.exceptions.CoordinateNotFoundError(
-                "Coordinate '{}' given in 'use_coords_as_feature' not "
-                "found in reference cube for {}{}".format(tag, var_type, msg))
+                "Coordinate '{}' given in 'coords_as_features' not found in "
+                "reference cube for '{}'{}".format(tag, var_type, msg))
         coord_array = np.ma.array(coord.points)
         coord_dims = ref_cube.coord_dims(coord)
         if coord_dims == ():

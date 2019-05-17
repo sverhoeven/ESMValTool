@@ -319,11 +319,12 @@ diagnostics:
           'diag_mlr_input_*/monthly_clim',
         ]
         algorithm: george
+        coords_as_features:: ['month_number', 'latitude', 'longitude']
         metadata_preselection:
           select:
             project: CMIP5
           group: dataset
-        parameters:
+        parameters_final_regressor:
           white_noise: 0.05
           n_restarts_optimizer: 5
         predict_kwargs:
@@ -332,7 +333,6 @@ diagnostics:
           mean: ['time']
           sum: ['latitude', 'longitude']
           units: 'Gt yr-1'
-        use_coords_as_feature: ['month_number', 'latitude', 'longitude']
 
       # postprocess_mlr:
       #   script: mlr/simple_pp.py

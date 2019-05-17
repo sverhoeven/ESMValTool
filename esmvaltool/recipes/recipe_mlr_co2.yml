@@ -17,11 +17,11 @@ documentation:
 
 DATASET_ANCHOR: &datasets
   - {dataset: BNU-ESM}
-  - {dataset: CanESM2}
-  - {dataset: CCSM4}
-  - {dataset: CESM1-BGC}
+  # - {dataset: CanESM2}
+  # - {dataset: CCSM4}
+  # - {dataset: CESM1-BGC}
   # - {dataset: GFDL-ESM2G} (GPP for RCP4.5 missing)
-  - {dataset: GFDL-ESM2M}
+  # - {dataset: GFDL-ESM2M}
   # - {dataset: HadGEM2-CC}
   # - {dataset: HadGEM2-ES}
   # - {dataset: inmcm4}
@@ -354,15 +354,11 @@ diagnostics:
           'diag_mlr/monthly_clim',
           'diag_mlr_input_*/monthly_clim',
         ]
+        coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_prediction_error:
           type: test
-        group_datasets_by_attributes: ['dataset']
-        mlr_model: gbr_xgboost
-        # metadata_preselection:
-        #   select:
-        #     project: CMIP5
-        #   group: dataset
-        n_jobs: 12
+        grid_search_cv_kwargs:
+          cv: 5
         # grid_search_cv_param_grid:
         #   transformed_target_regressor__regressor__learning_rate:
         #     [0.1, 0.05, 0.01, 0.005]
@@ -372,19 +368,23 @@ diagnostics:
         #     [3000, 4000, 5000, 6000]
         #   transformed_target_regressor__regressor__subsample:
         #     [0.2, 0.5, 1.0]
-        grid_search_cv_kwargs:
-          cv: 5
-        parameters:
+        group_datasets_by_attributes: ['dataset']
+        mlr_model: gbr_xgboost
+        # metadata_preselection:
+        #   select:
+        #     project: CMIP5
+        #   group: dataset
+        n_jobs: 12
+        parameters_final_regressor:
           loss: ls
           max_depth: 6
-          learning_rate: 0.05
-          n_estimators: 3000
+          learning_rate: 0.1
+          n_estimators: 500
           subsample: 0.5
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']
           units: 'Gt yr-1'
-        use_coords_as_feature: ['month_number', 'latitude', 'longitude']
       evaluate_mlr_models:
         script: mlr/simple_multimodel_stats.py
         ancestors: ['diag_mlr/mlr']

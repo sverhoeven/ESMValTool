@@ -409,7 +409,7 @@ diagnostics:
         mlr_model: gbr_sklearn
         accept_only_scalar_data: true
         group_datasets_by_attributes: ['dataset', 'ensemble']
-        parameters:
+        parameters_final_regressor:
           learning_rate: 0.001
           loss: ls
           max_depth: 4

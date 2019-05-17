@@ -50,17 +50,6 @@ CFG = {
             'b': [6.28, -1]
         }],
     ],
-    'grid_search_cv_kwargs': [
-        None,
-        None,
-        {
-            'n_jobs': -1
-        },
-        {
-            'cv': 'loo',
-            'refit': False
-        },
-    ],
     'group_datasets_by_attributes': [
         None,
         None,
@@ -68,7 +57,6 @@ CFG = {
         ['dataset', 'project'],
     ],
     'imputation_strategy': [None, None, 'remove', 'mean'],
-    'imputation_constant': [None, 0.0, 1],
     'mlr_model': [None, None, 'gbr', 'gpr'],
     'parameters': [
         None,
@@ -85,15 +73,13 @@ CFG = {
         'return_std': True
     }],
     'test_size': [None, None, 0.25, -1.0, 2.5],
-    'use_coords_as_feature': [
+    'coords_as_features': [
         None,
         None,
         None,
-        'time',
         ['latitude'],
-        ['air_pressure', 'longitude'],
+        ['air_pressure', 'latitude'],
     ],
-    'use_only_coords_as_features': [None, True, False],
 }
 
 random.seed(42)
@@ -107,7 +93,7 @@ def generate_random_dict(source, remove_prob=0.0):
         if value is not None:
             dict_[attr] = value
     if random.random() < remove_prob:
-        rand_attr = list(source.keys())[random.randrange(len(source))]
+        rand_attr = list(dict_.keys())[random.randrange(len(dict_))]
         dict_.pop(rand_attr)
     return dict_
 
@@ -129,12 +115,10 @@ if __name__ == '__main__':
         # Output
         mlr_model = SimplifiedMLRModel(cfg)
         logger_calls = []
-        with mock.patch(
-                'esmvaltool.diag_scripts.mlr.logger',
-                autospec=True) as mlr_logger:
-            with mock.patch(
-                    'esmvaltool.diag_scripts.mlr.models.logger',
-                    autospec=True) as models_logger:
+        with mock.patch('esmvaltool.diag_scripts.mlr.logger',
+                        autospec=True) as mlr_logger:
+            with mock.patch('esmvaltool.diag_scripts.mlr.models.logger',
+                            autospec=True) as models_logger:
                 try:
                     getattr(mlr_model, FUNCTION)(**cfg.get('metadata', {}))
                 except Exception as exc:
@@ -155,6 +139,8 @@ if __name__ == '__main__':
     NoAnchorDumper = yaml.dumper.SafeDumper
     NoAnchorDumper.ignore_aliases = lambda self, data: True
     with open(OUTFILE, 'w') as outfile:
-        yaml.dump(
-            CFGS, outfile, default_flow_style=False, Dumper=NoAnchorDumper)
+        yaml.dump(CFGS,
+                  outfile,
+                  default_flow_style=False,
+                  Dumper=NoAnchorDumper)
         print("Wrote '{}'".format(OUTFILE))

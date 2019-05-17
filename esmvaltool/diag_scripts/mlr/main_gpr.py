@@ -69,7 +69,7 @@ def main(cfg):
         model_type = 'gpr_sklearn'
         kernel = (sklearn_kernels.ConstantKernel(1.0, (1e-5, 1e5)) *
                   sklearn_kernels.RBF(1.0, (1e-5, 1e5)))
-        cfg['parameters']['kernel'] = kernel
+        cfg['parameters_final_regressor']['kernel'] = kernel
     elif algorithm == 'george':
         model_type = 'gpr_george'
     else:
@@ -86,7 +86,10 @@ def main(cfg):
 
         # Kernel for george model needs number of features
         if algorithm == 'george':
-            n_features = mlr_model.classes['features'].size
+            if cfg.get('pca', True):
+                n_features = min(mlr_model.data['x_train'].shape)
+            else:
+                n_features = mlr_model.classes['features'].size
             new_kernel = (
                 george_kernels.ExpSquaredKernel(
                     1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *

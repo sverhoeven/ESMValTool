@@ -37,7 +37,7 @@ class XGBoostGBRModel(GBRModel):
         evals_result = clf.evals_result()
         train_score = evals_result['validation_0']['rmse']
         test_score = None
-        if 'x_test' in self._data and 'y_test' in self._data:
+        if 'x_test' in self.data and 'y_test' in self.data:
             test_score = evals_result['validation_1']['rmse']
         self._plot_prediction_error(train_score, test_score, filename)
 
@@ -47,21 +47,21 @@ class XGBoostGBRModel(GBRModel):
         for (param_name, param_val) in fit_kwargs.items():
             reduced_fit_kwargs[param_name.replace(
                 f'{self._clf.steps[-1][0]}__', '')] = param_val
-        self._clf.fit_transformers_only(self._data['x_train'],
-                                        self._data['y_train'],
+        self._clf.fit_transformers_only(self.data['x_train'],
+                                        self.data['y_train'],
                                         **reduced_fit_kwargs)
-        self._clf.steps[-1][1].fit_transformer_only(self._data['y_train'],
+        self._clf.steps[-1][1].fit_transformer_only(self.data['y_train'],
                                                     **reduced_fit_kwargs)
 
         # Transform input data
-        x_train = self._clf.transform_only(self._data['x_train'])
+        x_train = self._clf.transform_only(self.data['x_train'])
         y_train = self._clf.steps[-1][1].transformer_.transform(
-            np.expand_dims(self._data['y_train'], axis=-1))
+            np.expand_dims(self.data['y_train'], axis=-1))
         eval_set = [(x_train, y_train)]
-        if 'x_test' in self._data and 'y_test' in self._data:
-            x_test = self._clf.transform_only(self._data['x_test'])
+        if 'x_test' in self.data and 'y_test' in self.data:
+            x_test = self._clf.transform_only(self.data['x_test'])
             y_test = self._clf.steps[-1][1].transformer_.transform(
-                np.expand_dims(self._data['y_test'], axis=-1))
+                np.expand_dims(self.data['y_test'], axis=-1))
             eval_set.append((x_test, y_test))
 
         # Update kwargs

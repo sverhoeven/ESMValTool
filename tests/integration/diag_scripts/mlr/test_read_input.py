@@ -36,7 +36,7 @@ class SimplifiedMLRModel(MLRModel):
         self._cfg = cfg
         self._data = {}
         self._datasets = {}
-        self.classes = {}
+        self._classes = {}
 
 
 with open(
