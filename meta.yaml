@@ -38,7 +38,7 @@ requirements:
     # esmvaltool
     - python
     - libunwind  #  specifically for Python3.7+
-    - graphviz    
+    - graphviz
     - iris
     - python-stratify
     # Normally installed via pip:
@@ -61,6 +61,7 @@ requirements:
     - python-cdo
     - pyyaml
     - scikit-learn
+    - seaborn
     - shapely
     - six
     - vmprof

@@ -41,6 +41,7 @@ REQUIREMENTS = {
         'prov[dot]',
         'psutil',
         'pyyaml',
+        'seaborn',
         'shapely',
         'six',
         'stratify',
