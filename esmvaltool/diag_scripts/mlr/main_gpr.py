@@ -89,7 +89,7 @@ def main(cfg):
             if cfg.get('pca', True):
                 n_features = min(mlr_model.data['x_train'].shape)
             else:
-                n_features = mlr_model.classes['features'].size
+                n_features = mlr_model.features.size
             new_kernel = (
                 george_kernels.ExpSquaredKernel(
                     1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *

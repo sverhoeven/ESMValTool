@@ -51,12 +51,12 @@ class SklearnGBRModel(GBRModel):
         clf = self._clf.steps[-1][1].regressor_
 
         # Plot for every feature
-        for (idx, feature_name) in enumerate(self.classes['features']):
+        for (idx, feature_name) in enumerate(self.features):
             (_, [axes]) = plot_partial_dependence(clf, self.data['x_train'],
                                                   [idx])
             axes.set_title(f'Partial dependence ({str(self._CLF_TYPE)} Model)')
             axes.set_xlabel(f'(Scaled) {feature_name}')
-            axes.set_ylabel(f"(Scaled) {self.classes['label']}")
+            axes.set_ylabel(f'(Scaled) {self.label}')
             new_filename = (filename.format(feature=feature_name) + '.' +
                             self._cfg['output_file_type'])
             new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)

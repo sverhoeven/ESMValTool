@@ -56,7 +56,7 @@ class GBRModel(MLRModel):
         axes.set_title(f'Variable Importance ({str(self._CLF_TYPE)} Model)')
         axes.set_xlabel('Relative Importance')
         axes.set_yticks(pos)
-        axes.set_yticklabels(self.classes['features'][sorted_idx])
+        axes.set_yticklabels(self.features[sorted_idx])
         new_filename = filename + '.' + self._cfg['output_file_type']
         new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
         plt.savefig(new_path, orientation='landscape', bbox_inches='tight')

@@ -12,6 +12,7 @@ from pprint import pformat
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import pathos.multiprocessing as mp
 from cf_units import Unit
 from skater.core.explanations import Interpretation
@@ -271,14 +272,39 @@ class MLRModel():
         logger.debug(pformat(self.parameters))
 
     @property
-    def classes(self):
-        """Classes of the model (read-only), e.g. features, label, etc."""
-        return self._classes
-
-    @property
     def data(self):
         """Input data of the model (read-only)."""
         return self._data
+
+    @property
+    def features(self):
+        """Features of the model (read-only)."""
+        return self._classes['features'].columns.values
+
+    @property
+    def features_types(self):
+        """Types of the features of the model (read-only)."""
+        return self._classes['features'].loc['types']
+
+    @property
+    def features_units(self):
+        """Units of the features of the model (read-only)."""
+        return self._classes['features'].loc['units']
+
+    @property
+    def group_attributes(self):
+        """Group attributes of the model (read-only)."""
+        return self._classes['group_attributes']
+
+    @property
+    def label(self):
+        """Label of the model (read-only)."""
+        return self._classes['label'].columns.values[0]
+
+    @property
+    def label_units(self):
+        """Units of the label of the model (read-only)."""
+        return self._classes['label'].loc['units'].values[0]
 
     @property
     def parameters(self):
@@ -544,7 +570,7 @@ class MLRModel():
         progressbar = True if self._cfg['log_level'] == 'debug' else False
 
         # Plot for every feature
-        for feature_name in self.classes['features']:
+        for feature_name in self.features:
             logger.debug("Plotting partial dependence of '%s'", feature_name)
             ((_, axes), ) = (self._skater['global_interpreter'].
                              partial_dependence.plot_partial_dependence(
@@ -556,7 +582,7 @@ class MLRModel():
             axes.set_title('Partial dependence ({} Model)'.format(
                 self._CLF_TYPE))
             axes.set_xlabel(feature_name)
-            axes.set_ylabel(self.classes['label'])
+            axes.set_ylabel(self.label)
             axes.get_legend().remove()
             new_filename = (filename.format(feature=feature_name) + '.' +
                             self._cfg['output_file_type'])
@@ -581,12 +607,11 @@ class MLRModel():
             filename = 'scatterplot_{feature}'
 
         # Plot scatterplot for every feature
-        for (f_idx, feature) in enumerate(self.classes['features']):
+        for (f_idx, feature) in enumerate(self.features):
             logger.debug("Plotting scatterplot of '%s'", feature)
             (_, axes) = plt.subplots()
             if self._cfg.get('accept_only_scalar_data'):
-                for (g_idx, group_attr) in enumerate(
-                        self.classes['group_attributes']):
+                for (g_idx, group_attr) in enumerate(self.group_attributes):
                     axes.scatter(self.data['x_data'][g_idx, f_idx],
                                  self.data['y_data'][g_idx],
                                  label=group_attr)
@@ -605,10 +630,9 @@ class MLRModel():
                           '.')
                 legend = None
             axes.set_title(feature)
-            axes.set_xlabel('{} / {}'.format(
-                feature, self.classes['features_units'][f_idx]))
-            axes.set_ylabel('{} / {}'.format(self.classes['label'],
-                                             self.classes['label_units']))
+            axes.set_xlabel('{} / {}'.format(feature,
+                                             self.features_units[feature]))
+            axes.set_ylabel('{} / {}'.format(self.label, self.label_units))
             new_path = os.path.join(
                 self._cfg['mlr_plot_dir'],
                 filename.format(feature=feature) + '.' +
@@ -797,31 +821,14 @@ class MLRModel():
                 "suitable attributes to group datasets with the option "
                 "'group_datasets_by_attributes'".format(var_type, tag, msg))
         if var_type == 'label':
-            units = self.classes['label_units']
+            units = self.label_units
         else:
-            units = self.classes['features_units'][np.where(
-                self.classes['features'] == tag)][0]
+            units = self.features_units[tag]
         if units != Unit(datasets[0]['units']):
             raise ValueError(
                 "Expected units '{}' for {} '{}'{}, got '{}'".format(
                     units, var_type, tag, msg, datasets[0]['units']))
         return datasets[0]
-
-    def _check_label(self, label, units):
-        """Check if `label` matches with already saved data."""
-        if self.classes.get('label') is None:
-            self.classes['label'] = label
-            self.classes['label_units'] = units
-        else:
-            if label != self.classes['label']:
-                raise ValueError(
-                    "Expected unique entries for var_type label', got '{}' "
-                    "and '{}'".format(label, self.classes['label']))
-            if units != self.classes['label_units']:
-                raise ValueError(
-                    "Expected unique units for the label '{}', got '{}' and "
-                    "'{}'".format(self.classes['label'], units,
-                                  self.classes['label_units']))
 
     def _clf_is_valid(self, text=None):
         """Check if valid regressor type is given."""
@@ -935,7 +942,7 @@ class MLRModel():
 
         # Get correct shape and mask
         if error is not None:
-            units = self._units_power(self.classes['label_units'], 2)
+            units = self._units_power(self.label_units, 2)
             pred_error = np.ma.array(np.full_like(pred_dict[None], error),
                                      mask=pred_dict[None].mask)
             pred_dict[f"squared_error_estim_{cfg['type']}"] = pred_error
@@ -999,7 +1006,7 @@ class MLRModel():
 
         # Iterate over datasets
         if var_type == 'feature':
-            groups = self.classes['group_attributes']
+            groups = self.group_attributes
         else:
             groups = [None]
         for group_attr in groups:
@@ -1026,15 +1033,14 @@ class MLRModel():
         """Extract y data (labels) from `datasets`."""
         datasets = select_metadata(datasets, var_type='label')
         y_data = np.ma.array([], dtype=self._cfg['dtype'])
-        for group_attr in self.classes['group_attributes']:
+        for group_attr in self.group_attributes:
             if group_attr is not None:
                 logger.info("Loading 'label' data of '%s'", group_attr)
             msg = '' if group_attr is None else " for '{}'".format(group_attr)
             datasets_ = select_metadata(datasets, group_attribute=group_attr)
-            dataset = self._check_dataset(datasets_, 'label',
-                                          self.classes['label'], msg)
+            dataset = self._check_dataset(datasets_, 'label', self.label, msg)
             cube = self._load_cube(dataset)
-            text = "label '{}'{}".format(self.classes['label'], msg)
+            text = "label '{}'{}".format(self.label, msg)
             self._check_cube_coords(cube, None, text)
             y_data = np.ma.hstack((y_data, self._get_cube_data(cube)))
         return y_data
@@ -1115,59 +1121,59 @@ class MLRModel():
         datasets = self._datasets['prediction'][pred_name]
         msg = ('' if pred_name is None else
                " for prediction '{}'".format(pred_name))
-        (features, units,
+        (units,
          types) = self._get_features_of_datasets(datasets, 'prediction_input',
                                                  msg)
 
         # Check if features were found
-        if not features:
+        if not units:
             raise ValueError(
                 "No features for 'prediction_input' data{} found".format(msg))
 
         # Check for wrong options
         if self._cfg.get('accept_only_scalar_data'):
-            if 'broadcasted' in types:
+            if 'broadcasted' in types.values():
                 raise TypeError(
                     "The use of 'broadcast_from' is not possible if "
                     "'accept_only_scalar_data' is given")
-            if 'coordinate' in types:
+            if 'coordinate' in types.values():
                 raise TypeError(
                     "The use of 'coords_as_features' is not possible if "
                     "'accept_only_scalar_data' is given")
 
-        # Sort
-        sort_idx = np.argsort(features)
-        features = np.array(features)[sort_idx]
-        units = np.array(units)[sort_idx]
-        types = np.array(types)[sort_idx]
+        # Convert to DataFrame and sort it
+        units = pd.DataFrame(units, index=['units'])
+        types = pd.DataFrame(types, index=['types'])
+        features = units.append(types)
+        features = features.reindex(sorted(features.columns), axis=1)
 
         # Return features
         logger.info(
             "Found %i feature(s) (defined in 'prediction_input' data%s)",
-            len(features), msg)
-        for (idx, feature) in enumerate(features):
+            len(features.columns), msg)
+        for feature in features.columns:
             logger.debug("'%s' with units '%s' and type '%s'", feature,
-                         units[idx], types[idx])
-        return (features, units, types)
+                         features.loc['units', feature],
+                         features.loc['types', feature])
+        return features
 
     def _get_features_of_datasets(self, datasets, var_type, msg):
-        """Extract all features of given datasets."""
-        features = []
-        units = []
-        types = []
+        """Extract all features (with units and types) of given datasets."""
+        units = {}
+        types = {}
         cube = None
         ref_cube = None
         for (tag, datasets_) in group_metadata(datasets, 'tag').items():
             dataset = datasets_[0]
             cube = self._load_cube(dataset)
             if 'broadcast_from' not in dataset:
+
                 ref_cube = cube
-            features.append(tag)
-            units.append(Unit(dataset['units']))
+            units[tag] = Unit(dataset['units'])
             if 'broadcast_from' in dataset:
-                types.append('broadcasted')
+                types[tag] = 'broadcasted'
             else:
-                types.append('regular')
+                types[tag] = 'regular'
 
         # Check if reference cube was given
         if ref_cube is None:
@@ -1187,11 +1193,10 @@ class MLRModel():
                 raise iris.exceptions.CoordinateNotFoundError(
                     "Coordinate '{}' given in 'coords_as_features' not found "
                     "in '{}' data{}".format(coord_name, var_type, msg))
-            features.append(coord_name)
-            units.append(coord.units)
-            types.append('coordinate')
+            units[coord_name] = coord.units
+            types[coord_name] = 'coordinate'
 
-        return (features, units, types)
+        return (units, types)
 
     def _get_group_attributes(self):
         """Get all group attributes from `label` datasets."""
@@ -1227,7 +1232,8 @@ class MLRModel():
         logger.info(
             "Found label '%s' with units '%s' (defined in 'label' "
             "data)", labels[0], units)
-        return (labels[0], units)
+        label = pd.DataFrame({labels[0]: units}, index=['units'])
+        return label
 
     def _get_lime_feature_importance(self, x_data):
         """Get most important feature given by LIME."""
@@ -1342,8 +1348,9 @@ class MLRModel():
     def _get_reference_cube(self, datasets, var_type, text=None):
         """Get reference cube for `datasets`."""
         msg = '' if text is None else text
-        tags = self.classes['features'][np.where(
-            self.classes['features_types'] == 'regular')]
+        tags = self.features_types[self.features_types ==
+                                   'regular'].index.values
+
         for tag in tags:
             dataset = self._check_dataset(datasets, var_type, tag, msg)
             if dataset is not None:
@@ -1361,13 +1368,12 @@ class MLRModel():
         """Get x data for a group of datasets."""
         msg = '' if group_attr is None else " for '{}'".format(group_attr)
         ref_cube = self._get_reference_cube(datasets, var_type, msg)
-        shape = (np.prod(ref_cube.shape,
-                         dtype=np.int), len(self.classes['features']))
+        shape = (np.prod(ref_cube.shape, dtype=np.int), len(self.features))
         attr_data = np.ma.empty(shape, dtype=self._cfg['dtype'])
 
         # Iterate over all features
-        for (idx, tag) in enumerate(self.classes['features']):
-            if self.classes['features_types'][idx] != 'coordinate':
+        for (idx, tag) in enumerate(self.features):
+            if self.features_types[tag] != 'coordinate':
                 dataset = self._check_dataset(datasets, var_type, tag, msg)
                 if dataset is None:
                     new_data = np.ma.masked
@@ -1420,8 +1426,7 @@ class MLRModel():
         """Check if the MLR models are fitted."""
         if self._clf is None:
             return False
-        x_dummy = np.ones((1, self.classes['features'].size),
-                          dtype=self._cfg['dtype'])
+        x_dummy = np.ones((1, self.features.size), dtype=self._cfg['dtype'])
         try:
             self._clf.predict(x_dummy)
         except NotFittedError:
@@ -1440,12 +1445,10 @@ class MLRModel():
         return True
 
     def _load_classes(self):
-        """Populate self.classes and check for errors."""
+        """Populate self._classes and check for errors."""
         self._classes['group_attributes'] = self._get_group_attributes()
-        (self._classes['features'], self._classes['features_units'],
-         self._classes['features_types']) = self._get_features()
-        (self._classes['label'],
-         self._classes['label_units']) = self._get_label()
+        self._classes['features'] = self._get_features()
+        self._classes['label'] = self._get_label()
 
     def _load_cube(self, dataset):
         """Load iris cube, check data type and convert units if desired."""
@@ -1606,17 +1609,15 @@ class MLRModel():
         verbosity = (True if self._cfg['log_level'] == 'debug'
                      and not self._cfg['return_lime_importance'] else False)
         self._skater['global_interpreter'] = Interpretation(
-            x_train,
-            training_labels=y_train,
-            feature_names=self.classes['features'])
+            x_train, training_labels=y_train, feature_names=self.features)
         logger.debug("Loaded global skater interpreter with new training data")
         self._skater['local_interpreter'] = LimeTabularExplainer(
             x_train,
             mode='regression',
             training_labels=y_train,
-            feature_names=self.classes['features'],
+            feature_names=self.features,
             verbose=verbosity,
-            class_names=[self.classes['label']])
+            class_names=[self.label])
         logger.debug(
             "Loaded local skater interpreter (LIME) with new training data")
 
@@ -1624,7 +1625,7 @@ class MLRModel():
         example_size = min(y_train.size, 20)
         self._skater['model'] = InMemoryModel(
             self._clf.predict,
-            feature_names=self.classes['features'],
+            feature_names=self.features,
             examples=x_train[:example_size],
             model_type='regressor',
         )
@@ -1780,10 +1781,10 @@ class MLRModel():
                 msg = ('Removed %i training point(s) where features were '
                        'missing')
                 if self._cfg.get('accept_only_scalar_data'):
-                    removed_groups = self.classes['group_attributes'][mask]
+                    removed_groups = self.group_attributes[mask]
                     msg += ' ({})'.format(removed_groups)
-                    self.classes['group_attributes'] = (
-                        self.classes['group_attributes'][~mask])
+                    self._classes['group_attributes'] = (
+                        self.group_attributes[~mask])
                 logger.info(msg, n_removed)
         return (new_x_data, new_y_data)
 
@@ -1812,9 +1813,9 @@ class MLRModel():
 
         # File Header
         if 'x_' in data_type:
-            sub_txt = 'features: {}'.format(self.classes['features'])
+            sub_txt = 'features: {}'.format(self.features)
         else:
-            sub_txt = 'label: {}'.format(self.classes['label'])
+            sub_txt = 'label: {}'.format(self.label)
         header = ('{} with shape {}\n{:d}: number of observations)\n{}\nNote:'
                   'nan indicates missing values').format(
                       data_type, csv_data.shape, csv_data.shape[0], sub_txt)
@@ -1828,7 +1829,7 @@ class MLRModel():
         cube.attributes = {
             'regressor': str(self._CLF_TYPE),
             'description': 'MLR model prediction',
-            'tag': self.classes['label'],
+            'tag': self.label,
             'var_type': 'prediction_output',
         }
         if pred_name is not None:
@@ -1864,12 +1865,12 @@ class MLRModel():
             cube.units = self._units_power(cube.units, 2)
         elif pred_type == 'lime':
             cube.var_name = 'lime_feature_importance'
-            cube.long_name = (f"Most important feature for predicting "
-                              f"{self.classes['label']} given by LIME")
+            cube.long_name = (f'Most important feature for predicting '
+                              f'{self.label} given by LIME')
             cube.units = Unit('no_unit')
             cube.attributes.update({
                 'features':
-                pformat(dict(enumerate(self.classes['features']))),
+                pformat(dict(enumerate(self.features))),
                 'skip_for_pp':
                 1,
             })
@@ -1960,7 +1961,7 @@ class MLRModel():
 
     @staticmethod
     def _pred_type_to_power(pred_type):
-        """Get power for predictiony type (e.g. 2 for variance)."""
+        """Get power for prediction type (e.g. 2 for variance)."""
         if pred_type is None:
             return 1
         if pred_type in ('cov', 'var'):
