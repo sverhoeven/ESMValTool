@@ -1142,6 +1142,13 @@ class MLRModel():
                     "'accept_only_scalar_data' is given")
 
         # Convert to DataFrame and sort it
+        units = pd.DataFrame.from_dict(
+            units, orient='index', columns=['units'])
+        types = pd.DataFrame.from_dict(
+            types, orient='index', columns=['types'])
+        features = pd.concat([units, types], join='inner')
+        print(features)
+        assert 0
         units = pd.DataFrame(units, index=['units'])
         types = pd.DataFrame(types, index=['types'])
         features = units.append(types)
