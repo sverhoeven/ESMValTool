@@ -3,11 +3,9 @@
 import logging
 import os
 
-import numpy as np
-from xgboost import XGBRegressor
-
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.mlr.models.gbr import GBRModel
+from xgboost import XGBRegressor
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -37,7 +35,7 @@ class XGBoostGBRModel(GBRModel):
         evals_result = clf.evals_result()
         train_score = evals_result['validation_0']['rmse']
         test_score = None
-        if 'x_test' in self.data and 'y_test' in self.data:
+        if 'test' in self.data:
             test_score = evals_result['validation_1']['rmse']
         self._plot_prediction_error(train_score, test_score, filename)
 
@@ -47,21 +45,23 @@ class XGBoostGBRModel(GBRModel):
         for (param_name, param_val) in fit_kwargs.items():
             reduced_fit_kwargs[param_name.replace(
                 f'{self._clf.steps[-1][0]}__', '')] = param_val
-        self._clf.fit_transformers_only(self.data['x_train'],
-                                        self.data['y_train'],
-                                        **reduced_fit_kwargs)
-        self._clf.steps[-1][1].fit_transformer_only(self.data['y_train'],
+        x_train = self.data['train'].x.values
+        y_train = self.data['train'].y.squeeze().values
+        self._clf.fit_transformers_only(x_train, y_train, **reduced_fit_kwargs)
+        self._clf.steps[-1][1].fit_transformer_only(y_train,
                                                     **reduced_fit_kwargs)
 
         # Transform input data
-        x_train = self._clf.transform_only(self.data['x_train'])
+        x_train = self._clf.transform_only(x_train)
         y_train = self._clf.steps[-1][1].transformer_.transform(
-            np.expand_dims(self.data['y_train'], axis=-1))
+            y_train.reshape(-1, 1))
+        y_train = y_train[:, 0]
         eval_set = [(x_train, y_train)]
-        if 'x_test' in self.data and 'y_test' in self.data:
-            x_test = self._clf.transform_only(self.data['x_test'])
+        if 'test' in self.data:
+            x_test = self._clf.transform_only(self.data['test'].x.values)
             y_test = self._clf.steps[-1][1].transformer_.transform(
-                np.expand_dims(self.data['y_test'], axis=-1))
+                self.data['test'].y.values)
+            y_test = y_test[:, 0]
             eval_set.append((x_test, y_test))
 
         # Update kwargs

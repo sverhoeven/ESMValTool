@@ -25,12 +25,12 @@ import logging
 import os
 from pprint import pformat
 
-from george import kernels as george_kernels
 from sklearn.gaussian_process import kernels as sklearn_kernels
 
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
+from george import kernels as george_kernels
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -87,7 +87,7 @@ def main(cfg):
         # Kernel for george model needs number of features
         if algorithm == 'george':
             if cfg.get('pca', True):
-                n_features = min(mlr_model.data['x_train'].shape)
+                n_features = min(mlr_model.data['train'].x.shape)
             else:
                 n_features = mlr_model.features.size
             new_kernel = (

@@ -13,12 +13,7 @@ import iris
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pathos.multiprocessing as mp
 from cf_units import Unit
-from skater.core.explanations import Interpretation
-from skater.core.local_interpretation.lime.lime_tabular import \
-    LimeTabularExplainer
-from skater.model import InMemoryModel
 from sklearn import metrics
 from sklearn.decomposition import PCA
 from sklearn.exceptions import NotFittedError
@@ -27,9 +22,14 @@ from sklearn.model_selection import (GridSearchCV, LeaveOneOut,
                                      cross_val_score, train_test_split)
 from sklearn.preprocessing import StandardScaler
 
+import pathos.multiprocessing as mp
 from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (group_metadata, io, plot,
                                             select_metadata)
+from skater.core.explanations import Interpretation
+from skater.core.local_interpretation.lime.lime_tabular import \
+    LimeTabularExplainer
+from skater.model import InMemoryModel
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -215,8 +215,7 @@ class MLRModel():
         self._cfg = copy.deepcopy(cfg)
         self._clf = None
         self._data = {}
-        self._data['x_pred'] = {}
-        self._data['y_pred'] = {}
+        self._data['pred'] = {}
         self._datasets = {}
         self._skater = {}
         self._classes = {}
@@ -320,12 +319,8 @@ class MLRModel():
             Name of the exported files.
 
         """
-        for data_type in ('x_pred', 'y_pred'):
-            for pred_name in self.data[data_type]:
-                self._save_csv_file(data_type,
-                                    filename,
-                                    is_prediction=True,
-                                    pred_name=pred_name)
+        for pred_name in self.data['pred']:
+            self._save_csv_file('pred', filename, pred_name=pred_name)
 
     def export_training_data(self, filename=None):
         """Export all training data contained in `self._data`.
@@ -336,8 +331,7 @@ class MLRModel():
             Name of the exported files.
 
         """
-        for data_type in ('x_data', 'x_train', 'x_test', 'y_data', 'y_train',
-                          'y_test'):
+        for data_type in ('all', 'train', 'test'):
             self._save_csv_file(data_type, filename)
 
     def fit(self, **kwargs):
@@ -356,7 +350,7 @@ class MLRModel():
             return
         logger.info(
             "Fitting MLR model with final regressor %s on %i training "
-            "point(s)", self._CLF_TYPE, self.data['y_train'].size)
+            "point(s)", self._CLF_TYPE, len(self.data['train'].index))
         fit_kwargs = dict(self._cfg.get('fit_kwargs', {}))
         fit_kwargs.update(kwargs)
         if fit_kwargs:
@@ -365,10 +359,12 @@ class MLRModel():
         fit_kwargs = self._update_fit_kwargs(fit_kwargs)
 
         # Create MLR model with desired parameters and fit it
-        self._clf.fit(self.data['x_train'], self.data['y_train'], **fit_kwargs)
+        x_train = self.data['train'].x.values
+        y_train = self.data['train'].y.squeeze().values
+        self._clf.fit(x_train, y_train, **fit_kwargs)
         self._parameters = self._get_clf_parameters()
         logger.info("Successfully fitted MLR model on %i training point(s)",
-                    self.data['y_train'].size)
+                    len(self.data['train'].index))
         logger.debug("Pipeline steps:")
         logger.debug(pformat(list(self._clf.named_steps.keys())))
         logger.debug("Parameters:")
@@ -407,7 +403,7 @@ class MLRModel():
         logger.info(
             "Performing exhaustive grid search cross-validation with final "
             "regressor %s and parameter grid %s on %i training points",
-            self._CLF_TYPE, parameter_grid, self.data['y_train'].size)
+            self._CLF_TYPE, parameter_grid, len(self.data['train'].index))
 
         # Get keyword arguments
         log_level = {'debug': 2, 'info': 1}
@@ -430,15 +426,16 @@ class MLRModel():
 
         # Create and fit GridSearchCV instance
         clf = GridSearchCV(self._clf, parameter_grid, **cv_kwargs)
-        clf.fit(self.data['x_train'], self.data['y_train'], **fit_kwargs)
+        x_train = self.data['train'].x.values
+        y_train = self.data['train'].y.squeeze().values
+        clf.fit(x_train, y_train, **fit_kwargs)
 
         # Try to find best estimator
         if hasattr(clf, 'best_estimator_'):
             self._clf = clf.best_estimator_
         elif hasattr(clf, 'best_params_'):
             self.update_parameters(**clf.best_params_)
-            self._clf.fit(self.data['x_train'], self.data['y_train'],
-                          **fit_kwargs)
+            self._clf.fit(x_train, y_train, **fit_kwargs)
         else:
             raise ValueError(
                 "GridSearchCV not successful, cannot determine best estimator "
@@ -453,7 +450,7 @@ class MLRModel():
         logger.debug("CV results:")
         logger.debug(pformat(clf.cv_results_))
         logger.info("Successfully fitted MLR model on %i training point(s)",
-                    self.data['y_train'].size)
+                    len(self.data['train'].index))
         logger.debug("Pipeline steps:")
         logger.debug(pformat(list(self._clf.named_steps.keys())))
         logger.debug("Parameters:")
@@ -512,12 +509,11 @@ class MLRModel():
         if not self._is_ready_for_plotting():
             return
         logger.info("Plotting LIME")
-        x_type = f'x_{data_type}'
-        if x_type not in self.data:
+        if data_type not in self.data:
             logger.error("Cannot plot LIME, got invalid data type '%s'",
                          data_type)
             return
-        if index >= self.data[x_type].shape[0]:
+        if index >= len(self.data[data_type].index):
             logger.error(
                 "Cannot plot LIME, index %i is out of range for '%s' data",
                 index, data_type)
@@ -531,7 +527,7 @@ class MLRModel():
 
         # LIME
         explainer = self._skater['local_interpreter'].explain_instance(
-            self.data[x_type][index], self._clf.predict)
+            self.data[data_type].x.loc[index].values, self._clf.predict)
         logger.debug("Local feature importance at index %i of '%s' data",
                      index, data_type)
         logger.debug(pformat(explainer.as_list()))
@@ -607,16 +603,16 @@ class MLRModel():
             filename = 'scatterplot_{feature}'
 
         # Plot scatterplot for every feature
-        for (f_idx, feature) in enumerate(self.features):
+        for feature in self.features:
             logger.debug("Plotting scatterplot of '%s'", feature)
             (_, axes) = plt.subplots()
             if self._cfg.get('accept_only_scalar_data'):
                 for (g_idx, group_attr) in enumerate(self.group_attributes):
-                    axes.scatter(self.data['x_data'][g_idx, f_idx],
-                                 self.data['y_data'][g_idx],
+                    axes.scatter(self.data['all'].x.loc[g_idx, feature],
+                                 self.data['all'].y.iloc[g_idx, 0],
                                  label=group_attr)
-                for (pred_name, x_pred) in self.data['x_pred'].items():
-                    axes.axvline(x_pred[0, f_idx],
+                for (pred_name, pred) in self.data['pred'].items():
+                    axes.axvline(pred.x.loc[0, feature],
                                  linestyle='--',
                                  color='black',
                                  label=('Observation'
@@ -626,8 +622,8 @@ class MLRModel():
                                      bbox_to_anchor=[1.05, 0.5],
                                      borderaxespad=0.0)
             else:
-                axes.plot(self.data['x_data'][:, f_idx], self.data['y_data'],
-                          '.')
+                axes.plot(self.data['all'].x.loc[:, feature],
+                          self.data['all'].y.squeeze().values, '.')
                 legend = None
             axes.set_title(feature)
             axes.set_xlabel('{} / {}'.format(feature,
@@ -670,22 +666,23 @@ class MLRModel():
         if not self._datasets['prediction']:
             logger.error("Prediction not possible, no 'prediction_input' "
                          "datasets given")
+            return
         for pred_name in self._datasets['prediction']:
             if pred_name is not None:
                 logger.info("Predicting '%s'", pred_name)
 
             # Prediction
-            (x_pred, x_mask,
-             x_cube) = self._extract_prediction_input(pred_name)
-            pred_dict = self._get_prediction_dict(x_pred, x_mask,
-                                                  **predict_kwargs)
+            (x_pred, x_cube) = self._extract_prediction_input(pred_name)
+            pred_dict = self._get_prediction_dict(x_pred, **predict_kwargs)
             pred_dict = self._estimate_prediction_error(pred_dict)
 
             # Save data
-            x_pred = np.ma.array(x_pred, mask=x_mask, copy=True)
-            self._data['x_pred'][pred_name] = x_pred.filled(np.nan)
-            self._data['y_pred'][pred_name] = np.ma.copy(
-                pred_dict[None]).filled(np.nan)
+            y_pred = pd.DataFrame(pred_dict[None],
+                                  columns=[self.label],
+                                  dtype=self._cfg['dtype'])
+            self._data['pred'][pred_name] = pd.concat([x_pred, y_pred],
+                                                      axis=1,
+                                                      keys=['x', 'y'])
 
             # Get (and save) prediction cubes
             (predictions,
@@ -711,12 +708,11 @@ class MLRModel():
             'r2_score',
         ]
         for data_type in ('train', 'test'):
-            if not (f'x_{data_type}' in self.data
-                    and f'y_{data_type}' in self.data):
+            if data_type not in self.data:
                 continue
             logger.info("Evaluating regression metrics for %s data", data_type)
-            x_data = self.data[f'x_{data_type}']
-            y_true = self.data[f'y_{data_type}']
+            x_data = self.data[data_type].x.values
+            y_true = self.data[data_type].y.squeeze().values
             y_pred = self._clf.predict(x_data)
             y_norm = np.std(y_true)
             for metric in regression_metrics:
@@ -920,9 +916,10 @@ class MLRModel():
 
         # Test data set
         if cfg['type'] == 'test':
-            if 'x_test' in self.data and 'y_test' in self.data:
-                y_pred = self._clf.predict(self.data['x_test'])
-                error = metrics.mean_squared_error(self.data['y_test'], y_pred)
+            if 'test' in self.data:
+                y_pred = self._clf.predict(self.data['test'].x.values)
+                error = metrics.mean_squared_error(self.data['test'].y.values,
+                                                   y_pred)
             else:
                 logger.warning(
                     "Cannot estimate squared prediction error using 'type: "
@@ -932,8 +929,9 @@ class MLRModel():
 
         # CV
         if cfg['type'] == 'cv':
-            error = cross_val_score(self._clf, self.data['x_train'],
-                                    self.data['y_train'], **cfg['kwargs'])
+            error = cross_val_score(self._clf, self.data['train'].x.values,
+                                    self.data['train'].y.values,
+                                    **cfg['kwargs'])
             error = np.mean(error)
             if cfg['kwargs']['scoring'].startswith('neg_'):
                 error = -error
@@ -941,19 +939,18 @@ class MLRModel():
                 error *= error
 
         # Get correct shape and mask
-        if error is not None:
-            units = self._units_power(self.label_units, 2)
-            pred_error = np.ma.array(np.full_like(pred_dict[None], error),
-                                     mask=pred_dict[None].mask)
-            pred_dict[f"squared_error_estim_{cfg['type']}"] = pred_error
-            logger.info(
-                "Estimated squared prediction error by %s %s using %s data",
-                error, units.symbol if units.origin is None else units.origin,
-                cfg['type'])
+        if error is None:
+            logger.error(
+                "Got invalid type for prediction error estimation, got '%s', "
+                "expected 'test' or 'cv'", cfg['type'])
             return pred_dict
-        logger.error(
-            "Got invalid type for prediction error estimation, got '%s', "
-            "expected 'test' or 'cv'", cfg['type'])
+        units = self._units_power(self.label_units, 2)
+        pred_error = np.where(np.isnan(pred_dict[None]), np.nan, error)
+        pred_dict[f"squared_error_estim_{cfg['type']}"] = pred_error
+        logger.info(
+            "Estimated squared prediction error by %s %s using %s data", error,
+            units.symbol if units.origin is None else units.origin,
+            cfg['type'])
         return pred_dict
 
     def _extract_features_and_labels(self):
@@ -961,13 +958,15 @@ class MLRModel():
         datasets = self._datasets['training']
         (x_data, _) = self._extract_x_data(datasets, 'feature')
         y_data = self._extract_y_data(datasets)
-        if x_data.shape[0] != y_data.size:
+
+        # Check number of input points
+        if len(x_data.index) != len(y_data.index):
             raise ValueError(
-                "Sizes of features and labels do not match, got {:d} points "
-                "for the features and {:d} points for the label".format(
-                    x_data.shape[0], y_data.size))
+                "Sizes of features and labels do not match, got {:d} point(s) "
+                "for the features and {:d} point(s) for the label".format(
+                    len(x_data.index), len(y_data.index)))
         logger.info("Found %i raw input data point(s) with data type '%s'",
-                    y_data.size, y_data.dtype)
+                    len(y_data.index), self._cfg['dtype'])
 
         # Remove missing values in labels
         (x_data, y_data) = self._remove_missing_labels(x_data, y_data)
@@ -985,12 +984,8 @@ class MLRModel():
                                                        'prediction_input')
         logger.info(
             "Found %i raw prediction input data point(s) with data type '%s'",
-            x_data.shape[0], x_data.dtype)
-
-        # If desired missing values get removed in the output cube via a mask
-        x_mask = np.ma.getmaskarray(x_data)
-        x_data = x_data.filled(np.nan)
-        return (x_data, x_mask, prediction_input_cube)
+            len(x_data.index), self._cfg['dtype'])
+        return (x_data, prediction_input_cube)
 
     def _extract_x_data(self, datasets, var_type):
         """Extract required x data of type `var_type` from `datasets`."""
@@ -1001,7 +996,7 @@ class MLRModel():
 
         # Collect data from datasets and return it
         datasets = select_metadata(datasets, var_type=var_type)
-        x_data = None
+        x_data = pd.DataFrame(columns=self.features, dtype=self._cfg['dtype'])
         cube = None
 
         # Iterate over datasets
@@ -1010,29 +1005,24 @@ class MLRModel():
         else:
             groups = [None]
         for group_attr in groups:
-            attr_datasets = select_metadata(datasets,
-                                            group_attribute=group_attr)
+            group_datasets = select_metadata(datasets,
+                                             group_attribute=group_attr)
             if group_attr is not None:
                 logger.info("Loading '%s' data of '%s'", var_type, group_attr)
             msg = '' if group_attr is None else " for '{}'".format(group_attr)
-            if not attr_datasets:
+            if not group_datasets:
                 raise ValueError("No '{}' data{} found".format(var_type, msg))
-            (attr_data,
-             cube) = self._get_x_data_for_group(attr_datasets, var_type,
+            (group_data,
+             cube) = self._get_x_data_for_group(group_datasets, var_type,
                                                 group_attr)
-
-            # Append data
-            if x_data is None:
-                x_data = attr_data
-            else:
-                x_data = np.ma.vstack((x_data, attr_data))
+            x_data = x_data.append(group_data, ignore_index=True)
 
         return (x_data, cube)
 
     def _extract_y_data(self, datasets):
         """Extract y data (labels) from `datasets`."""
         datasets = select_metadata(datasets, var_type='label')
-        y_data = np.ma.array([], dtype=self._cfg['dtype'])
+        y_data = pd.DataFrame(columns=[self.label], dtype=self._cfg['dtype'])
         for group_attr in self.group_attributes:
             if group_attr is not None:
                 logger.info("Loading 'label' data of '%s'", group_attr)
@@ -1042,7 +1032,10 @@ class MLRModel():
             cube = self._load_cube(dataset)
             text = "label '{}'{}".format(self.label, msg)
             self._check_cube_coords(cube, None, text)
-            y_data = np.ma.hstack((y_data, self._get_cube_data(cube)))
+            cube_data = pd.DataFrame(self._get_cube_data(cube),
+                                     columns=[self.label],
+                                     dtype=self._cfg['dtype'])
+            y_data = y_data.append(cube_data, ignore_index=True)
         return y_data
 
     def _get_ancestor_datasets(self):
@@ -1083,10 +1076,10 @@ class MLRModel():
 
     def _get_broadcasted_cube(self, dataset, ref_cube, text=None):
         """Get broadcasted cube."""
-        msg = 'data' if text is None else text
+        msg = '' if text is None else text
         target_shape = ref_cube.shape
         cube_to_broadcast = self._load_cube(dataset)
-        data_to_broadcast = np.ma.array(cube_to_broadcast.data)
+        data_to_broadcast = np.ma.filled(cube_to_broadcast.data, np.nan)
         try:
             new_axis_pos = np.delete(np.arange(len(target_shape)),
                                      dataset['broadcast_from'])
@@ -1097,13 +1090,9 @@ class MLRModel():
         logger.info("Broadcasting %s from %s to %s", msg,
                     data_to_broadcast.shape, target_shape)
         for idx in new_axis_pos:
-            data_to_broadcast = np.ma.expand_dims(data_to_broadcast, idx)
-        mask = data_to_broadcast.mask
-        data_to_broadcast = np.broadcast_to(data_to_broadcast,
-                                            target_shape,
-                                            subok=True)
-        data_to_broadcast.mask = np.broadcast_to(mask, target_shape)
-        new_cube = ref_cube.copy(data_to_broadcast)
+            data_to_broadcast = np.expand_dims(data_to_broadcast, idx)
+        data_to_broadcast = np.broadcast_to(data_to_broadcast, target_shape)
+        new_cube = ref_cube.copy(np.ma.masked_invalid(data_to_broadcast))
         for idx in dataset['broadcast_from']:
             new_coord = new_cube.coord(dimensions=idx)
             new_coord.points = cube_to_broadcast.coord(new_coord).points
@@ -1242,7 +1231,9 @@ class MLRModel():
 
     def _get_lime_feature_importance(self, x_data):
         """Get most important feature given by LIME."""
-        logger.info("Calculating global feature importance using LIME")
+        logger.info(
+            "Calculating global feature importance using LIME (this may take "
+            "a while...)")
 
         # Most important feature for single input
         def _most_important_feature(x_input, self):
@@ -1257,36 +1248,36 @@ class MLRModel():
         pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
         return np.array(pool.map(_most_important_feature, x_data))
 
-    def _get_prediction_dict(self, x_data, x_mask, **kwargs):
+    def _get_prediction_dict(self, x_data, **kwargs):
         """Get prediction output in a dictionary."""
-        mask_1d = np.any(x_mask, axis=1)
+        mask = x_data.isnull().any(axis=1).values
         if self._cfg['imputation_strategy'] == 'remove':
-            x_data = x_data[~mask_1d]
-            n_removed = x_mask.shape[0] - x_data.shape[0]
-            if n_removed:
+            x_data = x_data[~mask].reset_index(drop=True)
+            diff = mask.shape[0] - len(x_data.index)
+            if diff:
                 logger.info(
                     "Removed %i prediction input point(s) where "
-                    "features were missing'", n_removed)
+                    "features were missing'", diff)
 
         # Get prediction dictionary
-        logger.info("Predicting %i point(s)", x_data.shape[0])
-        y_preds = self._clf.predict(x_data, **kwargs)
+        logger.info("Predicting %i point(s)", len(x_data.index))
+        y_preds = self._clf.predict(x_data.values, **kwargs)
         pred_dict = self._prediction_to_dict(y_preds, **kwargs)
 
         # LIME feature importance
         if self._cfg['return_lime_importance']:
-            pred_dict['lime'] = self._get_lime_feature_importance(x_data)
+            pred_dict['lime'] = self._get_lime_feature_importance(
+                x_data.values)
 
         # Transform arrays correctly
         for (pred_type, y_pred) in pred_dict.items():
-            if y_pred.ndim == 1 and y_pred.shape[0] != x_mask.shape[0]:
-                new_y_pred = np.ma.empty(x_mask.shape[0],
-                                         dtype=self._cfg['dtype'])
-                new_y_pred[mask_1d] = np.ma.masked
-                new_y_pred[~mask_1d] = y_pred
-                pred_dict[pred_type] = new_y_pred
+            if y_pred.ndim == 1 and y_pred.shape[0] != mask.shape[0]:
+                new_y_pred = np.empty(mask.shape[0], dtype=self._cfg['dtype'])
+                new_y_pred[mask] = np.nan
+                new_y_pred[~mask] = y_pred
             else:
-                pred_dict[pred_type] = np.ma.array(y_pred)
+                new_y_pred = y_pred
+            pred_dict[pred_type] = new_y_pred
             if pred_type is not None:
                 logger.debug("Found additional prediction type '%s'",
                              pred_type)
@@ -1304,9 +1295,8 @@ class MLRModel():
                 y_pred = y_pred.reshape(x_cube.shape)
                 if (self._cfg['imputation_strategy'] == 'remove'
                         and np.ma.is_masked(x_cube.data)):
-                    y_pred = np.ma.array(y_pred,
-                                         mask=y_pred.mask | x_cube.data.mask)
-                pred_cube = x_cube.copy(data=y_pred)
+                    y_pred[x_cube.data.mask] = np.nan
+                pred_cube = x_cube.copy(np.ma.masked_invalid(y_pred))
             else:
                 dim_coords = []
                 for (dim_idx, dim_size) in enumerate(y_pred.shape):
@@ -1314,7 +1304,7 @@ class MLRModel():
                         np.arange(dim_size, dtype=np.float64),
                         long_name=f'MLR prediction index {dim_idx}',
                         var_name=f'idx_{dim_idx}'), dim_idx))
-                pred_cube = iris.cube.Cube(y_pred,
+                pred_cube = iris.cube.Cube(np.ma.masked_invalid(y_pred),
                                            dim_coords_and_dims=dim_coords)
             new_path = self._set_prediction_cube_attributes(
                 pred_cube, pred_type, pred_name=pred_name)
@@ -1325,7 +1315,7 @@ class MLRModel():
 
     def _get_prediction_dtype(self):
         """Get `dtype` of the output of `predict()` of the final regressor."""
-        x_data = self.data['x_data'][0].reshape(1, -1)
+        x_data = self.data['all'].x.loc[0].values.reshape(1, -1)
         y_pred = self._clf.predict(x_data)
         return y_pred.dtype
 
@@ -1346,7 +1336,7 @@ class MLRModel():
                     properties[attr] = '|'.join(attrs)
                 logger.debug(
                     "Attribute '%s' of label data is not unique, got values "
-                    "%s, using %s for prediction cubes", attr, attrs,
+                    "%s, using '%s' for prediction cubes", attr, attrs,
                     properties[attr])
         return properties
 
@@ -1373,15 +1363,15 @@ class MLRModel():
         """Get x data for a group of datasets."""
         msg = '' if group_attr is None else " for '{}'".format(group_attr)
         ref_cube = self._get_reference_cube(datasets, var_type, msg)
-        shape = (np.prod(ref_cube.shape, dtype=np.int), len(self.features))
-        attr_data = np.ma.empty(shape, dtype=self._cfg['dtype'])
+        group_data = pd.DataFrame(columns=self.features,
+                                  dtype=self._cfg['dtype'])
 
         # Iterate over all features
-        for (idx, tag) in enumerate(self.features):
+        for tag in self.features:
             if self.features_types[tag] != 'coordinate':
                 dataset = self._check_dataset(datasets, var_type, tag, msg)
                 if dataset is None:
-                    new_data = np.ma.masked
+                    new_data = np.nan
                 else:
                     text = "{} '{}'{}".format(var_type, tag, msg)
                     if 'broadcast_from' in dataset:
@@ -1396,10 +1386,10 @@ class MLRModel():
             else:
                 new_data = self._get_coordinate_data(ref_cube, var_type, tag,
                                                      msg)
-            attr_data[:, idx] = new_data
+            group_data[tag] = new_data
 
         # Return data and reference cube
-        return (attr_data, ref_cube)
+        return (group_data, ref_cube)
 
     def _group_by_attributes(self, datasets):
         """Group datasets by specified attributes."""
@@ -1494,26 +1484,24 @@ class MLRModel():
 
     def _load_data(self):
         """Load train/test data (features/labels)."""
-        (self._data['x_data'],
-         self._data['y_data']) = self._extract_features_and_labels()
-        logger.info("Loaded %i input data point(s)", self.data['y_data'].size)
+        (x_all, y_all) = self._extract_features_and_labels()
+        self._data['all'] = pd.concat([x_all, y_all], axis=1, keys=['x', 'y'])
+        logger.info("Loaded %i input data point(s)", len(y_all.index))
 
         # Split train/test data if desired
         test_size = self._cfg['test_size']
         if test_size:
-            (self._data['x_train'], self._data['x_test'],
-             self._data['y_train'],
-             self._data['y_test']) = train_test_split(self.data['x_data'],
-                                                      self.data['y_data'],
-                                                      test_size=test_size)
+            (self._data['train'], self._data['test']) = self._train_test_split(
+                x_all, y_all, test_size)
             logger.info(
-                "Used %i%% of the input data as test data (%i point(s))",
-                int(test_size * 100), self.data['y_test'].size)
+                "Using %i%% of the input data as test data (%i point(s))",
+                int(test_size * 100), len(self.data['test'].index))
             logger.info("%i point(s) remain(s) for training",
-                        self.data['y_train'].size)
+                        len(self.data['train'].index))
         else:
-            self._data['x_train'] = np.copy(self.data['x_data'])
-            self._data['y_train'] = np.copy(self.data['y_data'])
+            self._data['train'] = self.data['all'].copy()
+            logger.info("Using all %i input data point(s) for training",
+                        len(y_all.index))
 
     def _load_final_parameters(self):
         """Load parameters for final regressor from recipe."""
@@ -1605,8 +1593,8 @@ class MLRModel():
 
     def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
-        x_train = np.copy(self.data['x_train'])
-        y_train = np.copy(self.data['y_train'])
+        x_train = np.copy(self.data['train'].x.values)
+        y_train = np.copy(self.data['train'].y.squeeze().values)
         if self._cfg['imputation_strategy'] != 'remove':
             x_train = self._clf.named_steps['imputer'].transform(x_train)
 
@@ -1767,43 +1755,39 @@ class MLRModel():
             idx_to_name[1] = 'cov'
         pred_dict = {}
         for (idx, pred) in enumerate(pred_out):
-            pred_dict[idx_to_name.get(idx,
-                                      idx)] = pred.astype(self._cfg['dtype'],
-                                                          casting='same_kind')
+            pred = pred.astype(self._cfg['dtype'], casting='same_kind')
+            if pred.ndim == 2 and pred.shape[1] == 1:
+                logger.warning(
+                    "Prediction output is 2D and length of second axis is 1, "
+                    "squeezing second axis")
+                pred = np.squeeze(pred, axis=1)
+            pred_dict[idx_to_name.get(idx, idx)] = pred
         return pred_dict
 
-    def _remove_missing_features(self, x_data, y_data=None):
+    def _remove_missing_features(self, x_data, y_data):
         """Remove missing values in the features data (if desired)."""
         if self._cfg['imputation_strategy'] != 'remove':
-            new_x_data = x_data.filled(np.nan)
-            new_y_data = None if y_data is None else y_data.filled(np.nan)
-        else:
-            mask = np.any(np.ma.getmaskarray(x_data), axis=1)
-            new_x_data = x_data.filled()[~mask]
-            new_y_data = None if y_data is None else y_data.filled()[~mask]
-            n_removed = x_data.shape[0] - new_x_data.shape[0]
-            if n_removed:
-                msg = ('Removed %i training point(s) where features were '
-                       'missing')
-                if self._cfg.get('accept_only_scalar_data'):
-                    removed_groups = self.group_attributes[mask]
-                    msg += ' ({})'.format(removed_groups)
-                    self._classes['group_attributes'] = (
-                        self.group_attributes[~mask])
-                logger.info(msg, n_removed)
+            return (x_data, y_data)
+        mask = x_data.isnull().any(axis=1).values
+        new_x_data = x_data[~mask].reset_index(drop=True)
+        new_y_data = y_data[~mask].reset_index(drop=True)
+        diff = len(y_data.index) - len(new_y_data.index)
+        if diff:
+            msg = ('Removed %i training point(s) where features were '
+                   'missing')
+            if self._cfg.get('accept_only_scalar_data'):
+                removed_groups = self.group_attributes[mask]
+                msg += ' ({})'.format(removed_groups)
+                self._classes['group_attributes'] = (
+                    self.group_attributes[~mask])
+            logger.info(msg, diff)
         return (new_x_data, new_y_data)
 
-    def _save_csv_file(self,
-                       data_type,
-                       filename,
-                       is_prediction=False,
-                       pred_name=None):
+    def _save_csv_file(self, data_type, filename, pred_name=None):
         """Save CSV file."""
         if data_type not in self.data:
             return
-        if is_prediction:
-            if pred_name not in self.data[data_type]:
-                return
+        if data_type == 'pred':
             csv_data = self.data[data_type][pred_name]
         else:
             csv_data = self.data[data_type]
@@ -1816,17 +1800,8 @@ class MLRModel():
                 filename = '{}_{}.csv'.format(data_type, pred_name)
         path = os.path.join(self._cfg['mlr_work_dir'], filename)
 
-        # File Header
-        if 'x_' in data_type:
-            sub_txt = 'features: {}'.format(self.features)
-        else:
-            sub_txt = 'label: {}'.format(self.label)
-        header = ('{} with shape {}\n{:d}: number of observations)\n{}\nNote:'
-                  'nan indicates missing values').format(
-                      data_type, csv_data.shape, csv_data.shape[0], sub_txt)
-
         # Save file
-        np.savetxt(path, csv_data, delimiter=',', header=header)
+        csv_data.to_csv(path, na_rep='nan')
         logger.info("Wrote %s", path)
 
     def _set_prediction_cube_attributes(self, cube, pred_type, pred_name=None):
@@ -1893,6 +1868,20 @@ class MLRModel():
         cube.attributes['filename'] = new_path
         return new_path
 
+    def _train_test_split(self, x_data, y_data, test_size):
+        """Split data into training and test data."""
+        (x_train, x_test, y_train,
+         y_test) = train_test_split(x_data.values,
+                                    y_data.values,
+                                    test_size=test_size)
+        x_train = pd.DataFrame(x_train, columns=self.features)
+        x_test = pd.DataFrame(x_test, columns=self.features)
+        y_train = pd.DataFrame(y_train, columns=[self.label])
+        y_test = pd.DataFrame(y_test, columns=[self.label])
+        train = pd.concat([x_train, y_train], axis=1, keys=['x', 'y'])
+        test = pd.concat([x_test, y_test], axis=1, keys=['x', 'y'])
+        return (train, test)
+
     def _update_fit_kwargs(self, fit_kwargs):
         """Update fit kwargs (only used for some models)."""
         return fit_kwargs
@@ -1926,7 +1915,7 @@ class MLRModel():
             raise iris.exceptions.CoordinateNotFoundError(
                 "Coordinate '{}' given in 'coords_as_features' not found in "
                 "reference cube for '{}'{}".format(tag, var_type, msg))
-        coord_array = np.ma.array(coord.points)
+        coord_array = np.ma.filled(coord.points, np.nan)
         coord_dims = ref_cube.coord_dims(coord)
         if coord_dims == ():
             logger.warning(
@@ -1935,19 +1924,16 @@ class MLRModel():
         else:
             new_axis_pos = np.delete(np.arange(ref_cube.ndim), coord_dims)
             for idx in new_axis_pos:
-                coord_array = np.ma.expand_dims(coord_array, idx)
-        mask = coord_array.mask
-        coord_array = np.broadcast_to(coord_array, ref_cube.shape, subok=True)
-        coord_array.mask = np.broadcast_to(mask, ref_cube.shape)
+                coord_array = np.expand_dims(coord_array, idx)
+        coord_array = np.broadcast_to(coord_array, ref_cube.shape)
         logger.debug("Added coordinate %s '%s'%s", var_type, tag, msg)
         return coord_array.ravel()
 
     @staticmethod
     def _get_cube_data(cube):
         """Get data from cube."""
-        if cube.shape == ():
-            return cube.data
-        return cube.data.ravel()
+        cube_data = np.ma.filled(cube.data, np.nan)
+        return cube_data.ravel()
 
     @staticmethod
     def _get_postprocessed_filename(path, ref_path):
@@ -1982,10 +1968,10 @@ class MLRModel():
     @staticmethod
     def _remove_missing_labels(x_data, y_data):
         """Remove missing values in the label data."""
-        mask = np.ma.getmaskarray(y_data)
-        new_x_data = x_data[~mask]
-        new_y_data = y_data[~mask]
-        diff = y_data.size - new_y_data.size
+        mask = y_data.isnull().values
+        new_x_data = x_data[~mask].reset_index(drop=True)
+        new_y_data = y_data[~mask].reset_index(drop=True)
+        diff = len(y_data.index) - len(new_y_data.index)
         if diff:
             logger.info(
                 "Removed %i training point(s) where labels were missing", diff)
