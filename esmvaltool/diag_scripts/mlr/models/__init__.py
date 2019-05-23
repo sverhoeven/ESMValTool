@@ -279,17 +279,17 @@ class MLRModel():
     @property
     def features(self):
         """Features of the model (read-only)."""
-        return self._classes['features'].columns.values
+        return self._classes['features'].index.values
 
     @property
     def features_types(self):
         """Types of the features of the model (read-only)."""
-        return self._classes['features'].loc['types']
+        return self._classes['features'].types
 
     @property
     def features_units(self):
         """Units of the features of the model (read-only)."""
-        return self._classes['features'].loc['units']
+        return self._classes['features'].units
 
     @property
     def group_attributes(self):
@@ -299,12 +299,12 @@ class MLRModel():
     @property
     def label(self):
         """Label of the model (read-only)."""
-        return self._classes['label'].columns.values[0]
+        return self._classes['label'].index.values[0]
 
     @property
     def label_units(self):
         """Units of the label of the model (read-only)."""
-        return self._classes['label'].loc['units'].values[0]
+        return self._classes['label'].units.values[0]
 
     @property
     def parameters(self):
@@ -1142,26 +1142,22 @@ class MLRModel():
                     "'accept_only_scalar_data' is given")
 
         # Convert to DataFrame and sort it
-        units = pd.DataFrame.from_dict(
-            units, orient='index', columns=['units'])
-        types = pd.DataFrame.from_dict(
-            types, orient='index', columns=['types'])
-        features = pd.concat([units, types], join='inner')
-        print(features)
-        assert 0
-        units = pd.DataFrame(units, index=['units'])
-        types = pd.DataFrame(types, index=['types'])
-        features = units.append(types)
-        features = features.reindex(sorted(features.columns), axis=1)
+        units = pd.DataFrame.from_dict(units,
+                                       orient='index',
+                                       columns=['units'])
+        types = pd.DataFrame.from_dict(types,
+                                       orient='index',
+                                       columns=['types'])
+        features = pd.concat([units, types], axis=1).sort_index()
 
         # Return features
         logger.info(
             "Found %i feature(s) (defined in 'prediction_input' data%s)",
-            len(features.columns), msg)
-        for feature in features.columns:
+            len(features.index), msg)
+        for feature in features.index:
             logger.debug("'%s' with units '%s' and type '%s'", feature,
-                         features.loc['units', feature],
-                         features.loc['types', feature])
+                         features.units.loc[feature],
+                         features.types.loc[feature])
         return features
 
     def _get_features_of_datasets(self, datasets, var_type, msg):
@@ -1239,7 +1235,9 @@ class MLRModel():
         logger.info(
             "Found label '%s' with units '%s' (defined in 'label' "
             "data)", labels[0], units)
-        label = pd.DataFrame({labels[0]: units}, index=['units'])
+        label = pd.DataFrame.from_dict({labels[0]: units},
+                                       orient='index',
+                                       columns=['units'])
         return label
 
     def _get_lime_feature_importance(self, x_data):
