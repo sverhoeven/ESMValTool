@@ -13,7 +13,13 @@ import iris
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pathos.multiprocessing as mp
+import seaborn as sns
 from cf_units import Unit
+from skater.core.explanations import Interpretation
+from skater.core.local_interpretation.lime.lime_tabular import \
+    LimeTabularExplainer
+from skater.model import InMemoryModel
 from sklearn import metrics
 from sklearn.decomposition import PCA
 from sklearn.exceptions import NotFittedError
@@ -22,14 +28,8 @@ from sklearn.model_selection import (GridSearchCV, LeaveOneOut,
                                      cross_val_score, train_test_split)
 from sklearn.preprocessing import StandardScaler
 
-import pathos.multiprocessing as mp
 from esmvaltool.diag_scripts import mlr
-from esmvaltool.diag_scripts.shared import (group_metadata, io, plot,
-                                            select_metadata)
-from skater.core.explanations import Interpretation
-from skater.core.local_interpretation.lime.lime_tabular import \
-    LimeTabularExplainer
-from skater.model import InMemoryModel
+from esmvaltool.diag_scripts.shared import group_metadata, io, select_metadata
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -110,9 +110,6 @@ class MLRModel():
     imputation_strategy : str, optional (default: 'remove')
         Strategy for the imputation of missing values in the features. Must be
         one of `remove`, `mean`, `median`, `most_frequent` or `constant`.
-    matplotlib_style_file : str, optional
-        Matplotlib style file (should be located in
-        `esmvaltool.diag_scripts.shared.plot.styles_python.matplotlib`).
     n_jobs : int, optional (default: 1)
         Maximum number of jobs spawned by this class.
     parameters : dict, optional
@@ -135,6 +132,9 @@ class MLRModel():
     return_lime_importance : bool, optional (default: False)
         Return cube with feature importance given by LIME (Local Interpretable
         Model-agnostic Explanations) during prediction.
+    seaborn_settings : dict, optional
+        Options for seaborn's `set()` method (affects all plots), see
+        <https://seaborn.pydata.org/generated/seaborn.set.html>.
     standardize_data : bool, optional (default: True)
         Linearly standardize input data by removing mean and scaling to unit
         variance.
@@ -232,10 +232,11 @@ class MLRModel():
         self._cfg.setdefault('return_lime_importance', False)
         self._cfg.setdefault('standardize_data', True)
         self._cfg.setdefault('test_size', 0.25)
-        plt.style.use(
-            plot.get_path_to_mpl_style(self._cfg.get('matplotlib_style_file')))
         logger.info("Using imputation strategy '%s'",
                     self._cfg['imputation_strategy'])
+
+        # Seaborn
+        sns.set(**self._cfg.get('seaborn_settings', {}))
 
         # Adapt output directories
         if root_dir is None:
@@ -549,6 +550,33 @@ class MLRModel():
         logger.info("Wrote %s", plot_path)
         plt.close()
 
+    def plot_pairplots(self, filename=None):
+        """Plot pairplots for features and labels.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'pairplot_{data_type}')
+            Name of the plot file.
+
+        """
+        if not self._is_ready_for_plotting():
+            return
+        logger.info("Plotting pairplots")
+        if filename is None:
+            filename = 'pairplot_{data_type}'
+
+        # Plot pairplots for all data types
+        for data_type in ('all', 'train', 'test'):
+            if data_type not in self.data:
+                continue
+            sns.pairplot(self.data[data_type])
+            new_filename = (filename.format(data_type=data_type) + '.' +
+                            self._cfg['output_file_type'])
+            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
+            logger.info("Wrote %s", new_path)
+            plt.close()
+
     def plot_partial_dependences(self, filename=None):
         """Plot partial dependences for every feature.
 
@@ -693,6 +721,19 @@ class MLRModel():
             self._postprocess_predictions(predictions, pred_types,
                                           **predict_kwargs)
 
+    def print_correlation_matrices(self):
+        """Print correlation matrices for all datasets."""
+        if not self._is_fitted():
+            logger.error(
+                "Printing correlation matrices not possible, MLR model is not "
+                "fitted yet")
+            return
+        for data_type in ('all', 'train', 'test'):
+            if data_type not in self.data:
+                continue
+            logger.info("Correlation matrix for %s data:", data_type)
+            logger.info(self.data[data_type].corr())
+
     def print_regression_metrics(self):
         """Print all available regression metrics for the test data."""
         if not self._is_fitted():
@@ -707,7 +748,7 @@ class MLRModel():
             'median_absolute_error',
             'r2_score',
         ]
-        for data_type in ('train', 'test'):
+        for data_type in ('all', 'train', 'test'):
             if data_type not in self.data:
                 continue
             logger.info("Evaluating regression metrics for %s data", data_type)

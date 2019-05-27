@@ -73,12 +73,16 @@ def main(cfg):
             mlr_model.grid_search_cv()
         else:
             mlr_model.fit()
-        mlr_model.export_training_data()
         mlr_model.predict()
-        mlr_model.export_prediction_data()
-        mlr_model.print_regression_metrics()
 
         # Output
+        mlr_model.export_training_data()
+        mlr_model.export_prediction_data()
+        mlr_model.print_correlation_matrices()
+        mlr_model.print_regression_metrics()
+
+        # Plots
+        mlr_model.plot_pairplots()
         mlr_model.plot_scatterplots()
         mlr_model.plot_lime()
         if not cfg.get('accept_only_scalar_data'):
