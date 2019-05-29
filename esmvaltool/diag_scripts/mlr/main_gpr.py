@@ -49,10 +49,10 @@ def get_grouped_datasets(cfg):
         group = preselection.get('group')
         grouped_datasets = group_metadata(input_data, group)
         if not grouped_datasets:
-            logger.error(
+            logger.warning(
                 "No input data found for this diagnostic matching the "
                 "specified criteria")
-            logger.error(pformat(preselection))
+            logger.warning(pformat(preselection))
     else:
         group = None
         grouped_datasets = {None: None}
@@ -94,8 +94,7 @@ def main(cfg):
                 george_kernels.ExpSquaredKernel(
                     1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
                 george_kernels.ConstantKernel(
-                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
-            )
+                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)]))
             mlr_model.update_parameters(
                 transformed_target_regressor__regressor__kernel=new_kernel)
 

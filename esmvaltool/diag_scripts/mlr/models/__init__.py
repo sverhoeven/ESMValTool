@@ -1,10 +1,10 @@
 """Base class for MLR models."""
 
-import copy
 import importlib
 import logging
 import os
 import re
+from copy import deepcopy
 from functools import partial
 from inspect import getfullargspec
 from pprint import pformat
@@ -24,6 +24,7 @@ from sklearn import metrics
 from sklearn.decomposition import PCA
 from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
+from sklearn.inspection import plot_partial_dependence
 from sklearn.model_selection import (GridSearchCV, LeaveOneOut,
                                      cross_val_score, train_test_split)
 from sklearn.preprocessing import StandardScaler
@@ -182,9 +183,9 @@ class MLRModel():
         """Create desired MLR model subclass (factory method)."""
         cls._load_mlr_models()
         if not cls._MODELS:
-            logger.error("No MLR models found, please add subclasses to "
-                         "'esmvaltool.diag_scripts.mlr.models' decorated by "
-                         "'MLRModel.register_mlr_model'")
+            logger.warning("No MLR models found, please add subclasses to "
+                           "'esmvaltool.diag_scripts.mlr.models' decorated by "
+                           "'MLRModel.register_mlr_model'")
             return cls(*args, **kwargs)
         default_model = list(cls._MODELS.keys())[0]
         if model not in cls._MODELS:
@@ -212,7 +213,7 @@ class MLRModel():
             `labels` (e.g. `dataset='CanESM2'`).
 
         """
-        self._cfg = copy.deepcopy(cfg)
+        self._cfg = deepcopy(cfg)
         self._clf = None
         self._data = {}
         self._data['pred'] = {}
@@ -265,7 +266,7 @@ class MLRModel():
                          self._cfg['parameters'])
         self.update_parameters(**self._cfg['parameters'])
 
-        # Log successful initialization
+        # Log successful initialerrorization
         logger.info("Initialized MLR model (using at most %i processes)",
                     self._cfg['n_jobs'])
         logger.debug("With parameters")
@@ -397,9 +398,9 @@ class MLRModel():
         if param_grid is not None:
             parameter_grid = param_grid
         if not parameter_grid:
-            logger.error(
-                "No parameter grid given (neither in recipe nor in grid_"
-                "search_cv() function)")
+            logger.warning(
+                "Cannot perform exhaustive grid search, no parameter grid "
+                "given (neither in recipe nor in grid_search_cv() function)")
             return
         logger.info(
             "Performing exhaustive grid search cross-validation with final "
@@ -407,10 +408,10 @@ class MLRModel():
             self._CLF_TYPE, parameter_grid, len(self.data['train'].index))
 
         # Get keyword arguments
-        log_level = {'debug': 2, 'info': 1}
+        verbosity = self._get_verbosity_parameters(GridSearchCV)
         cv_kwargs = {
             'n_jobs': self._cfg['n_jobs'],
-            'verbose': log_level.get(self._cfg['log_level'], 0),
+            **verbosity,
         }
         cv_kwargs.update(self._cfg.get('grid_search_cv_kwargs', {}))
         cv_kwargs.update(kwargs)
@@ -511,11 +512,11 @@ class MLRModel():
             return
         logger.info("Plotting LIME")
         if data_type not in self.data:
-            logger.error("Cannot plot LIME, got invalid data type '%s'",
-                         data_type)
+            logger.warning("Cannot plot LIME, got invalid data type '%s'",
+                           data_type)
             return
         if index >= len(self.data[data_type].index):
-            logger.error(
+            logger.warning(
                 "Cannot plot LIME, index %i is out of range for '%s' data",
                 index, data_type)
             return
@@ -569,7 +570,8 @@ class MLRModel():
         for data_type in ('all', 'train', 'test'):
             if data_type not in self.data:
                 continue
-            sns.pairplot(self.data[data_type])
+            data_frame = self._impute_nans(self.data[data_type])
+            sns.pairplot(data_frame)
             new_filename = (filename.format(data_type=data_type) + '.' +
                             self._cfg['output_file_type'])
             new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
@@ -591,23 +593,23 @@ class MLRModel():
         logger.info("Plotting partial dependences")
         if filename is None:
             filename = 'partial_dependece_{feature}'
-        progressbar = True if self._cfg['log_level'] == 'debug' else False
 
         # Plot for every feature
+        x_train = self._impute_nans(self.data['train']).x.values
+        verbosity = self._get_verbosity_parameters(plot_partial_dependence)
         for feature_name in self.features:
             logger.debug("Plotting partial dependence of '%s'", feature_name)
-            ((_, axes), ) = (self._skater['global_interpreter'].
-                             partial_dependence.plot_partial_dependence(
-                                 [feature_name],
-                                 self._skater['model'],
-                                 n_jobs=self._cfg['n_jobs'],
-                                 progressbar=progressbar,
-                                 with_variance=True))
-            axes.set_title('Partial dependence ({} Model)'.format(
-                self._CLF_TYPE))
-            axes.set_xlabel(feature_name)
-            axes.set_ylabel(self.label)
-            axes.get_legend().remove()
+            plot_partial_dependence(
+                self._clf,
+                x_train,
+                features=[feature_name],
+                feature_names=self.features,
+                n_jobs=self._cfg['n_jobs'],
+                **verbosity,
+            )
+            plt.title('Partial dependence ({} Model)'.format(self._CLF_TYPE))
+            plt.xlabel(f'{feature_name} / {self.features_units[feature_name]}')
+            plt.ylabel(f'Partial dependence on {self.label}')
             new_filename = (filename.format(feature=feature_name) + '.' +
                             self._cfg['output_file_type'])
             new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
@@ -679,7 +681,7 @@ class MLRModel():
 
         """
         if not self._is_fitted():
-            logger.error(
+            logger.warning(
                 "Prediction not possible, MLR model is not fitted yet")
             return
         logger.info("Started prediction")
@@ -692,8 +694,8 @@ class MLRModel():
 
         # Iterate over predictions
         if not self._datasets['prediction']:
-            logger.error("Prediction not possible, no 'prediction_input' "
-                         "datasets given")
+            logger.warning("Prediction not possible, no 'prediction_input' "
+                           "datasets given")
             return
         for pred_name in self._datasets['prediction']:
             if pred_name is not None:
@@ -724,7 +726,7 @@ class MLRModel():
     def print_correlation_matrices(self):
         """Print correlation matrices for all datasets."""
         if not self._is_fitted():
-            logger.error(
+            logger.warning(
                 "Printing correlation matrices not possible, MLR model is not "
                 "fitted yet")
             return
@@ -737,7 +739,7 @@ class MLRModel():
     def print_regression_metrics(self):
         """Print all available regression metrics for the test data."""
         if not self._is_fitted():
-            logger.error(
+            logger.warning(
                 "Printing regression metrics not possible, MLR model is not "
                 "fitted yet")
             return
@@ -871,7 +873,7 @@ class MLRModel():
         """Check if valid regressor type is given."""
         msg = '' if text is None else '{} not possible: '.format(text)
         if self._CLF_TYPE is None:
-            logger.error(
+            logger.warning(
                 "%sNo MLR model specified, please use factory function "
                 "'MLRModel.create()' to initialize this class or populate the "
                 "module 'esmvaltool.diag_scripts.mlr.models' if necessary",
@@ -906,7 +908,11 @@ class MLRModel():
 
         # Imputer
         if self._cfg['imputation_strategy'] != 'remove':
-            imputer = SimpleImputer(strategy=self._cfg['imputation_strategy'])
+            verbosity = self._get_verbosity_parameters(SimpleImputer)
+            imputer = SimpleImputer(
+                strategy=self._cfg['imputation_strategy'],
+                **verbosity,
+            )
             steps.append(('imputer', imputer))
 
         # Scaler
@@ -947,7 +953,7 @@ class MLRModel():
         """Estimate squared prediction error."""
         if not self._cfg.get('estimate_prediction_error'):
             return pred_dict
-        cfg = copy.deepcopy(self._cfg['estimate_prediction_error'])
+        cfg = deepcopy(self._cfg['estimate_prediction_error'])
         cfg.setdefault('type', 'cv')
         cfg.setdefault('kwargs', {})
         cfg['kwargs'].setdefault('cv', 5)
@@ -981,7 +987,7 @@ class MLRModel():
 
         # Get correct shape and mask
         if error is None:
-            logger.error(
+            logger.warning(
                 "Got invalid type for prediction error estimation, got '%s', "
                 "expected 'test' or 'cv'", cfg['type'])
             return pred_dict
@@ -1400,6 +1406,36 @@ class MLRModel():
             "No {} data{} without the option 'broadcast_from' found".format(
                 var_type, msg))
 
+    def _get_verbosity_parameters(self, function, boolean=False):
+        """Get verbosity parameters for class initialization."""
+        verbosity_params = {
+            'silent': {
+                'debug': False,
+                'info': False,
+                'default': True,
+            },
+            'verbose': {
+                'debug': 1,
+                'info': 0,
+                'default': 0,
+            },
+            'verbosity': {
+                'debug': 2,
+                'info': 1,
+                'default': 0,
+            },
+        }
+        parameters = {}
+        for (param, log_levels) in verbosity_params.items():
+            if param in getfullargspec(function).args:
+                parameters[param] = log_levels.get(self._cfg['log_level'],
+                                                   log_levels['default'])
+                if boolean:
+                    parameters[param] = bool(parameters[param])
+                logger.debug("Set verbosity parameter '%s' of %s to '%s'",
+                             param, str(function), parameters[param])
+        return parameters
+
     def _get_x_data_for_group(self, datasets, var_type, group_attr=None):
         """Get x data for a group of datasets."""
         msg = '' if group_attr is None else " for '{}'".format(group_attr)
@@ -1472,7 +1508,8 @@ class MLRModel():
     def _is_ready_for_plotting(self):
         """Check if the class is ready for plotting."""
         if not self._is_fitted():
-            logger.error("Plotting not possible, MLR model is not fitted yet")
+            logger.warning(
+                "Plotting not possible, MLR model is not fitted yet")
             return False
         if not self._cfg['write_plots']:
             logger.debug("Plotting not possible, 'write_plots' is set to "
@@ -1549,37 +1586,14 @@ class MLRModel():
         parameters = self._cfg.get('parameters_final_regressor', {})
         logger.debug("Found parameter(s) for final regressor in recipe: %s",
                      parameters)
-        verbosity_params = {
-            'silent': {
-                'debug': False,
-                'info': False,
-                'default': True,
-            },
-            'verbose': {
-                'debug': 1,
-                'info': 1,
-                'default': 0,
-            },
-            'verbosity': {
-                'debug': 2,
-                'info': 1,
-                'default': 0,
-            },
-        }
-        for (verbosity_param, log_level) in verbosity_params.items():
-            if verbosity_param in getfullargspec(self._CLF_TYPE).args:
-                parameters.setdefault(
-                    verbosity_param,
-                    log_level.get(self._cfg['log_level'],
-                                  log_level['default']))
-                logger.debug(
-                    "Set verbosity parameter '%s' of final regressor to '%s'",
-                    verbosity_param, parameters[verbosity_param])
+        verbosity_params = self._get_verbosity_parameters(self._CLF_TYPE)
+        for (param, verbosity) in verbosity_params.items():
+            parameters.setdefault(param, verbosity)
         return parameters
 
     def _load_input_datasets(self, **metadata):
         """Load input datasets (including ancestors)."""
-        input_datasets = copy.deepcopy(list(self._cfg['input_data'].values()))
+        input_datasets = deepcopy(list(self._cfg['input_data'].values()))
         input_datasets.extend(self._get_ancestor_datasets())
         mlr.datasets_have_mlr_attributes(input_datasets,
                                          log_level='warning',
@@ -1634,24 +1648,29 @@ class MLRModel():
 
     def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
-        x_train = np.copy(self.data['train'].x.values)
-        y_train = np.copy(self.data['train'].y.squeeze().values)
-        if self._cfg['imputation_strategy'] != 'remove':
-            x_train = self._clf.named_steps['imputer'].transform(x_train)
+        data_frame = self._impute_nans(self.data['train'])
+        x_train = data_frame.x.values
+        y_train = data_frame.y.squeeze().values
 
-        # Interpreters
-        verbosity = (True if self._cfg['log_level'] == 'debug'
-                     and not self._cfg['return_lime_importance'] else False)
+        # Global interpreter
         self._skater['global_interpreter'] = Interpretation(
             x_train, training_labels=y_train, feature_names=self.features)
         logger.debug("Loaded global skater interpreter with new training data")
+
+        # Local interpreter (LIME)
+        verbosity = self._get_verbosity_parameters(LimeTabularExplainer,
+                                                   boolean=True)
+        if self._cfg['return_lime_importance']:
+            for param in verbosity:
+                verbosity[param] = False
         self._skater['local_interpreter'] = LimeTabularExplainer(
             x_train,
             mode='regression',
             training_labels=y_train,
             feature_names=self.features,
-            verbose=verbosity,
-            class_names=[self.label])
+            class_names=[self.label],
+            **verbosity,
+        )
         logger.debug(
             "Loaded local skater interpreter (LIME) with new training data")
 
@@ -1772,7 +1791,7 @@ class MLRModel():
             else:
                 if cov_weights is not None:
                     if cube.shape != cov_weights.shape:
-                        logger.error(
+                        logger.warning(
                             "Cannot postprocess all prediction cubes, "
                             "expected shapes %s or %s (for covariance), got "
                             "%s", ref_shape, cov_weights.shape, cube.shape)
@@ -1823,6 +1842,16 @@ class MLRModel():
                     self.group_attributes[~mask])
             logger.info(msg, diff)
         return (new_x_data, new_y_data)
+
+    def _impute_nans(self, data_frame, copy=True):
+        """Impute all nans of a `data_frame`."""
+        if copy:
+            data_frame = data_frame.copy()
+        if 'imputer' in self._clf.named_steps:
+            new_x = self._clf.named_steps['imputer'].transform(
+                data_frame.x.values)
+            data_frame.x.values[:] = new_x
+        return data_frame
 
     def _save_csv_file(self, data_type, filename, pred_name=None):
         """Save CSV file."""

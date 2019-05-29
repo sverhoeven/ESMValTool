@@ -119,11 +119,11 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
         # Additional runs (chosen from log-uniform intitial theta)
         if self.n_restarts_optimizer > 0:
             if not np.all(np.isfinite(bounds)):
-                logger.error(
+                logger.warning(
                     "Multiple optimizer restarts (n_restarts_optimizer > 0) "
                     "require that all bounds are given and finite, for "
                     "parameters %s, got", self._gp.get_parameter_names())
-                logger.error(pformat(bounds))
+                logger.warning(pformat(bounds))
             else:
                 for idx in range(self.n_restarts_optimizer):
                     logger.debug(
@@ -191,7 +191,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
                 logger.debug("Set parameter '%s' of george GP member to '%s'",
                              self._str_to_sklearn(key), val)
             else:
-                logger.error(
+                logger.warning(
                     "Parameter '%s' is not a valid parameter of the GP member "
                     "anymore, it was removed after new initialization with "
                     "other parameters", self._str_to_sklearn(key))
@@ -263,8 +263,8 @@ class GeorgeGPRModel(MLRModel):
     def print_kernel_info(self):
         """Print information of the fitted kernel of the GPR model."""
         if not self._is_fitted():
-            logger.error("Printing kernel not possible because the model is "
-                         "not fitted yet, call fit() first")
+            logger.warning("Printing kernel not possible because the model is "
+                           "not fitted yet, call fit() first")
             return
         clf = self._clf.steps[-1][1].regressor_
         logger.info("Fitted kernel: %s", clf.kernel)

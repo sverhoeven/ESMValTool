@@ -105,7 +105,7 @@ def _get_area_weights(cfg, cube):
         for coord in cube.coords(dim_coords=True):
             if not coord.has_bounds():
                 logger.debug("Guessing bounds of coordinate '%s' of cube",
-                             coord.name)
+                             coord.name())
                 logger.debug(cube)
                 coord.guess_bounds()
         if _has_valid_coords(cube, ['latitude', 'longitude']):
@@ -133,7 +133,7 @@ def _get_time_weights(cfg, cube):
         for coord in cube.coords(dim_coords=True):
             if not coord.has_bounds():
                 logger.debug("Guessing bounds of coordinate '%s' of cube",
-                             coord.name)
+                             coord.name())
                 logger.debug(cube)
                 coord.guess_bounds()
         if _has_valid_coords(cube, ['time']):

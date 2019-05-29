@@ -46,10 +46,10 @@ def get_grouped_datasets(cfg):
         group = preselection.get('group')
         grouped_datasets = group_metadata(input_data, group)
         if not grouped_datasets:
-            logger.error(
+            logger.warning(
                 "No input data found for this diagnostic matching the "
                 "specified criteria")
-            logger.error(pformat(preselection))
+            logger.warning(pformat(preselection))
     else:
         group = None
         grouped_datasets = {None: None}
@@ -88,8 +88,6 @@ def main(cfg):
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
             mlr_model.plot_partial_dependences()
-        if model_type == 'gbr_sklearn':
-            mlr_model.plot_gbr_partial_dependences()
         if 'gbr' in model_type:
             mlr_model.plot_gbr_feature_importance()
             mlr_model.plot_prediction_error()

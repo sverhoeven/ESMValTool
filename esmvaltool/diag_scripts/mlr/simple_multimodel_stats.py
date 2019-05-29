@@ -256,8 +256,8 @@ def plot(cfg, cubes, error_cubes, datasets):
     elif cubes[0].ndim == 1:
         plot_func = _plot_1d_cubes
     else:
-        logger.error("Plotting of %i-dimensional cubes is not supported yet",
-                     cubes[0].ndim)
+        logger.warning("Plotting of %i-dimensional cubes is not supported yet",
+                       cubes[0].ndim)
         return
     (axes, legend) = plot_func(cubes_to_plot, error_cubes_to_plot)
 
