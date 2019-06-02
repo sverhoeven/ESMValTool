@@ -16,9 +16,8 @@ import pandas as pd
 import pathos.multiprocessing as mp
 import seaborn as sns
 from cf_units import Unit
+from lime.lime_tabular import LimeTabularExplainer
 from skater.core.explanations import Interpretation
-from skater.core.local_interpretation.lime.lime_tabular import \
-    LimeTabularExplainer
 from skater.model import InMemoryModel
 from sklearn import metrics
 from sklearn.decomposition import PCA
@@ -733,8 +732,8 @@ class MLRModel():
         for data_type in ('all', 'train', 'test'):
             if data_type not in self.data:
                 continue
-            logger.info("Correlation matrix for %s data:", data_type)
-            logger.info(self.data[data_type].corr())
+            logger.info("Correlation matrix for %s data:\n%s", data_type,
+                        self.data[data_type].corr())
 
     def print_regression_metrics(self):
         """Print all available regression metrics for the test data."""
@@ -1589,6 +1588,8 @@ class MLRModel():
         verbosity_params = self._get_verbosity_parameters(self._CLF_TYPE)
         for (param, verbosity) in verbosity_params.items():
             parameters.setdefault(param, verbosity)
+        if 'n_jobs' in getfullargspec(self._CLF_TYPE).args:
+            parameters.setdefault('n_jobs', self._cfg['n_jobs'])
         return parameters
 
     def _load_input_datasets(self, **metadata):
@@ -1669,10 +1670,10 @@ class MLRModel():
             training_labels=y_train,
             feature_names=self.features,
             class_names=[self.label],
+            sample_around_instance=True,
             **verbosity,
         )
-        logger.debug(
-            "Loaded local skater interpreter (LIME) with new training data")
+        logger.debug("Loaded LIME explainer with new training data")
 
         # Model
         example_size = min(y_train.size, 20)

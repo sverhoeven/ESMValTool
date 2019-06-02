@@ -29,10 +29,9 @@ class GBRModel(MLRModel):
         ----
         In contrast to the general implementation of feature importance using
         model scoring or prediction variance (done via the module
-        :mod:`skater`), this function uses a specific procedure for GBR based
-        on the number of appearances of that feature in the regression trees
-        and the improvements made by the individual splits (see Friedman,
-        2001).
+        :mod:`skater`), this function uses properties of the GBR model based on
+        the number of appearances of that feature in the regression trees and
+        the improvements made by the individual splits (see Friedman, 2001).
 
         Parameters
         ----------
@@ -53,10 +52,20 @@ class GBRModel(MLRModel):
         sorted_idx = np.argsort(feature_importance)
         pos = np.arange(sorted_idx.shape[0]) + 0.5
         axes.barh(pos, feature_importance[sorted_idx], align='center')
+
+        # Plot appearance
+        if 'pca' in self._clf.named_steps:
+            pca_features = np.array([
+                f'Principal component {idx}'
+                for idx in range(self.features.size)
+            ])
+            y_tick_labels = pca_features[sorted_idx]
+        else:
+            y_tick_labels = self.features[sorted_idx]
         axes.set_title(f'Variable Importance ({str(self._CLF_TYPE)} Model)')
         axes.set_xlabel('Relative Importance')
         axes.set_yticks(pos)
-        axes.set_yticklabels(self.features[sorted_idx])
+        axes.set_yticklabels(y_tick_labels)
         new_filename = filename + '.' + self._cfg['output_file_type']
         new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
         plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
