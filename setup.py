@@ -33,6 +33,7 @@ REQUIREMENTS = {
         'cython',
         'eofs',
         'fiona',
+        'lime',
         'matplotlib<3',
         'nc-time-axis',  # needed by iris.plot
         'netCDF4',
