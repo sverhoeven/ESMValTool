@@ -995,7 +995,7 @@ class MLRModel():
             return
         steps = []
         numerical_features_idx = [
-            np.where(self.features == tag)[0][0]
+            int(np.where(self.features == tag)[0][0])
             for tag in self.numerical_features
         ]
 
@@ -1014,20 +1014,18 @@ class MLRModel():
 
         # Scaler for numerical features
         if self._cfg['standardize_data']:
-            x_scaler = StandardScaler()
-            # x_scaler = ColumnTransformer(
-            #     [('', StandardScaler(), numerical_features_idx)],
-            #     remainder='passthrough',
-            # )
+            x_scaler = ColumnTransformer(
+                [('', StandardScaler(), numerical_features_idx)],
+                remainder='passthrough',
+            )
             steps.append(('x_scaler', x_scaler))
 
         # PCA for numerical features
         if self._cfg['pca']:
-            pca = PCA()
-            # pca = ColumnTransformer(
-            #     [('', PCA(), numerical_features_idx)],
-            #     remainder='passthrough',
-            # )
+            pca = ColumnTransformer(
+                [('', PCA(), numerical_features_idx)],
+                remainder='passthrough',
+            )
             steps.append(('pca', pca))
 
         # Final regressor
