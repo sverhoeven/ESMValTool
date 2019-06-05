@@ -16,8 +16,8 @@ documentation:
 
 
 DATASET_ANCHOR: &datasets
-  - {dataset: bcc-csm1-1}
-  - {dataset: bcc-csm1-1-m}
+  # - {dataset: bcc-csm1-1}
+  # - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
   - {dataset: CanESM2}
   - {dataset: CCSM4}
@@ -162,8 +162,8 @@ diagnostics:
         tag: LAI
         convert_units_to: null
 
-  diag_mlr:
-    description: Perform MLR on input data.
+  diag_mlr_gpp:
+    description: Perform MLR on GPP.
     variables:
       ref: &variable_settings_ref
         <<: *variable_settings_features
@@ -187,10 +187,10 @@ diagnostics:
           matched_by: ['dataset']
         tag: GPP_change
         convert_units_to: 't km-2 yr-1'
-      mlr:
+      mlr: &mlr
         script: mlr/main.py
         ancestors: [
-          'diag_mlr/monthly_clim',
+          'diag_mlr_gpp/monthly_clim',
           'diag_mlr_input_*/monthly_clim',
         ]
         coords_as_features: ['month_number', 'latitude', 'longitude']
@@ -200,33 +200,58 @@ diagnostics:
           cv: 5
         grid_search_cv_param_grid:
           transformed_target_regressor__regressor__learning_rate:
-            [0.1, 0.05, 0.01]
+            [0.08, 0.05]
           transformed_target_regressor__regressor__max_depth:
-            [4, 6, 8]
-          transformed_target_regressor__regressor__n_estimators:
-            [2000, 3000, 4000]
+            [6, 8]
+          # transformed_target_regressor__regressor__n_estimators:
+          #   [2000, 3000, 4000]
           # transformed_target_regressor__regressor__subsample:
           #   [0.2, 0.5, 1.0]
         group_datasets_by_attributes: ['dataset']
-        mlr_model: gbr_sklearn
+        mlr_model: gbr_xgboost
         n_jobs: 24
         parameters_final_regressor:
-          loss: ls
-          # max_depth: 8
+          # max_depth: 6
           # learning_rate: 0.05
-          # n_estimators: 2000
+          n_estimators: 2000
           subsample: 0.5
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']
           units: 'Gt yr-1'
-      evaluate_mlr_models:
+      evaluate_mlr_models: &evaluate
         script: mlr/simple_multimodel_stats.py
-        ancestors: ['diag_mlr/mlr']
+        ancestors: ['diag_mlr_gpp/mlr']
         pattern: '*pp.nc'
         pattern_errors: '*pp_error_estim*'
         std: true
         unweighted_mean: true
+
+  diag_mlr_nbp:
+    description: Perform MLR on NBP.
+    variables:
+      ref:
+        <<: *variable_settings_ref
+        short_name: nbp_grid
+      label:
+        <<: *variable_settings_label
+        short_name: nbp_grid
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        anomaly:
+          matched_by: ['dataset']
+        tag: NBP_change
+        convert_units_to: 't km-2 yr-1'
+      mlr:
+        <<: *mlr
+        ancestors: [
+          'diag_mlr_nbp/monthly_clim',
+          'diag_mlr_input_*/monthly_clim',
+        ]
+      evaluate_mlr_models:
+        <<: *evaluate
+        ancestors: ['diag_mlr_nbp/mlr']
 
   diag_mmm:
     description: Calculate simple multi-model mean of label data.
