@@ -84,7 +84,8 @@ def main(cfg):
         # Plots
         mlr_model.plot_pairplots()
         mlr_model.plot_scatterplots()
-        mlr_model.plot_lime()
+        for idx in range(10):
+            mlr_model.plot_lime(idx)
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
             mlr_model.plot_partial_dependences()

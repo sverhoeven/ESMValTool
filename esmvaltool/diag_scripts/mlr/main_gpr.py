@@ -94,9 +94,9 @@ def main(cfg):
                 george_kernels.ExpSquaredKernel(
                     1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
                 george_kernels.ConstantKernel(
-                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)]))
-            mlr_model.update_parameters(
-                transformed_target_regressor__regressor__kernel=new_kernel)
+                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
+            )
+            mlr_model.update_parameters(final__regressor__kernel=new_kernel)
 
         # Fit and predict
         if cfg.get('grid_search_cv_param_grid'):
@@ -114,7 +114,8 @@ def main(cfg):
         # Plots
         mlr_model.plot_pairplots()
         mlr_model.plot_scatterplots()
-        mlr_model.plot_lime()
+        for idx in range(10):
+            mlr_model.plot_lime(idx)
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
             mlr_model.plot_partial_dependences()

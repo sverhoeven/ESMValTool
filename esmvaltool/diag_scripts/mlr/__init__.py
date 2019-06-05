@@ -103,7 +103,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
             y_2d = y_data
         self._fit_transformer(y_2d)
 
-    def predict(self, x_data, **predict_kwargs):
+    def predict(self, x_data, always_return_1d=True, **predict_kwargs):
         """Expand `predict()` method to accept kwargs."""
         predict_kwargs = dict(predict_kwargs)
         check_is_fitted(self, "regressor_")
@@ -124,8 +124,10 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
                 pred.reshape(-1, 1))
         else:
             pred_trans = self.transformer_.inverse_transform(pred)
-        if (self._training_dim == 1 and pred_trans.ndim == 2
-                and pred_trans.shape[1] == 1):
+        squeeze = pred_trans.ndim == 2 and pred_trans.shape[1] == 1
+        if not always_return_1d:
+            squeeze = squeeze and self._training_dim == 1
+        if squeeze:
             pred_trans = pred_trans.squeeze(axis=1)
         if not (return_var or return_cov):
             return pred_trans

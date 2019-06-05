@@ -276,7 +276,7 @@ def calculate_trend(cfg, cube, data):
         data['standard_name'] += '_trend'
         data['short_name'] += '_trend'
         data['long_name'] += ' (trend)'
-        data['units'] += ' {}'.format(time_units)
+        data['units'] += f' {time_units}'
     return (cube, data)
 
 

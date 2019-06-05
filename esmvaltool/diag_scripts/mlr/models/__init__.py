@@ -20,6 +20,7 @@ from lime.lime_tabular import LimeTabularExplainer
 from skater.core.explanations import Interpretation
 from skater.model import InMemoryModel
 from sklearn import metrics
+from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import PCA
 from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
@@ -122,7 +123,8 @@ class MLRModel():
         have to be given for each step of the pipeline seperated by two
         underscores, i.e. `s__p` is the parameter `p` for step `s`.
     pca : bool, optional (default: True)
-        Preprocess input features using PCA.
+        Preprocess numerical input features using PCA. Parameters for this
+        pipeline step can be given via the `parameters` key.
     predict_kwargs : dict, optional
         Optional keyword arguments for the regressor's `predict()` function.
     prediction_pp : dict, optional
@@ -136,8 +138,8 @@ class MLRModel():
         Options for seaborn's `set()` method (affects all plots), see
         <https://seaborn.pydata.org/generated/seaborn.set.html>.
     standardize_data : bool, optional (default: True)
-        Linearly standardize input data by removing mean and scaling to unit
-        variance.
+        Linearly standardize numerical input data by removing mean and scaling
+        to unit variance.
     test_size : float, optional (default: 0.25)
         If given, exclude the desired fraction of input data from training and
         use it as test data.
@@ -272,6 +274,11 @@ class MLRModel():
         logger.debug(pformat(self.parameters))
 
     @property
+    def categorical_features(self):
+        """Categorical features (read-only)."""
+        return self.features[self._classes['features'].categorical]
+
+    @property
     def data(self):
         """Input data of the model (read-only)."""
         return self._data
@@ -305,6 +312,11 @@ class MLRModel():
     def label_units(self):
         """Units of the label of the model (read-only)."""
         return self._classes['label'].units.values[0]
+
+    @property
+    def numerical_features(self):
+        """Numerical features (read-only)."""
+        return self.features[~self._classes['features'].categorical]
 
     @property
     def parameters(self):
@@ -360,9 +372,7 @@ class MLRModel():
         fit_kwargs = self._update_fit_kwargs(fit_kwargs)
 
         # Create MLR model with desired parameters and fit it
-        x_train = self.data['train'].x.values
-        y_train = self.data['train'].y.squeeze().values
-        self._clf.fit(x_train, y_train, **fit_kwargs)
+        self._clf.fit(self.data['train'].x, self.data['train'].y, **fit_kwargs)
         self._parameters = self._get_clf_parameters()
         logger.info("Successfully fitted MLR model on %i training point(s)",
                     len(self.data['train'].index))
@@ -373,6 +383,90 @@ class MLRModel():
 
         # Interpretation
         self._load_skater_interpreters()
+
+    def get_data_frame(self, data_type, impute_nans=False):
+        """Return data frame of specfied type.
+
+        Parameters
+        ----------
+        data_type : str
+            Data type to be returned (one of `'all'`, `'train'` or `'test'`).
+        impute_nans : bool, optional (default: False)
+            Impute nans if desired.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Desired data.
+
+        Raises
+        ------
+        TypeError
+            `data_type` is invalid or data does not exist (e.g. test data is
+            not set).
+
+        """
+        allowed_types = ('all', 'train', 'test')
+        if data_type not in allowed_types:
+            raise TypeError(
+                f"'{data_type}' is not an allowed type, specify one of "
+                f"'{allowed_types}'")
+        if data_type not in self.data:
+            raise TypeError(f"No '{data_type}' data available")
+        data_frame = self.data[data_type]
+        if impute_nans:
+            data_frame = self._impute_nans(data_frame)
+        return data_frame
+
+    def get_x_data(self, data_type, impute_nans=False):
+        """Return x data of specific type as :mod:`numpy.array`.
+
+        Parameters
+        ----------
+        data_type : str
+            Data type to be returned (one of `'all'`, `'train'` or `'test'`).
+        impute_nans : bool, optional (default: False)
+            Impute nans if desired.
+
+        Returns
+        -------
+        numpy.array
+            Desired data.
+
+        Raises
+        ------
+        TypeError
+            `data_type` is invalid or data does not exist (e.g. test data is
+            not set).
+
+        """
+        data_frame = self.get_data_frame(data_type, impute_nans=impute_nans)
+        return data_frame.x.values
+
+    def get_y_data(self, data_type, impute_nans=False):
+        """Return y data of specific type as :mod:`numpy.array`.
+
+        Parameters
+        ----------
+        data_type : str
+            Data type to be returned (one of `'all'`, `'train'` or `'test'`).
+        impute_nans : bool, optional (default: False)
+            Impute nans if desired.
+
+        Returns
+        -------
+        numpy.array
+            Desired data.
+
+        Raises
+        ------
+        TypeError
+            `data_type` is invalid or data does not exist (e.g. test data is
+            not set).
+
+        """
+        data_frame = self.get_data_frame(data_type, impute_nans=impute_nans)
+        return data_frame.y.squeeze().values
 
     def grid_search_cv(self, param_grid=None, **kwargs):
         """Perform exhaustive parameter search using cross-validation.
@@ -427,16 +521,15 @@ class MLRModel():
 
         # Create and fit GridSearchCV instance
         clf = GridSearchCV(self._clf, parameter_grid, **cv_kwargs)
-        x_train = self.data['train'].x.values
-        y_train = self.data['train'].y.squeeze().values
-        clf.fit(x_train, y_train, **fit_kwargs)
+        clf.fit(self.data['train'].x, self.data['train'].y, **fit_kwargs)
 
         # Try to find best estimator
         if hasattr(clf, 'best_estimator_'):
             self._clf = clf.best_estimator_
         elif hasattr(clf, 'best_params_'):
             self.update_parameters(**clf.best_params_)
-            self._clf.fit(x_train, y_train, **fit_kwargs)
+            self._clf.fit(self.data['train'].x, self.data['train'].y,
+                          **fit_kwargs)
         else:
             raise ValueError(
                 "GridSearchCV not successful, cannot determine best estimator "
@@ -484,8 +577,7 @@ class MLRModel():
                                                  method=method,
                                                  n_jobs=self._cfg['n_jobs'],
                                                  progressbar=progressbar))
-            axes.set_title('Variable Importance ({} Model)'.format(
-                self._CLF_TYPE))
+            axes.set_title(f'Variable Importance ({self._CLF_TYPE} Model)')
             axes.set_xlabel('Relative Importance')
             new_filename = (filename.format(method=method) + '.' +
                             self._cfg['output_file_type'])
@@ -594,7 +686,7 @@ class MLRModel():
             filename = 'partial_dependece_{feature}'
 
         # Plot for every feature
-        x_train = self._impute_nans(self.data['train']).x.values
+        x_train = self.get_x_data('train', impute_nans=True)
         verbosity = self._get_verbosity_parameters(plot_partial_dependence)
         for feature_name in self.features:
             logger.debug("Plotting partial dependence of '%s'", feature_name)
@@ -603,10 +695,9 @@ class MLRModel():
                 x_train,
                 features=[feature_name],
                 feature_names=self.features,
-                n_jobs=self._cfg['n_jobs'],
                 **verbosity,
             )
-            plt.title('Partial dependence ({} Model)'.format(self._CLF_TYPE))
+            plt.title(f'Partial dependence ({self._CLF_TYPE} Model)')
             plt.xlabel(f'{feature_name} / {self.features_units[feature_name]}')
             plt.ylabel(f'Partial dependence on {self.label}')
             new_filename = (filename.format(feature=feature_name) + '.' +
@@ -652,12 +743,11 @@ class MLRModel():
                                      borderaxespad=0.0)
             else:
                 axes.plot(self.data['all'].x.loc[:, feature],
-                          self.data['all'].y.squeeze().values, '.')
+                          self.get_y_data('all'), '.')
                 legend = None
             axes.set_title(feature)
-            axes.set_xlabel('{} / {}'.format(feature,
-                                             self.features_units[feature]))
-            axes.set_ylabel('{} / {}'.format(self.label, self.label_units))
+            axes.set_xlabel(f'{feature} / {self.features_units[feature]}')
+            axes.set_ylabel(f'{self.label} / {self.label_units}')
             new_path = os.path.join(
                 self._cfg['mlr_plot_dir'],
                 filename.format(feature=feature) + '.' +
@@ -753,8 +843,8 @@ class MLRModel():
             if data_type not in self.data:
                 continue
             logger.info("Evaluating regression metrics for %s data", data_type)
-            x_data = self.data[data_type].x.values
-            y_true = self.data[data_type].y.squeeze().values
+            x_data = self.get_x_data(data_type)
+            y_true = self.get_y_data(data_type)
             y_pred = self._clf.predict(x_data)
             y_norm = np.std(y_true)
             for metric in regression_metrics:
@@ -800,23 +890,23 @@ class MLRModel():
 
     def _check_cube_coords(self, cube, expected_coords, text=None):
         """Check shape and coordinates of a given cube."""
-        msg = '' if text is None else ' for {}'.format(text)
+        msg = '' if text is None else f' for {text}'
         if self._cfg.get('accept_only_scalar_data'):
             allowed_shapes = [(), (1, )]
             if cube.shape not in allowed_shapes:
                 raise ValueError(
-                    "Expected only cubes with shapes {} when option 'accept_"
-                    "only_scalar_data' is set to 'True', got {}{}".format(
-                        allowed_shapes, cube.shape, msg))
+                    f"Expected only cubes with shapes {allowed_shapes} when "
+                    f"option 'accept_only_scalar_data' is set to 'True', got "
+                    f"{cube.shape}{msg}")
         else:
             if expected_coords is not None:
                 cube_coords = cube.coords(dim_coords=True)
                 cube_coords_str = [
-                    '{}, shape {}'.format(coord.name(), coord.shape)
+                    f'{coord.name()}, shape {coord.shape}'
                     for coord in cube_coords
                 ]
                 expected_coords_str = [
-                    '{}, shape {}'.format(coord.name(), coord.shape)
+                    f'{coord.name()}, shape {coord.shape}'
                     for coord in expected_coords
                 ]
                 if cube_coords_str != expected_coords_str:
@@ -843,34 +933,34 @@ class MLRModel():
         msg = '' if text is None else text
         if not datasets:
             if var_type == 'label':
-                raise ValueError("Label '{}'{} not found".format(tag, msg))
+                raise ValueError(f"Label '{tag}'{msg} not found")
             if not self._cfg.get('allow_missing_features'):
                 raise ValueError(
-                    "{} '{}'{} not found, use 'allow_missing_features' to "
-                    "ignore this".format(var_type, tag, msg))
+                    f"{var_type} '{tag}'{msg} not found, use 'allow_missing_"
+                    f"features' to ignore this")
             logger.info(
                 "Ignored missing %s '%s'%s since 'allow_missing_features' is "
                 "set to 'True'", var_type, tag, msg)
             return None
         if len(datasets) > 1:
             raise ValueError(
-                "{} '{}'{} not unique, consider the use if '**metadata' in "
-                "class initialization to pre-select datasets of specify "
-                "suitable attributes to group datasets with the option "
-                "'group_datasets_by_attributes'".format(var_type, tag, msg))
+                f"{var_type} '{tag}'{msg} not unique, consider the use if "
+                f"'**metadata' in class initialization to pre-select datasets "
+                f"of specify suitable attributes to group datasets with the "
+                f"option 'group_datasets_by_attributes'")
         if var_type == 'label':
             units = self.label_units
         else:
             units = self.features_units[tag]
         if units != Unit(datasets[0]['units']):
             raise ValueError(
-                "Expected units '{}' for {} '{}'{}, got '{}'".format(
-                    units, var_type, tag, msg, datasets[0]['units']))
+                f"Expected units '{units}' for {var_type} '{tag}'{msg}, got "
+                f"'{datasets[0]['units']}'")
         return datasets[0]
 
     def _clf_is_valid(self, text=None):
         """Check if valid regressor type is given."""
-        msg = '' if text is None else '{} not possible: '.format(text)
+        msg = '' if text is None else f'{text} not possible: '
         if self._CLF_TYPE is None:
             logger.warning(
                 "%sNo MLR model specified, please use factory function "
@@ -904,6 +994,14 @@ class MLRModel():
         if not self._clf_is_valid(text='Creating pipeline'):
             return
         steps = []
+        numerical_features_idx = [
+            np.where(self.features == tag)[0][0]
+            for tag in self.numerical_features
+        ]
+
+        # DataFrame to numpy converter
+        steps.append(('pandas_to_numpy_converter',
+                      ColumnTransformer([], remainder='passthrough')))
 
         # Imputer
         if self._cfg['imputation_strategy'] != 'remove':
@@ -914,23 +1012,36 @@ class MLRModel():
             )
             steps.append(('imputer', imputer))
 
-        # Scaler
-        scale_data = self._cfg['standardize_data']
-        x_scaler = StandardScaler(with_mean=scale_data, with_std=scale_data)
-        y_scaler = StandardScaler(with_mean=scale_data, with_std=scale_data)
-        steps.append(('x_scaler', x_scaler))
+        # Scaler for numerical features
+        if self._cfg['standardize_data']:
+            x_scaler = StandardScaler()
+            # x_scaler = ColumnTransformer(
+            #     [('', StandardScaler(), numerical_features_idx)],
+            #     remainder='passthrough',
+            # )
+            steps.append(('x_scaler', x_scaler))
 
-        # PCA
+        # PCA for numerical features
         if self._cfg['pca']:
             pca = PCA()
+            # pca = ColumnTransformer(
+            #     [('', PCA(), numerical_features_idx)],
+            #     remainder='passthrough',
+            # )
             steps.append(('pca', pca))
 
-        # Regressor
+        # Final regressor
         final_parameters = self._load_final_parameters()
-        regressor = self._CLF_TYPE(**final_parameters)
-        transformed_regressor = mlr.AdvancedTransformedTargetRegressor(
-            transformer=y_scaler, regressor=regressor)
-        steps.append(('transformed_target_regressor', transformed_regressor))
+        final_regressor = self._CLF_TYPE(**final_parameters)
+
+        # Transformer for labels if desired (if not, add pd to np converter)
+        if self._cfg['standardize_data']:
+            y_scaler = StandardScaler()
+        else:
+            y_scaler = StandardScaler(with_mean=False, with_std=False)
+        transformed_target_regressor = mlr.AdvancedTransformedTargetRegressor(
+            transformer=y_scaler, regressor=final_regressor)
+        steps.append(('final', transformed_target_regressor))
 
         # Final pipeline
         if self._cfg['cache_intermediate_results']:
@@ -1037,8 +1148,9 @@ class MLRModel():
         """Extract required x data of type `var_type` from `datasets`."""
         allowed_types = ('feature', 'prediction_input')
         if var_type not in allowed_types:
-            raise ValueError("Excepted one of '{}' for 'var_type', got "
-                             "'{}'".format(allowed_types, var_type))
+            raise ValueError(
+                f"Excepted one of '{allowed_types}' for 'var_type', got "
+                f"'{var_type}'")
 
         # Collect data from datasets and return it
         datasets = select_metadata(datasets, var_type=var_type)
@@ -1055,9 +1167,9 @@ class MLRModel():
                                              group_attribute=group_attr)
             if group_attr is not None:
                 logger.info("Loading '%s' data of '%s'", var_type, group_attr)
-            msg = '' if group_attr is None else " for '{}'".format(group_attr)
+            msg = '' if group_attr is None else f" for '{group_attr}'"
             if not group_datasets:
-                raise ValueError("No '{}' data{} found".format(var_type, msg))
+                raise ValueError(f"No '{var_type}' data{msg} found")
             (group_data,
              cube) = self._get_x_data_for_group(group_datasets, var_type,
                                                 group_attr)
@@ -1072,11 +1184,11 @@ class MLRModel():
         for group_attr in self.group_attributes:
             if group_attr is not None:
                 logger.info("Loading 'label' data of '%s'", group_attr)
-            msg = '' if group_attr is None else " for '{}'".format(group_attr)
+            msg = '' if group_attr is None else f" for '{group_attr}'"
             datasets_ = select_metadata(datasets, group_attribute=group_attr)
             dataset = self._check_dataset(datasets_, 'label', self.label, msg)
             cube = self._load_cube(dataset)
-            text = "label '{}'{}".format(self.label, msg)
+            text = f"label '{self.label}'{msg}"
             self._check_cube_coords(cube, None, text)
             cube_data = pd.DataFrame(self._get_cube_data(cube),
                                      columns=[self.label],
@@ -1154,16 +1266,26 @@ class MLRModel():
         logger.debug("Extracting features from 'prediction_input' datasets")
         pred_name = list(self._datasets['prediction'].keys())[0]
         datasets = self._datasets['prediction'][pred_name]
-        msg = ('' if pred_name is None else
-               " for prediction '{}'".format(pred_name))
+        msg = ('' if pred_name is None else f" for prediction '{pred_name}'")
         (units,
          types) = self._get_features_of_datasets(datasets, 'prediction_input',
                                                  msg)
 
+        # Mark categorical variables
+        categorical = {feature: False for feature in types}
+        for tag in self._cfg.get('categorical_features', []):
+            if tag in categorical:
+                logger.debug("Treating '%s' as categorical feature", tag)
+                categorical[tag] = True
+            else:
+                logger.warning(
+                    "Cannot treat '%s' as categorical variable, "
+                    "feature not found", tag)
+
         # Check if features were found
         if not units:
             raise ValueError(
-                "No features for 'prediction_input' data{} found".format(msg))
+                f"No features for 'prediction_input' data{msg} found")
 
         # Check for wrong options
         if self._cfg.get('accept_only_scalar_data'):
@@ -1183,7 +1305,10 @@ class MLRModel():
         types = pd.DataFrame.from_dict(types,
                                        orient='index',
                                        columns=['types'])
-        features = pd.concat([units, types], axis=1).sort_index()
+        categorical = pd.DataFrame.from_dict(categorical,
+                                             orient='index',
+                                             columns=['categorical'])
+        features = pd.concat([units, types, categorical], axis=1).sort_index()
 
         # Return features
         logger.info(
@@ -1216,12 +1341,12 @@ class MLRModel():
         # Check if reference cube was given
         if ref_cube is None:
             if cube is None:
-                raise ValueError("Expected at least one '{}' dataset{}".format(
-                    var_type, msg))
+                raise ValueError(
+                    f"Expected at least one '{var_type}' dataset{msg}")
             else:
                 raise ValueError(
-                    "Expected at least one '{}' dataset{} without the option "
-                    "'broadcast_from'".format(var_type, msg))
+                    f"Expected at least one '{var_type}' dataset{msg} without "
+                    f"the option 'broadcast_from'")
 
         # Coordinate features
         for coord_name in self._cfg.get('coords_as_features', []):
@@ -1229,8 +1354,8 @@ class MLRModel():
                 coord = ref_cube.coord(coord_name)
             except iris.exceptions.CoordinateNotFoundError:
                 raise iris.exceptions.CoordinateNotFoundError(
-                    "Coordinate '{}' given in 'coords_as_features' not found "
-                    "in '{}' data{}".format(coord_name, var_type, msg))
+                    f"Coordinate '{coord_name}' given in 'coords_as_features' "
+                    f"not found in '{var_type}' data{msg}")
             units[coord_name] = coord.units
             types[coord_name] = 'coordinate'
 
@@ -1264,8 +1389,7 @@ class MLRModel():
         grouped_datasets = group_metadata(datasets, 'tag')
         labels = list(grouped_datasets.keys())
         if len(labels) > 1:
-            raise ValueError(
-                "Expected unique label tag, got {}".format(labels))
+            raise ValueError(f"Expected unique label tag, got {labels}")
         units = Unit(datasets[0]['units'])
         logger.info(
             "Found label '%s' with units '%s' (defined in 'label' "
@@ -1389,10 +1513,9 @@ class MLRModel():
     def _get_reference_cube(self, datasets, var_type, text=None):
         """Get reference cube for `datasets`."""
         msg = '' if text is None else text
-        tags = self.features_types[self.features_types ==
-                                   'regular'].index.values
+        regular_features = self.features[self.features_types == 'regular']
 
-        for tag in tags:
+        for tag in regular_features:
             dataset = self._check_dataset(datasets, var_type, tag, msg)
             if dataset is not None:
                 ref_cube = self._load_cube(dataset)
@@ -1401,9 +1524,8 @@ class MLRModel():
                     var_type, msg, tag)
                 logger.debug(ref_cube.summary(shorten=True))
                 return ref_cube
-        raise ValueError(
-            "No {} data{} without the option 'broadcast_from' found".format(
-                var_type, msg))
+        raise ValueError(f"No {var_type} data{msg} without the option "
+                         f"'broadcast_from' found")
 
     def _get_verbosity_parameters(self, function, boolean=False):
         """Get verbosity parameters for class initialization."""
@@ -1437,7 +1559,7 @@ class MLRModel():
 
     def _get_x_data_for_group(self, datasets, var_type, group_attr=None):
         """Get x data for a group of datasets."""
-        msg = '' if group_attr is None else " for '{}'".format(group_attr)
+        msg = '' if group_attr is None else f" for '{group_attr}'"
         ref_cube = self._get_reference_cube(datasets, var_type, msg)
         group_data = pd.DataFrame(columns=self.features,
                                   dtype=self._cfg['dtype'])
@@ -1449,7 +1571,7 @@ class MLRModel():
                 if dataset is None:
                     new_data = np.nan
                 else:
-                    text = "{} '{}'{}".format(var_type, tag, msg)
+                    text = f"{var_type} '{tag}'{msg}"
                     if 'broadcast_from' in dataset:
                         cube = self._get_broadcasted_cube(
                             dataset, ref_cube, text)
@@ -1530,9 +1652,8 @@ class MLRModel():
         # Check dtype
         if not np.issubdtype(cube.dtype, np.number):
             raise TypeError(
-                "Data type of cube loaded from '{}' is '{}', at "
-                "the moment only numerical data is supported".format(
-                    dataset['filename'], cube.dtype))
+                f"Data type of cube loaded from '{dataset['filename']}' is "
+                f"'{cube.dtype}', the moment only numeric data is supported")
 
         # Convert dtypes
         cube.data = cube.core_data().astype(self._cfg['dtype'],
@@ -1552,11 +1673,11 @@ class MLRModel():
             self._convert_units_in_cube(cube, dataset['convert_units_to'])
         if not cube.units == Unit(dataset['units']):
             raise ValueError(
-                "Units of cube '{}' for {} '{}' differ from units given in "
-                "dataset list (retrieved from ancestors or metadata.yml), got "
-                "'{}' in cube and '{}' in dataset list".format(
-                    dataset['filename'], dataset['var_type'], dataset['tag'],
-                    cube.units.symbol, dataset['units']))
+                f"Units of cube '{dataset['filename']}' for "
+                f"{dataset['var_type']} '{dataset['tag']}' differ from units "
+                f"given in dataset list (retrieved from ancestors or "
+                f"metadata.yml), got '{cube.units.symbol}' in cube and "
+                f"'{dataset['units']}' in dataset list")
         return cube
 
     def _load_data(self):
@@ -1588,8 +1709,6 @@ class MLRModel():
         verbosity_params = self._get_verbosity_parameters(self._CLF_TYPE)
         for (param, verbosity) in verbosity_params.items():
             parameters.setdefault(param, verbosity)
-        if 'n_jobs' in getfullargspec(self._CLF_TYPE).args:
-            parameters.setdefault('n_jobs', self._cfg['n_jobs'])
         return parameters
 
     def _load_input_datasets(self, **metadata):
@@ -1626,9 +1745,8 @@ class MLRModel():
 
         # Check if data was found
         if not training_datasets:
-            msg = ' for metadata {}'.format(metadata) if metadata else ''
-            raise ValueError(
-                "No training data (features/labels){} found".format(msg))
+            msg = f' for metadata {metadata}' if metadata else ''
+            raise ValueError(f"No training data (features/labels){msg} found")
 
         # Convert units
         self._convert_units_in_metadata(training_datasets)
@@ -1649,9 +1767,8 @@ class MLRModel():
 
     def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
-        data_frame = self._impute_nans(self.data['train'])
-        x_train = data_frame.x.values
-        y_train = data_frame.y.squeeze().values
+        x_train = self.get_x_data('train', impute_nans=True)
+        y_train = self.get_y_data('train', impute_nans=True)
 
         # Global interpreter
         self._skater['global_interpreter'] = Interpretation(
@@ -1838,7 +1955,7 @@ class MLRModel():
                    'missing')
             if self._cfg.get('accept_only_scalar_data'):
                 removed_groups = self.group_attributes[mask]
-                msg += ' ({})'.format(removed_groups)
+                msg += f' ({removed_groups})'
                 self._classes['group_attributes'] = (
                     self.group_attributes[~mask])
             logger.info(msg, diff)
@@ -1866,9 +1983,9 @@ class MLRModel():
         # Filename and path
         if filename is None:
             if pred_name is None:
-                filename = '{}.csv'.format(data_type)
+                filename = f'{data_type}.csv'
             else:
-                filename = '{}_{}.csv'.format(data_type, pred_name)
+                filename = f'{data_type}_{pred_name}.csv'
         path = os.path.join(self._cfg['mlr_work_dir'], filename)
 
         # Save file
@@ -1984,8 +2101,8 @@ class MLRModel():
             coord = ref_cube.coord(tag)
         except iris.exceptions.CoordinateNotFoundError:
             raise iris.exceptions.CoordinateNotFoundError(
-                "Coordinate '{}' given in 'coords_as_features' not found in "
-                "reference cube for '{}'{}".format(tag, var_type, msg))
+                f"Coordinate '{tag}' given in 'coords_as_features' not found "
+                f"in reference cube for '{var_type}'{msg}")
         coord_array = np.ma.filled(coord.points, np.nan)
         coord_dims = ref_cube.coord_dims(coord)
         if coord_dims == ():
