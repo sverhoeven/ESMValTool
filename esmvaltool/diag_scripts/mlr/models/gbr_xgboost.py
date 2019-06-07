@@ -3,9 +3,10 @@
 import logging
 import os
 
+from xgboost import XGBRegressor
+
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.mlr.models.gbr import GBRModel
-from xgboost import XGBRegressor
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -45,23 +46,19 @@ class XGBoostGBRModel(GBRModel):
         for (param_name, param_val) in fit_kwargs.items():
             reduced_fit_kwargs[param_name.replace(
                 f'{self._clf.steps[-1][0]}__', '')] = param_val
-        x_train = self.data['train'].x.values
-        y_train = self.data['train'].y.squeeze().values
+        x_train = self.get_x_array('train')
+        y_train = self.get_y_array('train')
         self._clf.fit_transformers_only(x_train, y_train, **reduced_fit_kwargs)
         self._clf.steps[-1][1].fit_transformer_only(y_train,
                                                     **reduced_fit_kwargs)
 
         # Transform input data
         x_train = self._clf.transform_only(x_train)
-        y_train = self._clf.steps[-1][1].transformer_.transform(
-            y_train.reshape(-1, 1))
-        y_train = y_train[:, 0]
+        y_train = self._clf.transform_target_only(y_train)
         eval_set = [(x_train, y_train)]
         if 'test' in self.data:
-            x_test = self._clf.transform_only(self.data['test'].x.values)
-            y_test = self._clf.steps[-1][1].transformer_.transform(
-                self.data['test'].y.values)
-            y_test = y_test[:, 0]
+            x_test = self._clf.transform_only(self.get_x_array('test'))
+            y_test = self._clf.transform_target_only(self.get_y_array('test'))
             eval_set.append((x_test, y_test))
 
         # Update kwargs

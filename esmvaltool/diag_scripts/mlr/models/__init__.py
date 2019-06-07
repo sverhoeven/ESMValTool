@@ -289,6 +289,11 @@ class MLRModel():
         return self._classes['features'].index.values
 
     @property
+    def features_after_preprocessing(self):
+        """Features after preprocessing (read-only)."""
+        dummy_data = 1
+
+    @property
     def features_types(self):
         """Types of the features of the model (read-only)."""
         return self._classes['features'].types
@@ -418,7 +423,7 @@ class MLRModel():
             data_frame = self._impute_nans(data_frame)
         return data_frame
 
-    def get_x_data(self, data_type, impute_nans=False):
+    def get_x_array(self, data_type, impute_nans=False):
         """Return x data of specific type as :mod:`numpy.array`.
 
         Parameters
@@ -443,7 +448,7 @@ class MLRModel():
         data_frame = self.get_data_frame(data_type, impute_nans=impute_nans)
         return data_frame.x.values
 
-    def get_y_data(self, data_type, impute_nans=False):
+    def get_y_array(self, data_type, impute_nans=False):
         """Return y data of specific type as :mod:`numpy.array`.
 
         Parameters
@@ -620,7 +625,7 @@ class MLRModel():
 
         # LIME
         explainer = self._skater['local_interpreter'].explain_instance(
-            self.data[data_type].x.loc[index].values, self._clf.predict)
+            self.get_x_array(data_type)[index], self._clf.predict)
         logger.debug("Local feature importance at index %i of '%s' data",
                      index, data_type)
         logger.debug(pformat(explainer.as_list()))
@@ -686,7 +691,7 @@ class MLRModel():
             filename = 'partial_dependece_{feature}'
 
         # Plot for every feature
-        x_train = self.get_x_data('train', impute_nans=True)
+        x_train = self.get_x_array('train', impute_nans=True)
         verbosity = self._get_verbosity_parameters(plot_partial_dependence)
         for feature_name in self.features:
             logger.debug("Plotting partial dependence of '%s'", feature_name)
@@ -743,7 +748,7 @@ class MLRModel():
                                      borderaxespad=0.0)
             else:
                 axes.plot(self.data['all'].x.loc[:, feature],
-                          self.get_y_data('all'), '.')
+                          self.get_y_array('all'), '.')
                 legend = None
             axes.set_title(feature)
             axes.set_xlabel(f'{feature} / {self.features_units[feature]}')
@@ -843,8 +848,8 @@ class MLRModel():
             if data_type not in self.data:
                 continue
             logger.info("Evaluating regression metrics for %s data", data_type)
-            x_data = self.get_x_data(data_type)
-            y_true = self.get_y_data(data_type)
+            x_data = self.get_x_array(data_type)
+            y_true = self.get_y_array(data_type)
             y_pred = self._clf.predict(x_data)
             y_norm = np.std(y_true)
             for metric in regression_metrics:
@@ -1022,8 +1027,12 @@ class MLRModel():
 
         # PCA for numerical features
         if self._cfg['pca']:
+            # pca = ColumnTransformer(
+            #     [('', PCA(), numerical_features_idx)],
+            #     remainder='passthrough',
+            # )
             pca = ColumnTransformer(
-                [('', PCA(), numerical_features_idx)],
+                [('', PCA(n_components=3), numerical_features_idx)],
                 remainder='passthrough',
             )
             steps.append(('pca', pca))
@@ -1072,8 +1081,8 @@ class MLRModel():
         # Test data set
         if cfg['type'] == 'test':
             if 'test' in self.data:
-                y_pred = self._clf.predict(self.data['test'].x.values)
-                error = metrics.mean_squared_error(self.data['test'].y.values,
+                y_pred = self._clf.predict(self.get_x_array('test'))
+                error = metrics.mean_squared_error(self.get_y_array('test'),
                                                    y_pred)
             else:
                 logger.warning(
@@ -1084,9 +1093,8 @@ class MLRModel():
 
         # CV
         if cfg['type'] == 'cv':
-            error = cross_val_score(self._clf, self.data['train'].x.values,
-                                    self.data['train'].y.values,
-                                    **cfg['kwargs'])
+            error = cross_val_score(self._clf, self.get_x_array('train'),
+                                    self.get_y_array('train'), **cfg['kwargs'])
             error = np.mean(error)
             if cfg['kwargs']['scoring'].startswith('neg_'):
                 error = -error
@@ -1416,26 +1424,26 @@ class MLRModel():
         pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
         return np.array(pool.map(_most_important_feature, x_data))
 
-    def _get_prediction_dict(self, x_data, **kwargs):
+    def _get_prediction_dict(self, x_pred, **kwargs):
         """Get prediction output in a dictionary."""
-        mask = x_data.isnull().any(axis=1).values
+        mask = x_pred.isnull().any(axis=1).values
         if self._cfg['imputation_strategy'] == 'remove':
-            x_data = x_data[~mask].reset_index(drop=True)
-            diff = mask.shape[0] - len(x_data.index)
+            x_pred = x_pred[~mask].reset_index(drop=True)
+            diff = mask.shape[0] - len(x_pred.index)
             if diff:
                 logger.info(
                     "Removed %i prediction input point(s) where "
                     "features were missing'", diff)
 
         # Get prediction dictionary
-        logger.info("Predicting %i point(s)", len(x_data.index))
-        y_preds = self._clf.predict(x_data.values, **kwargs)
+        logger.info("Predicting %i point(s)", len(x_pred.index))
+        y_preds = self._clf.predict(x_pred.values, **kwargs)
         pred_dict = self._prediction_to_dict(y_preds, **kwargs)
 
         # LIME feature importance
         if self._cfg['return_lime_importance']:
             pred_dict['lime'] = self._get_lime_feature_importance(
-                x_data.values)
+                x_pred.values)
 
         # Transform arrays correctly
         for (pred_type, y_pred) in pred_dict.items():
@@ -1483,7 +1491,7 @@ class MLRModel():
 
     def _get_prediction_dtype(self):
         """Get `dtype` of the output of `predict()` of the final regressor."""
-        x_data = self.data['all'].x.loc[0].values.reshape(1, -1)
+        x_data = self.get_x_array('all')[0].reshape(1, -1)
         y_pred = self._clf.predict(x_data)
         return y_pred.dtype
 
@@ -1765,8 +1773,8 @@ class MLRModel():
 
     def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
-        x_train = self.get_x_data('train', impute_nans=True)
-        y_train = self.get_y_data('train', impute_nans=True)
+        x_train = self.get_x_array('train', impute_nans=True)
+        y_train = self.get_y_array('train', impute_nans=True)
 
         # Global interpreter
         self._skater['global_interpreter'] = Interpretation(

@@ -32,6 +32,9 @@ class GBRModel(MLRModel):
         :mod:`skater`), this function uses properties of the GBR model based on
         the number of appearances of that feature in the regression trees and
         the improvements made by the individual splits (see Friedman, 2001).
+        The features plotted here are not necessarily the real input features,
+        but the ones after preprocessing. Thus, in the case of PCA this is the
+        feature importance of the different principal components.
 
         Parameters
         ----------

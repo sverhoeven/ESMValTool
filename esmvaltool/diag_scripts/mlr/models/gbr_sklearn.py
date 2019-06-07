@@ -38,10 +38,8 @@ class SklearnGBRModel(GBRModel):
         test_score = None
         if 'test' in self.data:
             test_score = np.zeros((len(clf.train_score_), ), dtype=np.float64)
-            x_test = self._clf.transform_only(self.data['test'].x.values)
-            y_test = self._clf.steps[-1][1].transformer_.transform(
-                self.data['test'].y.values)
-            y_test = y_test[:, 0]
+            x_test = self._clf.transform_only(self.get_x_array('test'))
+            y_test = self._clf.transform_target_only(self.get_y_array('test'))
             for (idx, y_pred) in enumerate(clf.staged_predict(x_test)):
                 test_score[idx] = clf.loss_(y_test, y_pred)
         self._plot_prediction_error(train_score, test_score, filename)
