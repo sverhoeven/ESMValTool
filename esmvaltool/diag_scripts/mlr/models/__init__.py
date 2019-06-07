@@ -291,7 +291,32 @@ class MLRModel():
     @property
     def features_after_preprocessing(self):
         """Features after preprocessing (read-only)."""
-        dummy_data = 1
+        x_train = self.get_x_array('train')
+        y_train = self.get_y_array('train')
+        if not self._is_fitted():
+            fit_kwargs = self._cfg.get('fit_kwargs', {})
+            fit_kwargs = self._update_fit_kwargs(fit_kwargs)
+            self._clf.fit_transformers_only(x_train, y_train, **fit_kwargs)
+        x_trans = self._clf.transform_only(x_train)
+        features = self.features
+        if 'pca' in self._clf.named_steps:
+            n_numerical_features = (x_trans.shape[1] -
+                                    self.categorical_features.size)
+            features = [
+                f'Principal component {idx}'
+                for idx in range(n_numerical_features)
+            ]
+            features.extend(self.categorical_features)
+        else:
+            if x_trans.shape[1] != self.features.size:
+                logger.warning(
+                    "Number of features decreased from %i to %i during "
+                    "preprocessing for unknown reasons (PCA is not performed)",
+                    self.features.size, x_trans.shape[1])
+                features = [
+                    f'Unknown feature {idx}' for idx in range(x_trans.shape[1])
+                ]
+        return np.array(features)
 
     @property
     def features_types(self):
@@ -352,25 +377,14 @@ class MLRModel():
         for data_type in ('all', 'train', 'test'):
             self._save_csv_file(data_type, filename)
 
-    def fit(self, **kwargs):
-        """Fit MLR model.
-
-        Parameters
-        ----------
-        **kwargs : keyword arguments, optional
-            Additional options for the `self._clf.fit()` function. Have to be
-            given for each step of the pipeline seperated by two underscores,
-            i.e. `s__p` is the parameter `p` for step `s`.
-            Overwrites default and recipe settings.
-
-        """
+    def fit(self):
+        """Fit MLR model."""
         if not self._clf_is_valid(text='Fitting MLR model'):
             return
         logger.info(
             "Fitting MLR model with final regressor %s on %i training "
             "point(s)", self._CLF_TYPE, len(self.data['train'].index))
-        fit_kwargs = dict(self._cfg.get('fit_kwargs', {}))
-        fit_kwargs.update(kwargs)
+        fit_kwargs = self._cfg.get('fit_kwargs', {})
         if fit_kwargs:
             logger.info("Using keyword argument(s) %s for fit() function",
                         fit_kwargs)
@@ -1027,12 +1041,8 @@ class MLRModel():
 
         # PCA for numerical features
         if self._cfg['pca']:
-            # pca = ColumnTransformer(
-            #     [('', PCA(), numerical_features_idx)],
-            #     remainder='passthrough',
-            # )
             pca = ColumnTransformer(
-                [('', PCA(n_components='mle'), numerical_features_idx)],
+                [('', PCA(), numerical_features_idx)],
                 remainder='passthrough',
             )
             steps.append(('pca', pca))

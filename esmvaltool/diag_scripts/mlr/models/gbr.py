@@ -57,14 +57,7 @@ class GBRModel(MLRModel):
         axes.barh(pos, feature_importance[sorted_idx], align='center')
 
         # Plot appearance
-        if 'pca' in self._clf.named_steps:
-            pca_features = np.array([
-                f'Principal component {idx}'
-                for idx in range(self.features.size)
-            ])
-            y_tick_labels = pca_features[sorted_idx]
-        else:
-            y_tick_labels = self.features[sorted_idx]
+        y_tick_labels = self.features_after_preprocessing[sorted_idx]
         axes.set_title(f'Variable Importance ({str(self._CLF_TYPE)} Model)')
         axes.set_xlabel('Relative Importance')
         axes.set_yticks(pos)

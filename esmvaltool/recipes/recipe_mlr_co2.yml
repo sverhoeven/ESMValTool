@@ -193,6 +193,7 @@ diagnostics:
           'diag_mlr_gpp/monthly_clim',
           'diag_mlr_input_*/monthly_clim',
         ]
+        categorical_features: ['longitude', 'month_number']
         coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_prediction_error:
           type: test

@@ -86,16 +86,11 @@ def main(cfg):
 
         # Kernel for george model needs number of features
         if algorithm == 'george':
-            if cfg.get('pca', True):
-                n_features = min(mlr_model.data['train'].x.shape)
-            else:
-                n_features = mlr_model.features.size
-            new_kernel = (
-                george_kernels.ExpSquaredKernel(
-                    1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
-                george_kernels.ConstantKernel(
-                    0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
-            )
+            n_features = mlr_model.features_after_preprocessing.size
+            new_kernel = (george_kernels.ExpSquaredKernel(
+                1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
+                          george_kernels.ConstantKernel(
+                              0.0, ndim=n_features, bounds=[(-10.0, 10.0)]))
             mlr_model.update_parameters(final__regressor__kernel=new_kernel)
 
         # Fit and predict
