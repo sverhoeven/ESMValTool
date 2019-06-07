@@ -1794,6 +1794,10 @@ class MLRModel():
         # Local interpreter (LIME)
         verbosity = self._get_verbosity_parameters(LimeTabularExplainer,
                                                    boolean=True)
+        categorical_features_idx = [
+            int(np.where(self.features == tag)[0][0])
+            for tag in self.categorical_features
+        ]
         if self._cfg['return_lime_importance']:
             for param in verbosity:
                 verbosity[param] = False
@@ -1802,6 +1806,7 @@ class MLRModel():
             mode='regression',
             training_labels=y_train,
             feature_names=self.features,
+            categorical_features=categorical_features_idx,
             class_names=[self.label],
             sample_around_instance=True,
             **verbosity,
