@@ -31,11 +31,15 @@ class AdvancedPipeline(Pipeline):
 
     def fit_transformers_only(self, x_data, y_data, **fit_kwargs):
         """Fit only `transform` steps of Pipeline."""
+        transformer_steps = [s[0] for s in self.steps[:-1]]
         transformers_kwargs = {}
         for (param_name, param_val) in fit_kwargs.items():
             step = param_name.split('__')[0]
-            if step in self.steps[:-1]:
+            if step in transformer_steps:
                 transformers_kwargs[param_name] = param_val
+        if transformers_kwargs:
+            logger.debug("Used parameters %s to fit only transformers",
+                         transformers_kwargs)
         return self._fit(x_data, y_data, **transformers_kwargs)
 
     def transform_only(self, x_data):
@@ -107,7 +111,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
         self._training_dim = y_data.ndim
 
         # Process kwargs
-        (_, _) = self._get_fit_kwargs(fit_kwargs, verbose=False)
+        (_, _) = self._get_fit_kwargs(fit_kwargs)
 
         # Transformers are designed to modify X which is 2D, modify y_data
         # FIXME: Transformer does NOT use transformer_kwargs
@@ -161,7 +165,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
             y_err *= scale**2
         return (pred_trans, y_err)
 
-    def _get_fit_kwargs(self, fit_kwargs, verbose=True):
+    def _get_fit_kwargs(self, fit_kwargs):
         """Separate `transformer` and `regressor` kwargs."""
         transformer_kwargs = {}
         regressor_kwargs = {}
@@ -178,16 +182,15 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
             elif param_split[0] == 'regressor':
                 regressor_kwargs[param_split[1]] = param_val
             else:
-                if verbose:
-                    logger.warning(
-                        "Allowed prefixes for fit parameters given to %s "
-                        "are 'transformer' and 'regressor', got '%s'",
-                        str(self.__class__), param_split[0])
+                logger.warning(
+                    "Allowed prefixes for fit parameters given to %s are "
+                    "'transformer' and 'regressor', got '%s'",
+                    str(self.__class__), param_split[0])
         # FIXME
         if transformer_kwargs:
             logger.warning(
-                "Keyword arguments for transformer of %s are not "
-                "supported yet", str(self.__class__))
+                "Keyword arguments %s for transformer of %s are not "
+                "supported yet", transformer_kwargs, str(self.__class__))
         return (transformer_kwargs, regressor_kwargs)
 
 

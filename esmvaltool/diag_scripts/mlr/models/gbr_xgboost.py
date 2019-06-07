@@ -42,15 +42,19 @@ class XGBoostGBRModel(GBRModel):
 
     def _update_fit_kwargs(self, fit_kwargs):
         """Add transformed training and test data as fit kwargs."""
-        reduced_fit_kwargs = {}
+        fit_kwargs = super()._update_fit_kwargs(fit_kwargs)
+        final_step = f'{self._clf.steps[-1][0]}__'
+        target_transformer_fit_kwargs = {}
         for (param_name, param_val) in fit_kwargs.items():
-            reduced_fit_kwargs[param_name.replace(
-                f'{self._clf.steps[-1][0]}__', '')] = param_val
+            if not param_name.startswith(final_step):
+                continue
+            target_transformer_fit_kwargs[param_name.replace(final_step,
+                                                             '')] = param_val
         x_train = self.get_x_array('train')
         y_train = self.get_y_array('train')
-        self._clf.fit_transformers_only(x_train, y_train, **reduced_fit_kwargs)
-        self._clf.steps[-1][1].fit_transformer_only(y_train,
-                                                    **reduced_fit_kwargs)
+        self._clf.fit_transformers_only(x_train, y_train, **fit_kwargs)
+        self._clf.steps[-1][1].fit_transformer_only(
+            y_train, **target_transformer_fit_kwargs)
 
         # Transform input data
         x_train = self._clf.transform_only(x_train)

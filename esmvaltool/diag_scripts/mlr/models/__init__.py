@@ -1032,7 +1032,7 @@ class MLRModel():
             #     remainder='passthrough',
             # )
             pca = ColumnTransformer(
-                [('', PCA(n_components=3), numerical_features_idx)],
+                [('', PCA(n_components='mle'), numerical_features_idx)],
                 remainder='passthrough',
             )
             steps.append(('pca', pca))
@@ -2077,8 +2077,16 @@ class MLRModel():
         return (train, test)
 
     def _update_fit_kwargs(self, fit_kwargs):
-        """Update fit kwargs (only used for some models)."""
-        return fit_kwargs
+        """Check and update fit kwargs."""
+        new_fit_kwargs = {}
+        for (param_name, param_val) in fit_kwargs.items():
+            step = param_name.split('__')[0]
+            if step in self._clf.named_steps:
+                new_fit_kwargs[param_name] = param_val
+            else:
+                logger.warning("Got invalid parameter for fit function: '%s'",
+                               param_name)
+        return new_fit_kwargs
 
     @staticmethod
     def _convert_units_in_metadata(datasets):
