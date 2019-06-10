@@ -20,24 +20,24 @@ DATASET_ANCHOR: &datasets
   # - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
   - {dataset: CanESM2}
-  - {dataset: CCSM4}
-  - {dataset: CESM1-BGC}
-  - {dataset: CESM1-CAM5}
-  - {dataset: CESM1-WACCM, ensemble: r2i1p1}
-  - {dataset: GFDL-ESM2G}
-  - {dataset: GFDL-ESM2M}
-  - {dataset: HadGEM2-CC}
-  - {dataset: HadGEM2-ES}
-  - {dataset: inmcm4}
-  - {dataset: IPSL-CM5A-LR}
-  - {dataset: IPSL-CM5A-MR}
-  - {dataset: IPSL-CM5B-LR}
-  - {dataset: MIROC-ESM}
-  - {dataset: MIROC-ESM-CHEM}
-  - {dataset: MPI-ESM-LR}
-  - {dataset: MPI-ESM-MR}
-  - {dataset: NorESM1-M}
-  - {dataset: NorESM1-ME}
+  # - {dataset: CCSM4}
+  # - {dataset: CESM1-BGC}
+  # - {dataset: CESM1-CAM5}
+  # - {dataset: CESM1-WACCM, ensemble: r2i1p1}
+  # - {dataset: GFDL-ESM2G}
+  # - {dataset: GFDL-ESM2M}
+  # - {dataset: HadGEM2-CC}
+  # - {dataset: HadGEM2-ES}
+  # - {dataset: inmcm4}
+  # - {dataset: IPSL-CM5A-LR}
+  # - {dataset: IPSL-CM5A-MR}
+  # - {dataset: IPSL-CM5B-LR}
+  # - {dataset: MIROC-ESM}
+  # - {dataset: MIROC-ESM-CHEM}
+  # - {dataset: MPI-ESM-LR}
+  # - {dataset: MPI-ESM-MR}
+  # - {dataset: NorESM1-M}
+  # - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -142,6 +142,29 @@ diagnostics:
         tag: GPP
         convert_units_to: 't km-2 yr-1'
 
+  diag_mlr_input_gpp_ranking:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: 1, tier: 2}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: GPP_RANK
+        convert_units_to: 'no unit'
+        argsort:
+          coord: month_number
+          descending: true
+
   diag_mlr_input_lai:
     variables:
       features:
@@ -197,24 +220,24 @@ diagnostics:
         coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_prediction_error:
           type: test
-        grid_search_cv_kwargs:
-          cv: 5
-        grid_search_cv_param_grid:
-          transformed_target_regressor__regressor__learning_rate:
-            [0.08, 0.05]
-          transformed_target_regressor__regressor__max_depth:
-            [6, 8]
-          # transformed_target_regressor__regressor__n_estimators:
-          #   [2000, 3000, 4000]
-          # transformed_target_regressor__regressor__subsample:
-          #   [0.2, 0.5, 1.0]
+        # grid_search_cv_kwargs:
+        #   cv: 5
+        # grid_search_cv_param_grid:
+        #   transformed_target_regressor__regressor__learning_rate:
+        #     [0.08, 0.05]
+        #   transformed_target_regressor__regressor__max_depth:
+        #     [6, 8]
+        #   transformed_target_regressor__regressor__n_estimators:
+        #     [2000, 3000, 4000]
+        #   transformed_target_regressor__regressor__subsample:
+        #     [0.2, 0.5, 1.0]
         group_datasets_by_attributes: ['dataset']
         mlr_model: gbr_xgboost
         n_jobs: 24
         parameters_final_regressor:
-          # max_depth: 6
-          # learning_rate: 0.05
-          n_estimators: 2000
+          max_depth: 8
+          learning_rate: 0.1
+          n_estimators: 100
           subsample: 0.5
         prediction_pp:
           mean: ['time']

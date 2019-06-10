@@ -27,6 +27,10 @@ anomaly : dict, optional
     the (total) mean of the reference dataset if `mean: true` is specified.
 area_weighted : bool, optional (default: True)
     Calculate weighted averages/sums for area (using grid cell boundaries).
+argsort : dict, optional
+    Calculate :mod:`numpy.ma.argsort` along given coordinate to get ranking.
+    The coordinate can be specified by the `coord` key. If `descending: true`
+    is given, use descending order insted of ascending.
 convert_units_to : str, optional
     Convert units of the input data. Can also be given as dataset option.
 mean : list of str, optional
@@ -209,6 +213,34 @@ def calculate_anomalies(cfg, input_data):
     return input_data
 
 
+def calculate_argsort(cfg, cube, data):
+    """Calculate :mod:`numpy.ma.argsort` along given axis (= Ranking)."""
+    argsort = cfg.get('argsort')
+    if not argsort:
+        return (cube, data)
+    coord = argsort.get('coord')
+    if not coord:
+        raise ValueError("When 'argsort' is given, a valid 'coord' needs to "
+                         "specified as key")
+    logger.info("Calculating argsort along coordinate '%s' to get ranking",
+                coord)
+    axis = cube.coord_dims(coord)[0]
+    mask = np.ma.getmaskarray(cube.data)
+    if argsort.get('descending'):
+        ranking = np.ma.argsort(-cube.data, axis=axis, fill_value=-np.inf)
+        cube.attributes['order'] = 'descending'
+    else:
+        ranking = np.ma.argsort(cube.data, axis=axis, fill_value=np.inf)
+        cube.attributes['order'] = 'ascending'
+    cube.data = np.ma.array(ranking, mask=mask, dtype=cube.dtype)
+    cube.units = Unit('no unit')
+    data['standard_name'] += '_ranking'
+    data['short_name'] += '_ranking'
+    data['long_name'] += ' (ranking)'
+    data['units'] = 'no unit'
+    return (cube, data)
+
+
 def calculate_sum_and_mean(cfg, cube, data):
     """Calculate sum and mean."""
     cfg = copy.deepcopy(cfg)
@@ -313,6 +345,7 @@ def main(cfg):
         path = data['filename']
         logger.info("Processing %s", path)
         cube = iris.load_cube(path)
+        var_name = cube.var_name
 
         # Aggregation
         cube = aggregate(cfg, cube)
@@ -323,11 +356,16 @@ def main(cfg):
         # Trend
         (cube, data) = calculate_trend(cfg, cube, data)
 
+        # Argsort
+        (cube, data) = calculate_argsort(cfg, cube, data)
+
         # Convert units
         (cube, data) = convert_units(cfg, cube, data)
 
         # Cache cube
         basename = os.path.splitext(os.path.basename(path))[0]
+        if var_name is not None:
+            basename = basename.replace(var_name, data['short_name'])
         new_path = get_diagnostic_filename(basename, cfg)
         data['filename'] = new_path
         data['cube'] = cube
