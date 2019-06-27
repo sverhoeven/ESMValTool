@@ -20,9 +20,9 @@ DATASET_ANCHOR: &datasets
   # - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
   - {dataset: CanESM2}
-  # - {dataset: CCSM4}
-  # - {dataset: CESM1-BGC}
-  # - {dataset: CESM1-CAM5}
+  - {dataset: CCSM4}
+  - {dataset: CESM1-BGC}
+  - {dataset: CESM1-CAM5}
   # - {dataset: CESM1-WACCM, ensemble: r2i1p1}
   # - {dataset: GFDL-ESM2G}
   # - {dataset: GFDL-ESM2M}
@@ -70,7 +70,7 @@ diagnostics:
         field: T2Ms
         exp: historical
         ensemble: r1i1p1
-        start_year: 1989
+        start_year: 1996
         end_year: 2005
         var_type: feature
         additional_datasets: *datasets
@@ -80,13 +80,29 @@ diagnostics:
         var_type: prediction_input
         additional_datasets:
           - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
+      ref_features: &variable_settings_ref_features
+        <<: *variable_settings_features
+        start_year: 1989
+        end_year: 1996
+        ref: true
+      ref_prediction_input: &variable_settings_ref_prediction_input
+        <<: *variable_settings_features
+        preprocessor: regrid
+        start_year: 1989
+        end_year: 1996
+        ref: true
+        additional_datasets:
+          - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       monthly_clim: &monthly_clim
         script: mlr/simple_pp.py
+        anomaly:
+          matched_by: ['dataset']
         aggregate_by:
           month_number: mean
-        tag: T
         convert_units_to: celsius
+        tag: T
+        save_ref_data: true
 
   diag_mlr_input_pr:
     variables:
@@ -188,26 +204,24 @@ diagnostics:
   diag_mlr_gpp:
     description: Perform MLR on GPP.
     variables:
-      ref: &variable_settings_ref
-        <<: *variable_settings_features
-        short_name: gpp_grid
-        mip: Lmon
-        derive: true
-        ref: true
       label: &variable_settings_label
         <<: *variable_settings_features
         short_name: gpp_grid
         mip: Lmon
         exp: rcp85
-        start_year: 2019
-        end_year: 2035
+        start_year: 2084
+        end_year: 2100
         derive: true
         var_type: label
+      ref_label: &variable_settings_ref_label
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        ref: true
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        anomaly:
-          matched_by: ['dataset']
         tag: GPP_change
         convert_units_to: 't km-2 yr-1'
       mlr: &mlr
@@ -237,7 +251,7 @@ diagnostics:
         parameters_final_regressor:
           max_depth: 8
           learning_rate: 0.1
-          n_estimators: 100
+          n_estimators: 300
           subsample: 0.5
         prediction_pp:
           mean: ['time']
@@ -254,17 +268,14 @@ diagnostics:
   diag_mlr_nbp:
     description: Perform MLR on NBP.
     variables:
-      ref:
-        <<: *variable_settings_ref
-        short_name: nbp_grid
       label:
         <<: *variable_settings_label
+      ref_label:
+        <<: *variable_settings_ref_label
         short_name: nbp_grid
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        anomaly:
-          matched_by: ['dataset']
         tag: NBP_change
         convert_units_to: 't km-2 yr-1'
       mlr:
@@ -280,10 +291,10 @@ diagnostics:
   diag_mmm:
     description: Calculate simple multi-model mean of label data.
     variables:
-      ref:
-        <<: *variable_settings_ref
       label:
         <<: *variable_settings_label
+      ref_label:
+        <<: *variable_settings_ref_label
     scripts:
       global_sum:
         script: mlr/simple_pp.py

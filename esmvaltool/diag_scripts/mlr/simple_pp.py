@@ -35,6 +35,12 @@ convert_units_to : str, optional
     Convert units of the input data. Can also be given as dataset option.
 mean : list of str, optional
     Calculate the mean over the specified coordinates.
+normalize_mean : bool, optional (default: false)
+    Remove total mean of the dataset in the last step (resulting mean will be
+    0.0).
+normalize_std : bool, optional (default: false)
+    Scale total standard deviation of the dataset in the last (resulting
+    standard deviation will be 1.0).
 pattern : str, optional
     Pattern matched against ancestor files.
 save_ref_data : bool, optional (default: False)
@@ -91,12 +97,8 @@ def _has_valid_coords(cube, coord_names):
 def _get_anomaly_base(cfg, cube):
     """Get base value(s) for anomaly calculation."""
     if cfg['anomaly'].get('mean') and cube.shape != ():
-        coords = [coord.standard_name for coord in cube.coords()]
-        if 'latitude' in coords and 'longitude' in coords:
-            weights = iris.analysis.cartography.area_weights(cube)
-        else:
-            weights = np.ones(cube.shape)
-        base = np.ma.average(cube.data, weights=weights)
+        area_weights = _get_area_weights(cfg, cube)
+        base = np.ma.average(cube.data, weights=area_weights)
     else:
         base = cube.data
     return base
@@ -332,6 +334,32 @@ def convert_units(cfg, cube, data):
     return (cube, data)
 
 
+def normalize(cfg, cube, data):
+    """Normalize final dataset (by mean and/or by standard deviation)."""
+    units = (cube.units.symbol
+             if cube.units.origin is None else cube.units.origin)
+    if cfg.get('normalize_mean'):
+        logger.debug("Normalizing mean")
+        area_weights = _get_area_weights(cfg, cube)
+        mean = np.ma.average(cube.data, weights=area_weights)
+        cube.data -= mean
+        data['long_name'] += ' (mean normalized)'
+        data['normalize_mean'] = (
+            f"Mean normalized to 0.0 {units} by subtraction, original mean "
+            f"was {mean} {units}")
+    if cfg.get('normalize_std'):
+        logger.debug("Normalizing standard_deviation")
+        std = np.ma.std(cube.data)
+        cube.data /= std
+        data['long_name'] += ' (std normalized)'
+        data['units'] = Unit('1')
+        data['normalize_std'] = (
+            f"Standard deviation scaled to 1.0 by division, original std was "
+            f"{std} {units}")
+        data['original_units'] = units
+    return (cube, data)
+
+
 def main(cfg):
     """Run the diagnostic."""
     input_data = list(cfg['input_data'].values())
@@ -381,6 +409,9 @@ def main(cfg):
     for data in data_to_save:
         data.pop('ref')
         cube = data.pop('cube')
+
+        # Normalize and write cubes
+        (cube, data) = normalize(cfg, cube, data)
         write_cube(cube, data, data['filename'])
 
 
