@@ -4,6 +4,7 @@ import os
 
 import mock
 import numpy as np
+import pandas as pd
 import pytest
 from cf_units import Unit
 
@@ -33,31 +34,30 @@ def test_load_mlr_models(mock_dirname, mock_walk, mock_importlib):
     mock_importlib.import_module.assert_has_calls(calls)
 
 
-ARR_1 = np.arange(5.0) - 2.0
-ARR_1_OUT = np.array([-2.0, 0.0, 2.0])
-ARR_2 = np.ma.masked_invalid([1.0, np.nan, 42.0, np.nan, 3.14])
-ARR_2_OUT = np.ma.array([1.0, 42.0, 3.14])
+DF_1 = pd.DataFrame({'a': np.arange(5.0) - 2.0})
+DF_1_OUT = pd.DataFrame({'a': [-2.0, 0.0, 2.0]})
+DF_2 = pd.DataFrame({'b': [1.0, np.nan, 42.0, np.nan, 3.14]})
+DF_2_OUT = pd.DataFrame({'b': [1.0, 42.0, 3.14]})
+DF_3 = pd.DataFrame({'c': np.arange(5.0) + 1.0, 'd': np.arange(5.0) - 2.0})
+DF_3_OUT = pd.DataFrame({'c': [1.0, 3.0, 5.0], 'd': [-2.0, 0.0, 2.0]})
 TEST_REMOVE_MISSING_LABELS = [
-    ([ARR_1, ARR_1], [ARR_1, ARR_1], 0),
-    ([ARR_1, ARR_2], [ARR_1_OUT, ARR_2_OUT], 2),
-    ([ARR_2, ARR_1], [ARR_2, ARR_1], 0),
-    ([ARR_2, ARR_2], [ARR_2_OUT, ARR_2_OUT], 2),
+    ([DF_1, DF_1], [DF_1, DF_1], 0),
+    ([DF_1, DF_2], [DF_1_OUT, DF_2_OUT], 2),
+    ([DF_2, DF_1], [DF_2, DF_1], 0),
+    ([DF_2, DF_2], [DF_2_OUT, DF_2_OUT], 2),
+    ([DF_3, DF_1], [DF_3, DF_1], 0),
+    ([DF_3, DF_2], [DF_3_OUT, DF_2_OUT], 2),
 ]
 
 
-@pytest.mark.parametrize('arrays_in,arrays_out,logger',
-                         TEST_REMOVE_MISSING_LABELS)
+@pytest.mark.parametrize('df_in,df_out,logger', TEST_REMOVE_MISSING_LABELS)
 @mock.patch('esmvaltool.diag_scripts.mlr.models.logger', autospec=True)
-def test_remove_missing_labels(mock_logger, arrays_in, arrays_out, logger):
+def test_remove_missing_labels(mock_logger, df_in, df_out, logger):
     """Test removing of missing label data."""
-    out = MLRModel._remove_missing_labels(*arrays_in)
-    for (idx, out_test) in enumerate(arrays_out):
-        if np.ma.is_masked(out_test):
-            assert np.ma.is_masked(out[idx])
-            assert np.array_equal(out[idx].filled(99.0), out_test.filled(99.0))
-            assert np.array_equal(out[idx].mask, out_test.mask)
-        else:
-            assert np.array_equal(out[idx], out_test)
+    out = MLRModel._remove_missing_labels(*df_in)
+    assert out is not df_in
+    for (idx, df) in enumerate(df_out):
+        assert df.equals(out[idx])
     if logger:
         assert logger in mock_logger.info.call_args[0]
     else:

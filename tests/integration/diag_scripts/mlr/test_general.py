@@ -46,7 +46,7 @@ class TestMLRModel():
         mock_mlr_model_init.return_value = None
         MLRModel.create('test_model', *self.args, **self.kwargs)
         mock_load_mlr_models.assert_called()
-        mock_logger.error.assert_called()
+        mock_logger.warning.assert_called()
         mock_mlr_model_init.assert_called_with(mock.ANY, *self.args,
                                                **self.kwargs)
 
