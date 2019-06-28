@@ -87,7 +87,6 @@ diagnostics:
           month_number: mean
         convert_units_to: celsius
         tag: T
-        save_ref_data: true
 
   diag_mlr_input_tas_trend:
     variables:
@@ -306,6 +305,7 @@ diagnostics:
         ancestors: [
           'diag_mlr_nbp/monthly_clim',
           'diag_mlr_input_*/monthly_clim',
+          'diag_mlr_input_*/monthly_trend',
         ]
       evaluate_mlr_models:
         <<: *evaluate

@@ -963,9 +963,9 @@ class MLRModel():
             return None
         if len(datasets) > 1:
             raise ValueError(
-                f"{var_type} '{tag}'{msg} not unique, consider the use if "
+                f"{var_type} '{tag}'{msg} not unique, consider the use of "
                 f"'**metadata' in class initialization to pre-select datasets "
-                f"of specify suitable attributes to group datasets with the "
+                f"or specify suitable attributes to group datasets with the "
                 f"option 'group_datasets_by_attributes'")
         if var_type == 'label':
             units = self.label_units
