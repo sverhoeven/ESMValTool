@@ -70,7 +70,7 @@ diagnostics:
         field: T2Ms
         exp: historical
         ensemble: r1i1p1
-        start_year: 1996
+        start_year: 1989
         end_year: 2005
         var_type: feature
         additional_datasets: *datasets
@@ -80,29 +80,28 @@ diagnostics:
         var_type: prediction_input
         additional_datasets:
           - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
-      ref_features: &variable_settings_ref_features
-        <<: *variable_settings_features
-        start_year: 1989
-        end_year: 1996
-        ref: true
-      ref_prediction_input: &variable_settings_ref_prediction_input
-        <<: *variable_settings_features
-        preprocessor: regrid
-        start_year: 1989
-        end_year: 1996
-        ref: true
-        additional_datasets:
-          - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
     scripts:
       monthly_clim: &monthly_clim
         script: mlr/simple_pp.py
-        anomaly:
-          matched_by: ['dataset']
         aggregate_by:
           month_number: mean
         convert_units_to: celsius
         tag: T
         save_ref_data: true
+
+  diag_mlr_input_tas_trend:
+    variables:
+      features:
+        <<: *variable_settings_features
+      prediction_input:
+        <<: *variable_settings_prediction_input
+    scripts:
+      monthly_trend: &monthly_trend
+        script: mlr/simple_pp.py
+        aggregate_by:
+          month_number: trend
+        convert_units_to: celsius yr-1
+        tag: T_trend
 
   diag_mlr_input_pr:
     variables:
@@ -145,16 +144,39 @@ diagnostics:
         short_name: gpp_grid
         mip: Lmon
         derive: true
+        start_year: 1997
       prediction_input:
         <<: *variable_settings_prediction_input
         short_name: gpp_grid
         mip: Lmon
         derive: true
+        start_year: 1997
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: 1, tier: 2}
+      ref_features: &variable_settings_ref_features
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        start_year: 1989
+        end_year: 1996
+        ref: true
+      ref_prediction_input: &variable_settings_ref_prediction_input
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        preprocessor: regrid
+        mip: Lmon
+        derive: true
+        start_year: 1989
+        end_year: 1996
+        ref: true
         additional_datasets:
           - {dataset: MTE, project: OBS, type: reanaly, version: 1, tier: 2}
     scripts:
       monthly_clim:
         <<: *monthly_clim
+        anomaly:
+          matched_by: ['dataset']
         tag: GPP
         convert_units_to: 't km-2 yr-1'
 
@@ -229,6 +251,7 @@ diagnostics:
         ancestors: [
           'diag_mlr_gpp/monthly_clim',
           'diag_mlr_input_*/monthly_clim',
+          'diag_mlr_input_*/monthly_trend',
         ]
         categorical_features: ['longitude', 'month_number']
         coords_as_features: ['month_number', 'latitude', 'longitude']

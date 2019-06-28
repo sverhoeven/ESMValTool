@@ -19,7 +19,8 @@ Configuration options in recipe
 -------------------------------
 aggregate_by : dict, optional
     Aggregate over given coordinates (dict keys) using a desired aggregator
-    (dict values). Allowed aggregators are `mean`, `median`, `std` and `var`.
+    (dict values). Allowed aggregators are `mean`, `median`, `std`, `var`, and
+    `trend`.
 anomaly : dict, optional
     Calculate anomalies using reference datasets indicated by `ref: true`. Two
     datasets are matched using the list of metadata attributes given by the
@@ -51,9 +52,8 @@ tag : str, optional
     Tag for the variable used in the MLR model.
 time_weighted : bool, optional (default: True)
     Calculate weighted averages/sums for time (using grid cell boundaries).
-trend : bool or str, optional (default: False)
-    Calculate the temporal trend of the data, if `str` is given aditionally
-    aggregate along that coordinate before trend calculation(e.g. `year`).
+trend : str, optional
+    Calculate trend of data along the specified coordinate.
 
 """
 
@@ -79,19 +79,68 @@ AGGREGATORS = {
     'median': iris.analysis.MEDIAN,
     'std': iris.analysis.STD_DEV,
     'var:': iris.analysis.VARIANCE,
+    'trend': 'trend',
 }
 
 
-def _has_valid_coords(cube, coord_names):
-    """Check if a cube has valid coordinates (length > 1)."""
-    for coord_name in coord_names:
-        try:
-            coord = cube.coord(coord_name)
-        except iris.exceptions.CoordinateNotFoundError:
-            return False
-        if coord.shape[0] <= 1:
-            return False
-    return True
+def _apply_aggregator(cube, data, coord_name, operation):
+    """Apply aggregator to cube."""
+    if operation == 'trend':
+        coord = cube.coord(coord_name)
+        coord_values = np.unique(coord.points)
+        cubes = iris.cube.CubeList()
+        for val in coord_values:
+            kwargs = {coord_name: val}
+            cube_slice = cube.extract(iris.Constraint(**kwargs))
+            coord_dims = cube.coord_dims(coord_name)
+            if len(coord_dims) != 1:
+                raise ValueError(
+                    f"Trend aggregation along coordinate {coord_name} "
+                    f"requires 1D coordinate, got {len(coord_dims)}D "
+                    f"coordinate")
+            dim_coord = cube.coord(dim_coords=True, dimensions=coord_dims[0])
+            logger.debug("Calculating trend along coordinate '%s' for '%s'=%s",
+                         dim_coord.name(), coord_name, val)
+            (cube_slice,
+             units) = _calculate_slope_along_coord(cube_slice,
+                                                   dim_coord.name())
+            cubes.append(cube_slice)
+        cube = cubes.merge_cube()
+        (cube, data) = _set_trend_metadata(cube, data, units)
+        data['trend'] = f'aggregated along coordinate {coord_name}'
+    else:
+        cube = cube.aggregated_by(coord_name, operation)
+    return (cube, data)
+
+
+def _calculate_slope_along_coord(cube, coord_name):
+    """Calculate slope of a cube along a given coordinate."""
+    coord = cube.coord(coord_name)
+    coord_dims = cube.coord_dims(coord_name)
+    if len(coord_dims) != 1:
+        raise ValueError(
+            f"Trend calculation along coordinate {coord_name} requires "
+            f"1D coordinate, got {len(coord_dims)}D coordinate")
+
+    # Get slope
+    x_data = coord.points
+    y_data = np.moveaxis(cube.data, coord_dims[0], -1)
+    slope = _get_slope(x_data, y_data)
+
+    # Get units
+    units = coord.units
+    if units.is_time_reference():
+        units = Unit(units.symbol.split()[0])
+        if not units.is_time():
+            raise ValueError(
+                f"Cannot convert time reference units {coord.units.symbol} to "
+                f"reasonable time units")
+
+    # Apply dummy aggregator for correct cell method and set data
+    aggregator = iris.analysis.Aggregator('trend', _remove_axis)
+    cube = cube.collapsed(coord_name, aggregator)
+    cube.data = np.ma.masked_invalid(slope)
+    return (cube, units)
 
 
 def _get_anomaly_base(cfg, cube):
@@ -154,7 +203,34 @@ def _get_time_weights(cfg, cube):
     return time_weights
 
 
-def aggregate(cfg, cube):
+def _has_valid_coords(cube, coord_names):
+    """Check if a cube has valid coordinates (length > 1)."""
+    for coord_name in coord_names:
+        try:
+            coord = cube.coord(coord_name)
+        except iris.exceptions.CoordinateNotFoundError:
+            return False
+        if coord.shape[0] <= 1:
+            return False
+    return True
+
+
+def _remove_axis(data, axis=None):
+    """Remove given axis of arrays by using index `0`."""
+    return np.take(data, 0, axis=axis)
+
+
+def _set_trend_metadata(cube, data, units):
+    """Set correct metadata for trend calculation."""
+    cube.units /= units
+    data['standard_name'] += '_trend'
+    data['short_name'] += '_trend'
+    data['long_name'] += ' (trend)'
+    data['units'] += f' {units.origin}-1'
+    return (cube, data)
+
+
+def aggregate(cfg, cube, data):
     """Aggregate cube over specified coordinate."""
     for (coord_name, aggregator) in cfg.get('aggregate_by', {}).items():
         iris_op = AGGREGATORS.get(aggregator)
@@ -165,18 +241,19 @@ def aggregate(cfg, cube):
         logger.debug("Aggregating coordinate %s by calculating %s", coord_name,
                      aggregator)
         try:
-            cube = cube.aggregated_by(coord_name, iris_op)
+            (cube, data) = _apply_aggregator(cube, data, coord_name, iris_op)
         except iris.exceptions.CoordinateNotFoundError:
             if hasattr(iris.coord_categorisation, f'add_{coord_name}'):
                 getattr(iris.coord_categorisation, f'add_{coord_name}')(cube,
                                                                         'time')
                 logger.debug("Added coordinate '%s' to cube", coord_name)
-                cube = cube.aggregated_by(coord_name, iris_op)
+                (cube, data) = _apply_aggregator(cube, data, coord_name,
+                                                 iris_op)
             else:
                 logger.warning(
                     "'%s' is not a coordinate of cube %s and cannot be added "
                     "via iris.coord_categorisation", coord_name, cube)
-    return cube
+    return (cube, data)
 
 
 def calculate_anomalies(cfg, input_data):
@@ -287,30 +364,16 @@ def calculate_sum_and_mean(cfg, cube, data):
 def calculate_trend(cfg, cube, data):
     """Calculate trend."""
     if cfg.get('trend'):
-        if isinstance(cfg['trend'], str):
-            logger.debug("Aggregating over %s for trend calculation",
-                         cfg['trend'])
-            cube = cube.aggregated_by(cfg['trend'], iris.analysis.MEAN)
-            time_units = cfg['trend']
-        else:
-            time_units = (data['frequency']
-                          if data['frequency'] != 'mon' else 'month')
-        logger.debug("Calculating %sly trend", time_units)
-        time_units += '-1'
-
-        # Use x-axis with incremental differences of 1
-        x_data = np.arange(cube.coord('time').shape[0])
-        y_data = np.moveaxis(cube.data, cube.coord_dims('time')[0], -1)
-
-        # Calculate slope for (vectorized function)
-        slopes = _get_slope(x_data, y_data)
-        cube = cube.collapsed('time', iris.analysis.MEAN)
-        cube.data = np.ma.masked_invalid(slopes)
-        cube.units *= Unit(time_units)
-        data['standard_name'] += '_trend'
-        data['short_name'] += '_trend'
-        data['long_name'] += ' (trend)'
-        data['units'] += f' {time_units}'
+        coord_name = cfg['trend']
+        logger.debug("Calculating trend along coordinate '%s'", coord_name)
+        if coord_name not in [c.name() for c in cube.coords()]:
+            logger.warning(
+                "Cannot calculate trend along '%s', cube does not contain "
+                "coordinate with that name", coord_name)
+            return (cube, data)
+        (cube, units) = _calculate_slope_along_coord(cube, coord_name)
+        (cube, data) = _set_trend_metadata(cube, data, units)
+        data['trend'] = f'along coordinate {coord_name}'
     return (cube, data)
 
 
@@ -376,7 +439,7 @@ def main(cfg):
         var_name = cube.var_name
 
         # Aggregation
-        cube = aggregate(cfg, cube)
+        (cube, data) = aggregate(cfg, cube, data)
 
         # Sum and mean
         (cube, data) = calculate_sum_and_mean(cfg, cube, data)
