@@ -1496,7 +1496,7 @@ class MLRModel():
                 pred_cube, pred_type, pred_name=pred_name)
             prediction_cubes[new_path] = pred_cube
             prediction_types[new_path] = pred_type
-            io.save_iris_cube(pred_cube, new_path)
+            io.iris_save(pred_cube, new_path)
         return (prediction_cubes, prediction_types)
 
     def _get_prediction_dtype(self):
@@ -1909,15 +1909,11 @@ class MLRModel():
         ref_shape = ref_cube.shape
         (ref_cube,
          cov_weights) = self._postprocess_cube(ref_cube, None, **kwargs)
-        new_path = self._get_postprocessed_filename(ref_path, ref_path)
         ref_cube.attributes['source'] = ref_path
-        ref_cube.attributes['filename'] = new_path  # TODO remove after merge
-        io.save_iris_cube(ref_cube, new_path)
+        new_path = self._get_postprocessed_filename(ref_path, ref_path)
+        io.iris_save(ref_cube, new_path)
 
         # Process other cubes
-        new_path = ref_path.replace('.nc', '_pp.nc')
-        ref_cube.attributes['source'] = ref_path
-        ref_cube.attributes['filename'] = new_path  # TODO remove after merge
         for (path, cube) in predictions.items():
             if path == ref_path or cube.attributes.get('skip_for_pp'):
                 continue
@@ -1940,8 +1936,7 @@ class MLRModel():
             # Fix attributes and append
             new_path = self._get_postprocessed_filename(path, ref_path)
             cube.attributes['source'] = path
-            cube.attributes['filename'] = new_path  # TODO remove after merge
-            io.save_iris_cube(cube, new_path)
+            io.iris_save(cube, new_path)
 
     def _prediction_to_dict(self, pred_out, **kwargs):
         """Convert output of `clf.predict()` to `dict`."""
