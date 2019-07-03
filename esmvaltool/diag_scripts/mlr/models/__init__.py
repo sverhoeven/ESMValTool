@@ -122,7 +122,7 @@ class MLRModel():
         updated using the function `self.update_parameters()`, the new names
         have to be given for each step of the pipeline seperated by two
         underscores, i.e. `s__p` is the parameter `p` for step `s`.
-    pca : bool, optional (default: True)
+    pca : bool, optional (default: False)
         Preprocess numerical input features using PCA. Parameters for this
         pipeline step can be given via the `parameters` key.
     predict_kwargs : dict, optional
@@ -229,7 +229,7 @@ class MLRModel():
         self._cfg.setdefault('imputation_strategy', 'remove')
         self._cfg.setdefault('n_jobs', 1)
         self._cfg.setdefault('parameters', {})
-        self._cfg.setdefault('pca', True)
+        self._cfg.setdefault('pca', False)
         self._cfg.setdefault('prediction_pp', {})
         self._cfg.setdefault('return_lime_importance', False)
         self._cfg.setdefault('standardize_data', True)

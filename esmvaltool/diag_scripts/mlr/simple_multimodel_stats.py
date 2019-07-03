@@ -162,7 +162,7 @@ def _plot_scalar_cubes(cubes, error_cubes):
     return (axes, legend)
 
 
-def add_mm_cube_attributes(cube, input_data, stat, path):
+def add_mm_cube_attributes(cube, input_data, stat):
     """Add attribute to cube."""
     projects = {d['project'] for d in input_data}
     project = 'Multiple projects'
@@ -173,7 +173,6 @@ def add_mm_cube_attributes(cube, input_data, stat, path):
     attrs = cube.attributes
     attrs['dataset'] = f'Multi-model {stat}'
     attrs['project'] = project
-    attrs['filename'] = path
 
 
 def convert_units(cfg, cube, data):
@@ -315,8 +314,8 @@ def main(cfg):
         except iris.exceptions.CoordinateCollapseError:
             new_cube = mm_cube
         new_path = get_diagnostic_filename(stat, cfg)
-        add_mm_cube_attributes(new_cube, input_data, stat, new_path)
-        io.save_iris_cube(new_cube, new_path)
+        add_mm_cube_attributes(new_cube, input_data, stat)
+        io.iris_save(new_cube, new_path)
         datasets.append(stat)
         cubes.append(new_cube)
 
