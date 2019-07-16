@@ -43,16 +43,18 @@ DATASET_ANCHOR: &datasets
 preprocessors:
 
   mask_sea: &mask_sea
-    mask_landsea:
-      mask_out: sea
+    custom_order: true
+    regrid:
+      scheme: nearest
+      target_grid: 2x2
     extract_region:
       start_latitude: -60.0
       end_latitude: 90.0
       start_longitude: 0.0
       end_longitude: 360.0
-    regrid:
-      scheme: nearest
-      target_grid: 2x2
+    mask_landsea:
+      mask_out: sea
+      always_use_ne_mask: true
 
   regrid:
     <<: *mask_sea
@@ -297,30 +299,24 @@ diagnostics:
         script: mlr/main.py
         ancestors: [
           'diag_mlr_gpp/monthly_clim',
-          'diag_mlr_input_*/*',
+          'diag_mlr_input_*/monthly_*',
         ]
         categorical_features: ['longitude', 'month_number']
         coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_prediction_error:
           type: test
-        # grid_search_cv_kwargs:
-        #   cv: 5
-        # grid_search_cv_param_grid:
-        #   transformed_target_regressor__regressor__learning_rate:
-        #     [0.08, 0.05]
-        #   transformed_target_regressor__regressor__max_depth:
-        #     [6, 8]
-        #   transformed_target_regressor__regressor__n_estimators:
-        #     [2000, 3000, 4000]
-        #   transformed_target_regressor__regressor__subsample:
-        #     [0.2, 0.5, 1.0]
+        grid_search_cv_kwargs:
+          cv: 5
+        grid_search_cv_param_grid:
+          final__regressor__learning_rate:
+            [0.1, 0.08, 0.05]
+          final__regressor__max_depth:
+            [4, 6, 8]
         group_datasets_by_attributes: ['dataset']
         mlr_model: gbr_xgboost
         n_jobs: 24
         parameters_final_regressor:
-          max_depth: 8
-          learning_rate: 0.1
-          n_estimators: 300
+          n_estimators: 1000
           subsample: 0.5
         prediction_pp:
           mean: ['time']
@@ -342,7 +338,7 @@ diagnostics:
         <<: *mlr
         ancestors: [
           'diag_mlr_nbp/monthly_clim',
-          'diag_mlr_input_*/*',
+          'diag_mlr_input_*/monthly_*',
         ]
 
   diag_mmm_gpp:

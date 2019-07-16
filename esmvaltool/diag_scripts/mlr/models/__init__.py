@@ -907,7 +907,7 @@ class MLRModel():
         if new_params:
             logger.info("Updated pipeline with parameters %s", new_params)
 
-    def _check_cube_coords(self, cube, expected_coords, text=None):
+    def _check_cube_dimensions(self, cube, ref_cube, text=None):
         """Check shape and coordinates of a given cube."""
         msg = '' if text is None else f' for {text}'
         if self._cfg.get('accept_only_scalar_data'):
@@ -918,33 +918,37 @@ class MLRModel():
                     f"option 'accept_only_scalar_data' is set to 'True', got "
                     f"{cube.shape}{msg}")
         else:
-            if expected_coords is not None:
-                cube_coords = cube.coords(dim_coords=True)
-                cube_coords_str = [
-                    f'{coord.name()}, shape {coord.shape}'
-                    for coord in cube_coords
-                ]
-                expected_coords_str = [
-                    f'{coord.name()}, shape {coord.shape}'
-                    for coord in expected_coords
-                ]
-                if cube_coords_str != expected_coords_str:
-                    raise ValueError(
-                        "Expected field with coordinates {}{}, got {}. "
-                        "Consider regridding, pre-selecting data at class "
-                        "initialization using '**metadata' or the options "
-                        "'broadcast_from' or 'group_datasets_by_attributes'".
-                        format(expected_coords_str, msg, cube_coords_str))
-                for (idx, cube_coord) in enumerate(cube_coords):
-                    expected_coord = expected_coords[idx]
-                    if not np.allclose(cube_coord.points,
-                                       expected_coord.points):
-                        logger.warning(
-                            "'%s' coordinate for different cubes does not "
-                            "match, got %s%s, expected %s (values differ by "
-                            "more than allowed tolerance, check input cubes)",
-                            cube_coord.name(), cube_coord.points, msg,
-                            expected_coord.points)
+            if ref_cube is None:
+                return
+            if cube.shape != ref_cube.shape:
+                raise ValueError(
+                    f"Expected cubes with shapes {ref_cube.shape}{msg}, got "
+                    f"{cube.shape}. Consider regridding, pre-selecting data "
+                    f"at class initialization using '**metadata' or the "
+                    f"options 'broadcast_from' or 'group_datasets_by_"
+                    f"attributes'")
+            cube_coords = cube.coords(dim_coords=True)
+            ref_coords = ref_cube.coords(dim_coords=True)
+            cube_coords_str = [
+                f'{coord.name()}, shape {coord.shape}' for coord in cube_coords
+            ]
+            ref_coords_str = [
+                f'{coord.name()}, shape {coord.shape}' for coord in ref_coords
+            ]
+            if cube_coords_str != ref_coords_str:
+                logger.warning(
+                    "Cube coordinates differ, expected %s%s, got %s. Check "
+                    "input cubes", ref_coords_str, msg, cube_coords_str)
+                return
+            for (idx, cube_coord) in enumerate(cube_coords):
+                ref_coord = ref_coords[idx]
+                if not np.allclose(cube_coord.points, ref_coord.points):
+                    logger.warning(
+                        "'%s' coordinate for different cubes does not "
+                        "match, got %s%s, expected %s (values differ by "
+                        "more than allowed tolerance, check input cubes)",
+                        cube_coord.name(), cube_coord.points, msg,
+                        ref_coord.points)
 
     def _check_dataset(self, datasets, var_type, tag, text=None):
         """Check if datasets exist and are valid."""
@@ -1205,7 +1209,7 @@ class MLRModel():
             dataset = self._check_dataset(datasets_, 'label', self.label, msg)
             cube = self._load_cube(dataset)
             text = f"label '{self.label}'{msg}"
-            self._check_cube_coords(cube, None, text)
+            self._check_cube_dimensions(cube, None, text)
             cube_data = pd.DataFrame(self._get_cube_data(cube),
                                      columns=[self.label],
                                      dtype=self._cfg['dtype'])
@@ -1593,9 +1597,7 @@ class MLRModel():
                             dataset, ref_cube, text)
                     else:
                         cube = self._load_cube(dataset)
-                    self._check_cube_coords(cube,
-                                            ref_cube.coords(dim_coords=True),
-                                            text)
+                    self._check_cube_dimensions(cube, ref_cube, text)
                     new_data = self._get_cube_data(cube)
             else:
                 new_data = self._get_coordinate_data(ref_cube, var_type, tag,
