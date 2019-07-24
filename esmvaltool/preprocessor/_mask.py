@@ -86,7 +86,7 @@ def _apply_fx_mask(fx_mask, var_data):
     return var_data
 
 
-def mask_landsea(cube, fx_files, mask_out):
+def mask_landsea(cube, fx_files, mask_out, always_use_ne_mask=False):
     """
     Mask out either land or sea
 
@@ -109,6 +109,10 @@ def mask_landsea(cube, fx_files, mask_out):
     * mask_out (string):
         either "land" to mask out land mass or "sea" to mask out seas.
 
+    * always_use_ne_mask (bool):
+        if True, use Natural Earth mask even when there are fx_files
+        available.
+
     Returns
     -------
     masked iris cube
@@ -122,7 +126,7 @@ def mask_landsea(cube, fx_files, mask_out):
         'sea': os.path.join(cwd, 'ne_masks/ne_50m_ocean.shp')
     }
 
-    if fx_files:
+    if fx_files and not always_use_ne_mask:
         fx_cubes = {}
         for fx_file in fx_files:
             fx_root = os.path.basename(fx_file).split('_')[0]
@@ -193,8 +197,7 @@ def mask_landseaice(cube, fx_files, mask_out):
             fx_cube = iris.load_cube(fx_file)
 
             if _check_dims(cube, fx_cube):
-                landice_mask = _get_fx_mask(fx_cube.data, mask_out,
-                                            'sftgif')
+                landice_mask = _get_fx_mask(fx_cube.data, mask_out, 'sftgif')
                 cube.data = _apply_fx_mask(landice_mask, cube.data)
                 logger.debug("Applying landsea-ice mask: sftgif")
     else:
@@ -223,7 +226,8 @@ def _mask_with_shp(cube, shapefilename):
     # 1D regular grids
     if cube.coord('longitude').points.ndim < 2:
         x_p, y_p = np.meshgrid(
-            cube.coord(axis='X').points, cube.coord(axis='Y').points)
+            cube.coord(axis='X').points,
+            cube.coord(axis='Y').points)
     # 2D irregular grids; spit an error for now
     else:
         logger.error('No fx-files found (sftlf or sftof)!\n \
@@ -293,8 +297,10 @@ def count_spells(data, threshold, axis, spell_length):
     # if you want overlapping windows set the step to be m*spell_length
     # where m is a float
     ###############################################################
-    hit_windows = rolling_window(
-        data_hits, window=spell_length, step=spell_length, axis=axis)
+    hit_windows = rolling_window(data_hits,
+                                 window=spell_length,
+                                 step=spell_length,
+                                 axis=axis)
     # Find the windows "full of True-s" (along the added 'window axis').
     full_windows = np.all(hit_windows, axis=axis + 1)
     # Count points fulfilling the condition (along the time axis).
@@ -317,15 +323,15 @@ def window_counts(mycube, value_threshold, window_size, pctile):
     window_counts[3] = percentile(array, pctile)
     """
     # Make an aggregator from the user function.
-    spell_count = Aggregator(
-        'spell_count', count_spells, units_func=lambda units: 1)
+    spell_count = Aggregator('spell_count',
+                             count_spells,
+                             units_func=lambda units: 1)
 
     # Calculate the statistic.
-    counts_windowed_cube = mycube.collapsed(
-        'time',
-        spell_count,
-        threshold=value_threshold,
-        spell_length=window_size)
+    counts_windowed_cube = mycube.collapsed('time',
+                                            spell_count,
+                                            threshold=value_threshold,
+                                            spell_length=window_size)
 
     # if one wants to print the whole array
     # np.set_printoptions(threshold=np.nan)
@@ -339,15 +345,15 @@ def window_counts(mycube, value_threshold, window_size, pctile):
 def mask_cube_counts(mycube, value_threshold, counts_threshold, window_size):
     """Build the counts mask"""
     # Make an aggregator from the user function.
-    spell_count = Aggregator(
-        'spell_count', count_spells, units_func=lambda units: 1)
+    spell_count = Aggregator('spell_count',
+                             count_spells,
+                             units_func=lambda units: 1)
 
     # Calculate the statistic.
-    counts_windowed_cube = mycube.collapsed(
-        'time',
-        spell_count,
-        threshold=value_threshold,
-        spell_length=window_size)
+    counts_windowed_cube = mycube.collapsed('time',
+                                            spell_count,
+                                            threshold=value_threshold,
+                                            spell_length=window_size)
 
     mask = counts_windowed_cube.data >= counts_threshold
     mask.astype(np.int)
@@ -455,8 +461,8 @@ def _get_fillvalues_mask(cube, threshold_fraction, min_value, time_window):
     # basic checks
     if threshold_fraction < 0 or threshold_fraction > 1.0:
         raise ValueError(
-            "Fraction of missing values {} should be between 0 and 1.0"
-            .format(threshold_fraction))
+            "Fraction of missing values {} should be between 0 and 1.0".format(
+                threshold_fraction))
     nr_time_points = len(cube.coord('time').points)
     if time_window > nr_time_points:
         logger.warning("Time window (in time units) larger "
@@ -467,12 +473,15 @@ def _get_fillvalues_mask(cube, threshold_fraction, min_value, time_window):
     counts_threshold = int(max_counts_per_time_window * threshold_fraction)
 
     # Make an aggregator
-    spell_count = Aggregator(
-        'spell_count', count_spells, units_func=lambda units: 1)
+    spell_count = Aggregator('spell_count',
+                             count_spells,
+                             units_func=lambda units: 1)
 
     # Calculate the statistic.
-    counts_windowed_cube = cube.collapsed(
-        'time', spell_count, threshold=min_value, spell_length=time_window)
+    counts_windowed_cube = cube.collapsed('time',
+                                          spell_count,
+                                          threshold=min_value,
+                                          spell_length=time_window)
 
     # Create mask
     mask = counts_windowed_cube.data < counts_threshold
