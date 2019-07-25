@@ -1,6 +1,4 @@
-"""Integration tests for :func:`esmvaltool.preprocessor._io.load`."""
-
-from __future__ import absolute_import, division, print_function
+"""Integration tests for :func:`esmvalcore.preprocessor._io.load`."""
 
 import os
 import tempfile
@@ -11,7 +9,7 @@ import numpy as np
 from iris.coords import DimCoord
 from iris.cube import Cube
 
-from esmvaltool.preprocessor._io import concatenate_callback, load
+from esmvalcore.preprocessor._io import concatenate_callback, load
 
 
 def _create_sample_cube():
@@ -21,7 +19,7 @@ def _create_sample_cube():
 
 
 class TestLoad(unittest.TestCase):
-    """Tests for :func:`esmvaltool.preprocessor.load`."""
+    """Tests for :func:`esmvalcore.preprocessor.load`."""
 
     def setUp(self):
         """Start tests."""
@@ -61,15 +59,12 @@ class TestLoad(unittest.TestCase):
                 cube.attributes[attr] = attr
             self._save_cube(cube)
         for temp_file in self.temp_files:
-            cubes = load(
-                temp_file,
-                callback=concatenate_callback)
+            cubes = load(temp_file, callback=concatenate_callback)
             cube = cubes[0]
             self.assertEqual(1, len(cubes))
             self.assertTrue((cube.data == np.array([1, 2])).all())
             self.assertTrue(
-                (cube.coord('latitude').points == np.array([1, 2])).all()
-            )
+                (cube.coord('latitude').points == np.array([1, 2])).all())
             for attr in attributes:
                 self.assertTrue(attr not in cube.attributes)
 

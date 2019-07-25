@@ -1,11 +1,11 @@
-import unittest
-import tempfile
 import os
 import shutil
+import tempfile
+import unittest
 
 from iris.cube import Cube
 
-from esmvaltool.cmor.fix import Fix
+from esmvalcore.cmor.fix import Fix
 
 
 class TestFix(unittest.TestCase):
@@ -18,16 +18,16 @@ class TestFix(unittest.TestCase):
         shutil.rmtree(self.temp_folder)
 
     def test_get_fix(self):
-        from esmvaltool.cmor._fixes.CMIP5.CanESM2 import fgco2
+        from esmvalcore.cmor._fixes.CMIP5.CanESM2 import fgco2
         self.assertListEqual(
             Fix.get_fixes('CMIP5', 'CanESM2', 'fgco2'), [fgco2()])
 
     def test_get_fixes_with_replace(self):
-        from esmvaltool.cmor._fixes.CMIP5.BNU_ESM import ch4
+        from esmvalcore.cmor._fixes.CMIP5.BNU_ESM import ch4
         self.assertListEqual(Fix.get_fixes('CMIP5', 'BNU-ESM', 'ch4'), [ch4()])
 
     def test_get_fixes_with_generic(self):
-        from esmvaltool.cmor._fixes.CMIP5.CESM1_BGC import co2
+        from esmvalcore.cmor._fixes.CMIP5.CESM1_BGC import co2
         self.assertListEqual(
             Fix.get_fixes('CMIP5', 'CESM1-BGC', 'co2'), [co2()])
 
@@ -62,5 +62,4 @@ class TestFix(unittest.TestCase):
         output_dir = os.path.join(self.temp_folder, 'fixed')
         os.makedirs(output_dir)
         fixed_filepath = Fix().get_fixed_filepath(output_dir, filepath)
-        self.assertTrue(fixed_filepath,
-                        os.path.join(output_dir, 'file.nc'))
+        self.assertTrue(fixed_filepath, os.path.join(output_dir, 'file.nc'))

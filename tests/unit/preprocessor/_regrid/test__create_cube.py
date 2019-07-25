@@ -1,17 +1,15 @@
 """
-Unit tests for the :func:`esmvaltool.preprocessor.regrid._create_cube`
+Unit tests for the :func:`esmvalcore.preprocessor.regrid._create_cube`
 function.
 
 """
-
-from __future__ import absolute_import, division, print_function
 
 import unittest
 
 import numpy as np
 
 import tests
-from esmvaltool.preprocessor._regrid import _create_cube as create_cube
+from esmvalcore.preprocessor._regrid import _create_cube as create_cube
 from tests.unit.preprocessor._regrid import _make_cube, _make_vcoord
 
 

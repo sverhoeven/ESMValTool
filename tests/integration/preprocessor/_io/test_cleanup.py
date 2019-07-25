@@ -1,16 +1,14 @@
-"""Integration tests for :func:`esmvaltool.preprocessor._io.cleanup`"""
+"""Integration tests for :func:`esmvalcore.preprocessor._io.cleanup`"""
 
-from __future__ import absolute_import, division, print_function
-
-import unittest
 import os
 import tempfile
+import unittest
 
-from esmvaltool.preprocessor import _io
+from esmvalcore.preprocessor import _io
 
 
 class TestCleanup(unittest.TestCase):
-    """Tests for :func:`esmvaltool.preprocessor._io.cleanup`"""
+    """Tests for :func:`esmvalcore.preprocessor._io.cleanup`"""
 
     def setUp(self):
         self.temp_paths = []

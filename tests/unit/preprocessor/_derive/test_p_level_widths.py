@@ -1,12 +1,9 @@
 """Tests for toz variable derivation functions."""
 
-
-from __future__ import division, print_function
-
 import numpy as np
 import pytest
 
-from esmvaltool.preprocessor._derive.toz import _p_level_widths
+from esmvalcore.preprocessor._derive.toz import _p_level_widths
 
 
 def test_col_is_not_monotonic():
