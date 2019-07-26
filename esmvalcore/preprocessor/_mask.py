@@ -88,7 +88,7 @@ def _apply_fx_mask(fx_mask, var_data):
     return var_data
 
 
-def mask_landsea(cube, fx_files, mask_out, always_use_ne_mask=False):
+def mask_landsea(cube, fx_files, mask_out):
     """
     Mask out either land mass or sea (oceans, seas and lakes).
 
@@ -107,10 +107,6 @@ def mask_landsea(cube, fx_files, mask_out, always_use_ne_mask=False):
 
     mask_out: str
         either "land" to mask out land mass or "sea" to mask out seas.
-
-    * always_use_ne_mask (bool):
-        if True, use Natural Earth mask even when there are fx_files
-        available.
 
     Returns
     -------
@@ -133,7 +129,7 @@ def mask_landsea(cube, fx_files, mask_out, always_use_ne_mask=False):
         'sea': os.path.join(cwd, 'ne_masks/ne_50m_ocean.shp')
     }
 
-    if fx_files and not always_use_ne_mask:
+    if fx_files:
         fx_cubes = {}
         for fx_file in fx_files:
             fx_root = os.path.basename(fx_file).split('_')[0]
@@ -332,10 +328,8 @@ def count_spells(data, threshold, axis, spell_length):
     # if you want overlapping windows set the step to be m*spell_length
     # where m is a float
     ###############################################################
-    hit_windows = rolling_window(data_hits,
-                                 window=spell_length,
-                                 step=spell_length,
-                                 axis=axis)
+    hit_windows = rolling_window(
+        data_hits, window=spell_length, step=spell_length, axis=axis)
     # Find the windows "full of True-s" (along the added 'window axis').
     full_windows = np.all(hit_windows, axis=axis + 1)
     # Count points fulfilling the condition (along the time axis).
@@ -550,15 +544,12 @@ def _get_fillvalues_mask(cube, threshold_fraction, min_value, time_window):
     counts_threshold = int(max_counts_per_time_window * threshold_fraction)
 
     # Make an aggregator
-    spell_count = Aggregator('spell_count',
-                             count_spells,
-                             units_func=lambda units: 1)
+    spell_count = Aggregator(
+        'spell_count', count_spells, units_func=lambda units: 1)
 
     # Calculate the statistic.
-    counts_windowed_cube = cube.collapsed('time',
-                                          spell_count,
-                                          threshold=min_value,
-                                          spell_length=time_window)
+    counts_windowed_cube = cube.collapsed(
+        'time', spell_count, threshold=min_value, spell_length=time_window)
 
     # Create mask
     mask = counts_windowed_cube.data < counts_threshold
