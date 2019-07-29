@@ -36,7 +36,6 @@ diagnostics:
         short_name: ua
         project: CMIP5
         mip: Amon
-        field: T3M
         exp: historical
         ensemble: r1i1p1
         start_year: 2000
@@ -67,7 +66,6 @@ diagnostics:
         short_name: ta
         project: CMIP5
         mip: Amon
-        field: T3M
         exp: historical
         ensemble: r1i1p1
         start_year: 1979
@@ -84,14 +82,12 @@ diagnostics:
       feature_tas:
         <<: *variable_settings
         short_name: tas
-        field: T2Ms
         tag: TAS
         broadcast_from: [1, 2]
         convert_units_to: celsius
       prediction_input_tas:
         <<: *variable_settings
         short_name: tas
-        field: T2Ms
         tag: TAS
         var_type: prediction_input
         broadcast_from: [1, 2]

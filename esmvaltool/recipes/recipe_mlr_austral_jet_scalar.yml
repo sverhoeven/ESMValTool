@@ -97,9 +97,8 @@ preprocessors:
       end_latitude: -60
       start_longitude: 0
       end_longitude: 360
-    average_region:
-      coord1: latitude
-      coord2: longitude
+    area_statistics:
+      operator: mean
 
   sp100:
     extract_month:
@@ -112,9 +111,8 @@ preprocessors:
       end_latitude: -60
       start_longitude: 0
       end_longitude: 360
-    average_region:
-      coord1: latitude
-      coord2: longitude
+    area_statistics:
+      operator: mean
 
   ng50:
     extract_levels:
@@ -125,9 +123,8 @@ preprocessors:
       end_latitude: 82.5
       start_longitude: 0
       end_longitude: 360
-    average_region:
-      coord1: latitude
-      coord2: longitude
+    area_statistics:
+      operator: mean
 
   ng100:
     extract_levels:
@@ -138,9 +135,8 @@ preprocessors:
       end_latitude: 90
       start_longitude: 0
       end_longitude: 360
-    average_region:
-      coord1: latitude
-      coord2: longitude
+    area_statistics:
+      operator: mean
 
   trop250:
     extract_month:
@@ -153,9 +149,8 @@ preprocessors:
       end_latitude: 30
       start_longitude: 0
       end_longitude: 360
-    average_region:
-      coord1: latitude
-      coord2: longitude
+    area_statistics:
+      operator: mean
 
   djf:
     extract_month:
@@ -174,7 +169,6 @@ diagnostics:
       ta: &variable_settings
         project: CMIP5
         mip: Amon
-        field: T3M
         exp: historical
         start_year: 1979
         end_year: 2005
@@ -221,97 +215,96 @@ diagnostics:
         <<: *trend
         tag: T-Trop_t
 
-  diag_mlr_input_tro3_sp50:
-    variables:
-      tro3:
-        <<: *variable_settings
-        preprocessor: sp50
-        additional_datasets:
-          - {dataset: BDBP, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-    additional_datasets: &tro3_datasets
-      - {dataset: ACCESS1-0,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: ACCESS1-3,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: CESM1-BGC,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r2i1p1}
-      - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r3i1p1}
-      - {dataset: CMCC-CMS,       project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r2i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r3i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r4i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r5i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r6i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r7i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r8i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r9i1p1}
-      - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r10i1p1}
-      - {dataset: HadGEM2-AO,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: inmcm4,         project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: MRI-CGCM3,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      - {dataset: NorESM1-M,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
-      # - {dataset: bcc-csm1-1,     ensemble: r1i1p1}
-      - {dataset: BNU-ESM,        ensemble: r1i1p1}
-      - {dataset: CanESM2,        ensemble: r1i1p1}
-      - {dataset: CanESM2,        ensemble: r2i1p1}
-      - {dataset: CanESM2,        ensemble: r3i1p1}
-      - {dataset: CanESM2,        ensemble: r4i1p1}
-      - {dataset: CanESM2,        ensemble: r5i1p1}
-      # - {dataset: CCSM4,          ensemble: r1i1p1}
-      # - {dataset: CCSM4,          ensemble: r2i1p1}
-      # - {dataset: CCSM4,          ensemble: r3i1p1}
-      # - {dataset: CCSM4,          ensemble: r4i1p1}
-      # - {dataset: CCSM4,          ensemble: r5i1p1}
-      # - {dataset: CCSM4,          ensemble: r6i1p1}
-      - {dataset: CNRM-CM5,       ensemble: r1i1p1}
-      - {dataset: GFDL-CM3,       ensemble: r1i1p1}
-      - {dataset: GFDL-ESM2G,     ensemble: r1i1p1}
-      - {dataset: GFDL-ESM2M,     ensemble: r1i1p1}
-      - {dataset: IPSL-CM5A-LR,   ensemble: r1i1p1}
-      - {dataset: IPSL-CM5A-LR,   ensemble: r2i1p1}
-      - {dataset: IPSL-CM5A-LR,   ensemble: r3i1p1}
-      - {dataset: IPSL-CM5A-LR,   ensemble: r4i1p1}
-      - {dataset: IPSL-CM5A-MR,   ensemble: r1i1p1}
-      - {dataset: IPSL-CM5B-LR,   ensemble: r1i1p1}
-      - {dataset: MIROC5,         ensemble: r1i1p1}
-      - {dataset: MIROC5,         ensemble: r2i1p1}
-      - {dataset: MIROC-ESM,      ensemble: r1i1p1}
-      - {dataset: MIROC-ESM-CHEM, ensemble: r1i1p1}
-      - {dataset: MPI-ESM-LR,     ensemble: r1i1p1}
-      - {dataset: MPI-ESM-LR,     ensemble: r2i1p1}
-      - {dataset: MPI-ESM-LR,     ensemble: r3i1p1}
-      - {dataset: MPI-ESM-MR,     ensemble: r1i1p1}
-      - {dataset: MPI-ESM-MR,     ensemble: r2i1p1}
-      - {dataset: MPI-ESM-MR,     ensemble: r3i1p1}
-    scripts:
-      mean:
-        <<: *mean
-        tag: O3-SP_c
-      trend:
-        <<: *trend
-        tag: O3-SP_t
+  # diag_mlr_input_tro3_sp50:
+  #   variables:
+  #     tro3:
+  #       <<: *variable_settings
+  #       preprocessor: sp50
+  #       additional_datasets:
+  #         - {dataset: BDBP, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+  #   additional_datasets: &tro3_datasets
+  #     - {dataset: ACCESS1-0,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: ACCESS1-3,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: CESM1-BGC,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r2i1p1}
+  #     - {dataset: CESM1-CAM5,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r3i1p1}
+  #     - {dataset: CMCC-CMS,       project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r2i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r3i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r4i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r5i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r6i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r7i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r8i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r9i1p1}
+  #     - {dataset: CSIRO-Mk3-6-0,  project: Ozone_CMIP5_ACC_SPARC, ensemble: r10i1p1}
+  #     - {dataset: HadGEM2-AO,     project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: inmcm4,         project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: MRI-CGCM3,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     - {dataset: NorESM1-M,      project: Ozone_CMIP5_ACC_SPARC, ensemble: r1i1p1}
+  #     # - {dataset: bcc-csm1-1,     ensemble: r1i1p1}
+  #     - {dataset: BNU-ESM,        ensemble: r1i1p1}
+  #     - {dataset: CanESM2,        ensemble: r1i1p1}
+  #     - {dataset: CanESM2,        ensemble: r2i1p1}
+  #     - {dataset: CanESM2,        ensemble: r3i1p1}
+  #     - {dataset: CanESM2,        ensemble: r4i1p1}
+  #     - {dataset: CanESM2,        ensemble: r5i1p1}
+  #     # - {dataset: CCSM4,          ensemble: r1i1p1}
+  #     # - {dataset: CCSM4,          ensemble: r2i1p1}
+  #     # - {dataset: CCSM4,          ensemble: r3i1p1}
+  #     # - {dataset: CCSM4,          ensemble: r4i1p1}
+  #     # - {dataset: CCSM4,          ensemble: r5i1p1}
+  #     # - {dataset: CCSM4,          ensemble: r6i1p1}
+  #     - {dataset: CNRM-CM5,       ensemble: r1i1p1}
+  #     - {dataset: GFDL-CM3,       ensemble: r1i1p1}
+  #     - {dataset: GFDL-ESM2G,     ensemble: r1i1p1}
+  #     - {dataset: GFDL-ESM2M,     ensemble: r1i1p1}
+  #     - {dataset: IPSL-CM5A-LR,   ensemble: r1i1p1}
+  #     - {dataset: IPSL-CM5A-LR,   ensemble: r2i1p1}
+  #     - {dataset: IPSL-CM5A-LR,   ensemble: r3i1p1}
+  #     - {dataset: IPSL-CM5A-LR,   ensemble: r4i1p1}
+  #     - {dataset: IPSL-CM5A-MR,   ensemble: r1i1p1}
+  #     - {dataset: IPSL-CM5B-LR,   ensemble: r1i1p1}
+  #     - {dataset: MIROC5,         ensemble: r1i1p1}
+  #     - {dataset: MIROC5,         ensemble: r2i1p1}
+  #     - {dataset: MIROC-ESM,      ensemble: r1i1p1}
+  #     - {dataset: MIROC-ESM-CHEM, ensemble: r1i1p1}
+  #     - {dataset: MPI-ESM-LR,     ensemble: r1i1p1}
+  #     - {dataset: MPI-ESM-LR,     ensemble: r2i1p1}
+  #     - {dataset: MPI-ESM-LR,     ensemble: r3i1p1}
+  #     - {dataset: MPI-ESM-MR,     ensemble: r1i1p1}
+  #     - {dataset: MPI-ESM-MR,     ensemble: r2i1p1}
+  #     - {dataset: MPI-ESM-MR,     ensemble: r3i1p1}
+  #   scripts:
+  #     mean:
+  #       <<: *mean
+  #       tag: O3-SP_c
+  #     trend:
+  #       <<: *trend
+  #       tag: O3-SP_t
 
-  diag_mlr_input_tro3_ng50:
-    variables:
-      tro3:
-        <<: *variable_settings
-        preprocessor: ng50
-        additional_datasets:
-          - {dataset: BDBP, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
-    additional_datasets: *tro3_datasets
-    scripts:
-      mean:
-        <<: *mean
-        tag: O3-NGlob_c
-      trend:
-        <<: *trend
-        tag: O3-NGlob_t
+  # diag_mlr_input_tro3_ng50:
+  #   variables:
+  #     tro3:
+  #       <<: *variable_settings
+  #       preprocessor: ng50
+  #       additional_datasets:
+  #         - {dataset: BDBP, project: OBS, type: reanaly, version: 1, tier: 3, var_type: prediction_input}
+  #   additional_datasets: *tro3_datasets
+  #   scripts:
+  #     mean:
+  #       <<: *mean
+  #       tag: O3-NGlob_c
+  #     trend:
+  #       <<: *trend
+  #       tag: O3-NGlob_t
 
   diag_mlr_input_uajet_sh850:
     variables:
       uajet:
         <<: *variable_settings
-        field: T0M
         preprocessor: djf
         derive: true
     additional_datasets: *datasets
@@ -349,7 +342,6 @@ diagnostics:
         preprocessor: noop
       ps:
         <<: *variable_settings
-        field: T2Ms
         preprocessor: noop
     additional_datasets: *datasets
     scripts:
@@ -371,7 +363,6 @@ diagnostics:
       asr:
         <<: *variable_settings
         preprocessor: noop
-        field: T2M
         start_year: 2000
         derive: true
         additional_datasets:
@@ -389,7 +380,6 @@ diagnostics:
       uajet:
         project: CMIP5
         mip: Amon
-        field: T0M
         exp: rcp45
         start_year: 2015
         end_year: 2034

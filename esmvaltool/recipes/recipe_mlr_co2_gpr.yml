@@ -60,7 +60,6 @@ diagnostics:
         preprocessor: mask_sea
         project: CMIP5
         mip: Amon
-        field: T2Ms
         exp: historical
         ensemble: r1i1p1
         start_year: 1991
@@ -71,7 +70,7 @@ diagnostics:
         <<: *variable_settings_features
         var_type: prediction_input
         additional_datasets:
-          - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
+          - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
     scripts:
       monthly_clim: &monthly_clim
         script: mlr/simple_pp.py
@@ -90,7 +89,7 @@ diagnostics:
         <<: *variable_settings_prediction_input
         short_name: pr
         additional_datasets:
-          - {dataset: CRU, project: OBS, type: reanaly, version: 1, tier: 3}
+          - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
     scripts:
       monthly_clim:
         <<: *monthly_clim
@@ -174,13 +173,15 @@ diagnostics:
       features:
         <<: *variable_settings_features
         short_name: et
+        mip: Lmon
         derive: true
       prediction_input:
         <<: *variable_settings_prediction_input
         short_name: et
+        mip: Lmon
         derive: true
         additional_datasets:
-          - {dataset: LandFlux-EVAL, project: OBS, type: ground, version: 1, tier: 3}
+          - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
     scripts:
       monthly_clim:
         <<: *monthly_clim
@@ -227,25 +228,25 @@ diagnostics:
   #       tag: CSOIL_c
   #       convert_units_to: 'Gt km-2'
 
-  diag_mlr_input_nbp:
-    variables:
-      features:
-        <<: *variable_settings_features
-        short_name: nbp_grid
-        mip: Lmon
-        derive: true
-      prediction_input:
-        <<: *variable_settings_prediction_input
-        short_name: nbp_grid
-        mip: Lmon
-        derive: true
-        additional_datasets:
-          - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
-    scripts:
-      monthly_clim:
-        <<: *monthly_clim
-        tag: NBP_c
-        convert_units_to: 'Gt km-2 yr-1'
+  # diag_mlr_input_nbp:
+  #   variables:
+  #     features:
+  #       <<: *variable_settings_features
+  #       short_name: nbp_grid
+  #       mip: Lmon
+  #       derive: true
+  #     prediction_input:
+  #       <<: *variable_settings_prediction_input
+  #       short_name: nbp_grid
+  #       mip: Lmon
+  #       derive: true
+  #       additional_datasets:
+  #         - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
+  #   scripts:
+  #     monthly_clim:
+  #       <<: *monthly_clim
+  #       tag: NBP_c
+  #       convert_units_to: 'Gt km-2 yr-1'
 
   diag_mlr_input_gpp:
     variables:
@@ -260,7 +261,7 @@ diagnostics:
         mip: Lmon
         derive: true
         additional_datasets:
-          - {dataset: MTE, project: OBS, type: reanaly, version: 1, tier: 2}
+          - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
     scripts:
       monthly_clim:
         <<: *monthly_clim
@@ -292,13 +293,13 @@ diagnostics:
     variables:
       ref:
         <<: *variable_settings_features
-        short_name: nbp_grid
+        short_name: gpp_grid
         mip: Lmon
         derive: true
         ref: true
       label: &variable_settings_label
         <<: *variable_settings_features
-        short_name: nbp_grid
+        short_name: gpp_grid
         mip: Lmon
         exp: rcp45
         start_year: 2021
@@ -310,16 +311,16 @@ diagnostics:
         <<: *monthly_clim
         anomaly:
           matched_by: ['dataset']
-        tag: NBP_change
+        tag: GPP_change
         convert_units_to: 'Gt km-2 yr-1'
       multiple_mlr_models:
-        script: mlr/main_gpr.py
+        script: mlr/main.py
         ancestors: [
           'diag_mlr/monthly_clim',
           'diag_mlr_input_*/monthly_clim',
         ]
-        algorithm: george
-        coords_as_features:: ['month_number', 'latitude', 'longitude']
+        model_type: gpr_george
+        coords_as_features: ['month_number', 'latitude', 'longitude']
         metadata_preselection:
           select:
             project: CMIP5
