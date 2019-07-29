@@ -801,17 +801,16 @@ class MLRModel():
                 "function", predict_kwargs)
 
         # Iterate over predictions
-        if not self._datasets['prediction']:
-            logger.warning("Prediction not possible, no 'prediction_input' "
-                           "datasets given")
-            return
-        for pred_name in self._datasets['prediction']:
+        for pred_name in self._datasets['prediction_input']:
             if pred_name is not None:
                 logger.info("Predicting '%s'", pred_name)
 
             # Prediction
             (x_pred, x_cube) = self._extract_prediction_input(pred_name)
             pred_dict = self._get_prediction_dict(x_pred, **predict_kwargs)
+
+            # Errors
+            pred_dict = self._propagate_input_errors(pred_name, pred_dict)
             pred_dict = self._estimate_prediction_error(pred_dict)
 
             # Save data
@@ -955,6 +954,11 @@ class MLRModel():
         datasets = select_metadata(datasets, tag=tag)
         msg = '' if text is None else text
         if not datasets:
+            if var_type == 'prediction_input_error':
+                logger.debug(
+                    "Prediction input error of '%s'%s not available, setting "
+                    "it to 0.0", tag, msg)
+                return None
             if var_type == 'label':
                 raise ValueError(f"Label '{tag}'{msg} not found")
             if not self._cfg.get('allow_missing_features'):
@@ -1155,7 +1159,7 @@ class MLRModel():
 
     def _extract_prediction_input(self, prediction_name):
         """Extract prediction input data points for `prediction_name`."""
-        datasets = self._datasets['prediction'][prediction_name]
+        datasets = self._datasets['prediction_input'][prediction_name]
         (x_data,
          prediction_input_cube) = self._extract_x_data(datasets,
                                                        'prediction_input')
@@ -1164,9 +1168,21 @@ class MLRModel():
             len(x_data.index), self._cfg['dtype'])
         return (x_data, prediction_input_cube)
 
+    def _extract_prediction_input_error(self, prediction_name):
+        """Extract prediction input error data points for `prediction_name`."""
+        if prediction_name not in self._datasets['prediction_input_error']:
+            return None
+        datasets = self._datasets['prediction_input_error'][prediction_name]
+        (x_data, _) = self._extract_x_data(datasets, 'prediction_input_error')
+        logger.info(
+            "Found %i raw prediction input error data point(s) with data "
+            "type '%s'", len(x_data.index), self._cfg['dtype'])
+        return x_data
+
     def _extract_x_data(self, datasets, var_type):
         """Extract required x data of type `var_type` from `datasets`."""
-        allowed_types = ('feature', 'prediction_input')
+        allowed_types = ('feature', 'prediction_input',
+                         'prediction_input_error')
         if var_type not in allowed_types:
             raise ValueError(
                 f"Excepted one of '{allowed_types}' for 'var_type', got "
@@ -1284,8 +1300,8 @@ class MLRModel():
     def _get_features(self):
         """Extract all features from the `prediction_input` datasets."""
         logger.debug("Extracting features from 'prediction_input' datasets")
-        pred_name = list(self._datasets['prediction'].keys())[0]
-        datasets = self._datasets['prediction'][pred_name]
+        pred_name = list(self._datasets['prediction_input'].keys())[0]
+        datasets = self._datasets['prediction_input'][pred_name]
         msg = ('' if pred_name is None else f" for prediction '{pred_name}'")
         (units,
          types) = self._get_features_of_datasets(datasets, 'prediction_input',
@@ -1589,7 +1605,10 @@ class MLRModel():
             if self.features_types[tag] != 'coordinate':
                 dataset = self._check_dataset(datasets, var_type, tag, msg)
                 if dataset is None:
-                    new_data = np.nan
+                    if var_type == 'prediction_input_error':
+                        new_data = 0.0
+                    else:
+                        new_data = np.nan
                 else:
                     text = f"{var_type} '{tag}'{msg}"
                     if 'broadcast_from' in dataset:
@@ -1702,6 +1721,10 @@ class MLRModel():
         """Load train/test data (features/labels)."""
         (x_all, y_all) = self._extract_features_and_labels()
         self._data['all'] = pd.concat([x_all, y_all], axis=1, keys=['x', 'y'])
+        if len(y_all.index) < 2:
+            raise ValueError(
+                f"Need at least 2 datasets for MLR training, got only "
+                f"{len(y_all.index)}")
         logger.info("Loaded %i input data point(s)", len(y_all.index))
 
         # Split train/test data if desired
@@ -1709,6 +1732,11 @@ class MLRModel():
         if test_size:
             (self._data['train'], self._data['test']) = self._train_test_split(
                 x_all, y_all, test_size)
+            for data_type in ('train', 'test'):
+                if len(self.data[data_type].index) < 2:
+                    raise ValueError(
+                        f"Need at least 2 datasets for '{data_type}' data, "
+                        f"got {len(self.data[data_type].index)}")
             logger.info(
                 "Using %i%% of the input data as test data (%i point(s))",
                 int(test_size * 100), len(self.data['test'].index))
@@ -1745,26 +1773,33 @@ class MLRModel():
         if metadata:
             logger.info("Only considered features and labels matching %s",
                         metadata)
+        training_datasets = feature_datasets + label_datasets
 
         # Prediction datasets
         prediction_datasets = select_metadata(input_datasets,
                                               var_type='prediction_input')
-        training_datasets = feature_datasets + label_datasets
+        error_datasets = select_metadata(input_datasets,
+                                         var_type='prediction_input_error')
 
         # Check datasets
         msg = ("At least one '{}' dataset does not have necessary MLR "
                "attributes")
         if not mlr.datasets_have_mlr_attributes(training_datasets,
                                                 log_level='error'):
-            raise ValueError(msg.format('training'))
+            raise ValueError(msg.format('feature/label'))
         if not mlr.datasets_have_mlr_attributes(prediction_datasets,
                                                 log_level='error'):
-            raise ValueError(msg.format('prediction'))
+            raise ValueError(msg.format('prediction_input'))
+        if not mlr.datasets_have_mlr_attributes(error_datasets,
+                                                log_level='error'):
+            raise ValueError(msg.format('prediction_input_error'))
 
         # Check if data was found
         if not training_datasets:
             msg = f' for metadata {metadata}' if metadata else ''
             raise ValueError(f"No training data (features/labels){msg} found")
+        if not prediction_datasets:
+            raise ValueError("No prediction input data found")
 
         # Convert units
         self._convert_units_in_metadata(training_datasets)
@@ -1772,16 +1807,21 @@ class MLRModel():
 
         # Set datasets
         logger.info(
-            "Found %i training dataset(s) and %i prediction dataset(s)",
-            len(training_datasets), len(prediction_datasets))
+            "Found %i training dataset(s), %i prediction input dataset(s) and "
+            "%i prediction input error dataset(s)", len(training_datasets),
+            len(prediction_datasets), len(error_datasets))
         logger.debug("Training datasets:")
         logger.debug(pformat([d['filename'] for d in training_datasets]))
-        logger.debug("Prediction datasets:")
+        logger.debug("Prediction input datasets:")
         logger.debug(pformat([d['filename'] for d in prediction_datasets]))
+        logger.debug("Prediction input error datasets:")
+        logger.debug(pformat([d['filename'] for d in error_datasets]))
         self._datasets['training'] = self._group_by_attributes(
             training_datasets)
-        self._datasets['prediction'] = self._group_prediction_datasets(
+        self._datasets['prediction_input'] = self._group_prediction_datasets(
             prediction_datasets)
+        self._datasets['prediction_input_error'] = (
+            self._group_prediction_datasets(error_datasets))
 
     def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
@@ -1958,6 +1998,61 @@ class MLRModel():
                     "squeezing second axis")
                 pred = np.squeeze(pred, axis=1)
             pred_dict[idx_to_name.get(idx, idx)] = pred
+        return pred_dict
+
+    def _propagate_input_errors(self, pred_name, pred_dict):
+        """Propagate errors from prediction input."""
+        x_error = self._extract_prediction_input_error(pred_name)
+        if x_error is None:
+            msg = '' if pred_name is None else f" for '{pred_name}'"
+            logger.debug(
+                "Propagating prediction input errors%s not possible, no "
+                "'prediction_input_error' datasets given", msg)
+            return pred_dict
+        cfg = deepcopy(self._cfg['estimate_prediction_error'])
+        cfg.setdefault('type', 'cv')
+        cfg.setdefault('kwargs', {})
+        cfg['kwargs'].setdefault('cv', 5)
+        cfg['kwargs'].setdefault('scoring', 'neg_mean_squared_error')
+        logger.debug("Estimating squared prediction error using %s", cfg)
+        error = None
+
+        # Test data set
+        if cfg['type'] == 'test':
+            if 'test' in self.data:
+                y_pred = self._clf.predict(self.get_x_array('test'))
+                error = metrics.mean_squared_error(self.get_y_array('test'),
+                                                   y_pred)
+            else:
+                logger.warning(
+                    "Cannot estimate squared prediction error using 'type: "
+                    "test', no test data set given (use 'test_size' option), "
+                    "using cross-validation instead")
+                cfg['type'] = 'cv'
+
+        # CV
+        if cfg['type'] == 'cv':
+            error = cross_val_score(self._clf, self.get_x_array('train'),
+                                    self.get_y_array('train'), **cfg['kwargs'])
+            error = np.mean(error)
+            if cfg['kwargs']['scoring'].startswith('neg_'):
+                error = -error
+            if 'squared' not in cfg['kwargs']['scoring']:
+                error *= error
+
+        # Get correct shape and mask
+        if error is None:
+            logger.warning(
+                "Got invalid type for prediction error estimation, got '%s', "
+                "expected 'test' or 'cv'", cfg['type'])
+            return pred_dict
+        units = self._units_power(self.label_units, 2)
+        pred_error = np.where(np.isnan(pred_dict[None]), np.nan, error)
+        pred_dict[f"squared_error_estim_{cfg['type']}"] = pred_error
+        logger.info(
+            "Estimated squared prediction error by %s %s using %s data", error,
+            units.symbol if units.origin is None else units.origin,
+            cfg['type'])
         return pred_dict
 
     def _remove_missing_features(self, x_data, y_data):

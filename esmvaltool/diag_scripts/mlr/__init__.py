@@ -22,13 +22,13 @@ VAR_TYPES = [
     'feature',
     'label',
     'prediction_input',
+    'prediction_input_error',
     'prediction_output',
 ]
 
 
 class AdvancedPipeline(Pipeline):
     """Expand `sklearn.pipeline.Pipeline` class."""
-
     def fit_transformers_only(self, x_data, y_data, **fit_kwargs):
         """Fit only `transform` steps of Pipeline."""
         transformer_steps = [s[0] for s in self.steps[:-1]]
@@ -65,7 +65,6 @@ class AdvancedPipeline(Pipeline):
 
 class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
     """Expand `sklearn.compose.TransformedTargetRegressor` class."""
-
     def fit(self, x_data, y_data, **fit_kwargs):
         """Expand `fit()` method to accept kwargs."""
         y_data = check_array(y_data,
