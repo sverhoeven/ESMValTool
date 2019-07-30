@@ -54,12 +54,6 @@ preprocessors:
       mask_out: sea
       always_use_ne_mask: true
 
-  regrid:
-    <<: *mask_sea
-    regrid:
-      scheme: nearest
-      target_grid: 1x1
-
 
 diagnostics:
 
@@ -78,7 +72,6 @@ diagnostics:
         additional_datasets: *datasets
       prediction_input: &variable_settings_prediction_input
         <<: *variable_settings_features
-        preprocessor: regrid
         var_type: prediction_input
         additional_datasets:
           - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
@@ -311,7 +304,7 @@ diagnostics:
         ]
         categorical_features: ['longitude', 'month_number']
         coords_as_features: ['month_number', 'latitude', 'longitude']
-        estimate_prediction_error:
+        estimate_mlr_model_error:
           type: test
         # grid_search_cv_kwargs:
         #   cv: 5

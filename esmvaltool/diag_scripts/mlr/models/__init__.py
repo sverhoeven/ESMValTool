@@ -60,7 +60,10 @@ class MLRModel():
     the `feature` datasets (except `allow_missing_features` is set to `True`).
     Multiple predictions can be specified by `prediction_name`. Within these
     predictions, all `prediction_input` datasets must have the same shape,
-    except the attribute `broadcast_from` is given.
+    except the attribute `broadcast_from` is given. Errors in the prediction
+    input data can be specified by `prediction_input_error`. If given, these
+    errors are used to calculate errors in the final prediction using linear
+    error propagation given by LIME.
 
     Adding new MLR models
     ---------------------
@@ -84,9 +87,13 @@ class MLRModel():
         Internal data type which is used for all calculations, see
         <https://docs.scipy.org/doc/numpy/user/basics.types.html> for a list
         of allowed values.
-    estimate_prediction_error : dict, optional
-        Estimate (constant) squared prediction error using RMSE. This can be
-        calculated by a (holdout) test data set (`type: test`) or by cross-
+    estimate_mlr_model_error : dict, optional
+        Estimate (constant) squared MLR model error using RMSE (or different
+        measured if desired). This error represents the uncertainty of the
+        prediction caused by the MLR model itself and not by errors in the
+        prediction input data (errors in that will be automatically considered
+        by including datasets with `var_type` `'prediction_input_error'`. It
+        is calculated by a (holdout) test data set (`type: test`) or by cross-
         validation from the training data (`type: cv'). The latter uses
         :mod:`sklearn.model_selection.cross_val_score` (see
         <https://scikit-learn.org/stable/modules/cross_validation.html>),
@@ -231,7 +238,6 @@ class MLRModel():
         self._cfg.setdefault('parameters', {})
         self._cfg.setdefault('pca', False)
         self._cfg.setdefault('prediction_pp', {})
-        self._cfg.setdefault('return_lime_importance', False)
         self._cfg.setdefault('standardize_data', True)
         self._cfg.setdefault('test_size', 0.25)
         logger.info("Using imputation strategy '%s'",
@@ -506,7 +512,7 @@ class MLRModel():
         """
         if not self._clf_is_valid(text='GridSearchCV'):
             return
-        parameter_grid = dict(self._cfg.get('grid_search_cv_param_grid', {}))
+        parameter_grid = self._cfg.get('grid_search_cv_param_grid', {})
         if param_grid is not None:
             parameter_grid = param_grid
         if not parameter_grid:
@@ -532,7 +538,7 @@ class MLRModel():
         if isinstance(cv_kwargs.get('cv'), str):
             if cv_kwargs['cv'].lower() == 'loo':
                 cv_kwargs['cv'] = LeaveOneOut()
-        fit_kwargs = dict(self._cfg.get('fit_kwargs', {}))
+        fit_kwargs = self._cfg.get('fit_kwargs', {})
         if fit_kwargs:
             logger.info("Using keyword argument(s) %s for fit() function",
                         fit_kwargs)
@@ -795,25 +801,31 @@ class MLRModel():
         logger.info("Started prediction")
         predict_kwargs = dict(self._cfg.get('predict_kwargs', {}))
         predict_kwargs.update(kwargs)
+        if 'return_var' in predict_kwargs and 'return_cov' in predict_kwargs:
+            logger.warning(
+                "Found 'return_var' and 'return_cov' in prediction keyword "
+                "arguments, but returning both is not possible. Returning "
+                "only variance")
+            predict_kwargs.pop('return_cov')
         if predict_kwargs:
             logger.info(
                 "Using additional keyword argument(s) %s for predict() "
                 "function", predict_kwargs)
 
-        # Iterate over predictions
+        # Iterate over different predictions
         for pred_name in self._datasets['prediction_input']:
             if pred_name is not None:
                 logger.info("Predicting '%s'", pred_name)
 
             # Prediction
-            (x_pred, x_cube) = self._extract_prediction_input(pred_name)
-            pred_dict = self._get_prediction_dict(x_pred, **predict_kwargs)
+            (x_pred, x_err, x_cube) = self._extract_prediction_input(pred_name)
+            pred_dict = self._get_prediction_dict(x_pred, x_err,
+                                                  **predict_kwargs)
 
-            # Errors
-            pred_dict = self._propagate_input_errors(pred_name, pred_dict)
-            pred_dict = self._estimate_prediction_error(pred_dict)
+            # Estimate error caused by MLR model itself
+            pred_dict = self._estimate_mlr_model_error(pred_dict)
 
-            # Save data
+            # Save data in class member
             y_pred = pd.DataFrame(pred_dict[None],
                                   columns=[self.label],
                                   dtype=self._cfg['dtype'])
@@ -821,7 +833,7 @@ class MLRModel():
                                                       axis=1,
                                                       keys=['x', 'y'])
 
-            # Get (and save) prediction cubes
+            # Get prediction cubes and save them to disk
             (predictions,
              pred_types) = self._get_prediction_cubes(pred_dict, pred_name,
                                                       x_cube)
@@ -955,9 +967,6 @@ class MLRModel():
         msg = '' if text is None else text
         if not datasets:
             if var_type == 'prediction_input_error':
-                logger.debug(
-                    "Prediction input error of '%s'%s not available, setting "
-                    "it to 0.0", tag, msg)
                 return None
             if var_type == 'label':
                 raise ValueError(f"Label '{tag}'{msg} not found")
@@ -1084,16 +1093,16 @@ class MLRModel():
         logger.debug("Created pipeline with steps %s",
                      list(self._clf.named_steps.keys()))
 
-    def _estimate_prediction_error(self, pred_dict):
-        """Estimate squared prediction error."""
-        if not self._cfg.get('estimate_prediction_error'):
+    def _estimate_mlr_model_error(self, pred_dict):
+        """Estimate squared error of MLR model (using CV or test data)."""
+        if not self._cfg.get('estimate_mlr_model_error'):
             return pred_dict
-        cfg = deepcopy(self._cfg['estimate_prediction_error'])
+        cfg = deepcopy(self._cfg['estimate_mlr_model_error'])
         cfg.setdefault('type', 'cv')
         cfg.setdefault('kwargs', {})
         cfg['kwargs'].setdefault('cv', 5)
         cfg['kwargs'].setdefault('scoring', 'neg_mean_squared_error')
-        logger.debug("Estimating squared prediction error using %s", cfg)
+        logger.debug("Estimating squared error of MLR model using %s", cfg)
         error = None
 
         # Test data set
@@ -1104,7 +1113,7 @@ class MLRModel():
                                                    y_pred)
             else:
                 logger.warning(
-                    "Cannot estimate squared prediction error using 'type: "
+                    "Cannot estimate squared MLR model error using 'type: "
                     "test', no test data set given (use 'test_size' option), "
                     "using cross-validation instead")
                 cfg['type'] = 'cv'
@@ -1122,16 +1131,16 @@ class MLRModel():
         # Get correct shape and mask
         if error is None:
             logger.warning(
-                "Got invalid type for prediction error estimation, got '%s', "
+                "Got invalid type for MLR model error estimation, got '%s', "
                 "expected 'test' or 'cv'", cfg['type'])
             return pred_dict
         units = self._units_power(self.label_units, 2)
         pred_error = np.where(np.isnan(pred_dict[None]), np.nan, error)
-        pred_dict[f"squared_error_estim_{cfg['type']}"] = pred_error
-        logger.info(
-            "Estimated squared prediction error by %s %s using %s data", error,
-            units.symbol if units.origin is None else units.origin,
-            cfg['type'])
+        pred_dict[f"squared_mlr_model_error_estim_{cfg['type']}"] = pred_error
+        logger.info("Estimated squared MLR model error by %s %s using %s data",
+                    error,
+                    units.symbol if units.origin is None else units.origin,
+                    cfg['type'])
         return pred_dict
 
     def _extract_features_and_labels(self):
@@ -1160,24 +1169,30 @@ class MLRModel():
     def _extract_prediction_input(self, prediction_name):
         """Extract prediction input data points for `prediction_name`."""
         datasets = self._datasets['prediction_input'][prediction_name]
-        (x_data,
+        (x_pred,
          prediction_input_cube) = self._extract_x_data(datasets,
                                                        'prediction_input')
         logger.info(
             "Found %i raw prediction input data point(s) with data type '%s'",
-            len(x_data.index), self._cfg['dtype'])
-        return (x_data, prediction_input_cube)
+            len(x_pred.index), self._cfg['dtype'])
 
-    def _extract_prediction_input_error(self, prediction_name):
-        """Extract prediction input error data points for `prediction_name`."""
+        # Error
         if prediction_name not in self._datasets['prediction_input_error']:
-            return None
-        datasets = self._datasets['prediction_input_error'][prediction_name]
-        (x_data, _) = self._extract_x_data(datasets, 'prediction_input_error')
-        logger.info(
-            "Found %i raw prediction input error data point(s) with data "
-            "type '%s'", len(x_data.index), self._cfg['dtype'])
-        return x_data
+            x_err = None
+            msg = (''
+                   if prediction_name is None else f" for '{prediction_name}'")
+            logger.debug(
+                "Propagating prediction input errors%s not possible, no "
+                "'prediction_input_error' datasets given", msg)
+        else:
+            error_datasets = self._datasets['prediction_input_error'][
+                prediction_name]
+            (x_err, _) = self._extract_x_data(error_datasets,
+                                              'prediction_input_error')
+            logger.info(
+                "Found %i raw prediction input error data point(s) with data "
+                "type '%s'", len(x_err.index), self._cfg['dtype'])
+        return (x_pred, x_err, prediction_input_cube)
 
     def _extract_x_data(self, datasets, var_type):
         """Extract required x data of type `var_type` from `datasets`."""
@@ -1435,30 +1450,35 @@ class MLRModel():
                                        columns=['units'])
         return label
 
-    def _get_lime_feature_importance(self, x_data):
+    def _get_lime_feature_importance(self, x_pred):
         """Get most important feature given by LIME."""
         logger.info(
             "Calculating global feature importance using LIME (this may take "
             "a while...)")
 
         # Most important feature for single input
-        def _most_important_feature(x_input, self):
+        def _most_important_feature(x_single_pred, interpreter, predict_fn):
             """Get most important feature for single input."""
-            explainer = self._skater['local_interpreter'].explain_instance(
-                x_input, self._clf.predict, num_features=1, num_samples=200)
+            explainer = interpreter.explain_instance(x_single_pred,
+                                                     predict_fn,
+                                                     num_features=1)
             return explainer.as_map()[1][0][0]
 
-        _most_important_feature = partial(_most_important_feature, self=self)
-
         # Apply on whole input (using multiple processes)
+        _most_important_feature = partial(
+            _most_important_feature,
+            interpreter=self._skater['local_interpreter'],
+            predict_fn=self._clf.predict,
+        )
         pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
-        return np.array(pool.map(_most_important_feature, x_data))
+        return np.array(pool.map(_most_important_feature, x_pred.values))
 
-    def _get_prediction_dict(self, x_pred, **kwargs):
+    def _get_prediction_dict(self, x_pred, x_err, **kwargs):
         """Get prediction output in a dictionary."""
         mask = x_pred.isnull().any(axis=1).values
         if self._cfg['imputation_strategy'] == 'remove':
             x_pred = x_pred[~mask].reset_index(drop=True)
+            x_err = x_err[~mask].reset_index(drop=True)
             diff = mask.shape[0] - len(x_pred.index)
             if diff:
                 logger.info(
@@ -1470,10 +1490,14 @@ class MLRModel():
         y_preds = self._clf.predict(x_pred.values, **kwargs)
         pred_dict = self._prediction_to_dict(y_preds, **kwargs)
 
+        # Propagate prediction input errors if possible
+        if x_err is not None:
+            pred_dict['squared_propagated_input_error'] = (
+                self._propagate_input_errors(x_pred, x_err))
+
         # LIME feature importance
-        if self._cfg['return_lime_importance']:
-            pred_dict['lime'] = self._get_lime_feature_importance(
-                x_pred.values)
+        if self._cfg.get('return_lime_importance'):
+            pred_dict['lime'] = self._get_lime_feature_importance(x_pred)
 
         # Transform arrays correctly
         for (pred_type, y_pred) in pred_dict.items():
@@ -1497,7 +1521,7 @@ class MLRModel():
         prediction_cubes = {}
         prediction_types = {}
         for (pred_type, y_pred) in pred_dict.items():
-            if y_pred.size == np.prod(x_cube.shape):
+            if y_pred.size == np.prod(x_cube.shape, dtype=np.int):
                 y_pred = y_pred.reshape(x_cube.shape)
                 if (self._cfg['imputation_strategy'] == 'remove'
                         and np.ma.is_masked(x_cube.data)):
@@ -1604,23 +1628,46 @@ class MLRModel():
         for tag in self.features:
             if self.features_types[tag] != 'coordinate':
                 dataset = self._check_dataset(datasets, var_type, tag, msg)
+
+                # No dataset found
                 if dataset is None:
                     if var_type == 'prediction_input_error':
+                        logger.debug(
+                            "Prediction input error of '%s'%s not available, "
+                            "setting it to 0.0", tag, msg)
                         new_data = 0.0
                     else:
                         new_data = np.nan
+
+                # Found exactly one dataset
                 else:
                     text = f"{var_type} '{tag}'{msg}"
+
+                    # Broadcast if necessary
                     if 'broadcast_from' in dataset:
                         cube = self._get_broadcasted_cube(
                             dataset, ref_cube, text)
                     else:
                         cube = self._load_cube(dataset)
                     self._check_cube_dimensions(cube, ref_cube, text)
-                    new_data = self._get_cube_data(cube)
+
+                    # Do not accept errors for categorical features
+                    if (var_type == 'prediction_input_error'
+                            and tag in self.categorical_features):
+                        logger.warning(
+                            "Specifying prediction input error for "
+                            "categorical feature '%s'%s is not possible, "
+                            "setting it to 0.0", tag, msg)
+                        new_data = np.full(cube.shape, 0.0).ravel()
+                    else:
+                        new_data = self._get_cube_data(cube)
+
+            # Load coordinate feature data
             else:
                 new_data = self._get_coordinate_data(ref_cube, var_type, tag,
                                                      msg)
+
+            # Save data
             group_data[tag] = new_data
 
         # Return data and reference cube
@@ -1836,13 +1883,12 @@ class MLRModel():
         # Local interpreter (LIME)
         verbosity = self._get_verbosity_parameters(LimeTabularExplainer,
                                                    boolean=True)
+        for param in verbosity:
+            verbosity[param] = False
         categorical_features_idx = [
             int(np.where(self.features == tag)[0][0])
             for tag in self.categorical_features
         ]
-        if self._cfg['return_lime_importance']:
-            for param in verbosity:
-                verbosity[param] = False
         self._skater['local_interpreter'] = LimeTabularExplainer(
             x_train,
             mode='regression',
@@ -1850,6 +1896,7 @@ class MLRModel():
             feature_names=self.features,
             categorical_features=categorical_features_idx,
             class_names=[self.label],
+            discretize_continuous=False,
             sample_around_instance=True,
             **verbosity,
         )
@@ -1884,7 +1931,7 @@ class MLRModel():
         """Postprocess regular prediction cube."""
         logger.debug("Postprocessing regular prediction cube%s",
                      '' if pred_type is None else f" of type '{pred_type}'")
-        cfg = dict(self._cfg['prediction_pp'])
+        cfg = self._cfg['prediction_pp']
         cov_weights = None
         if all([
                 cfg['area_weights'],
@@ -1948,32 +1995,36 @@ class MLRModel():
 
         # Process and save reference cube
         ref_cube = predictions[ref_path]
-        ref_shape = ref_cube.shape
-        (ref_cube,
+        (pp_cube,
          cov_weights) = self._postprocess_cube(ref_cube, None, **kwargs)
-        ref_cube.attributes['source'] = ref_path
+        pp_cube.attributes['source'] = ref_path
         new_path = self._get_postprocessed_filename(ref_path, ref_path)
-        io.iris_save(ref_cube, new_path)
+        io.iris_save(pp_cube, new_path)
 
         # Process other cubes
+        if cov_weights is None:
+            ref_size = np.ma.array(ref_cube.data).compressed().shape[0]
+        else:
+            ref_size = cov_weights.shape[0]
         for (path, cube) in predictions.items():
             if path == ref_path or cube.attributes.get('skip_for_pp'):
                 continue
 
-            # Regualar cubes
-            if cube.shape == ref_shape:
+            # Regular cubes
+            if cube.shape == ref_cube.shape:
                 (cube, _) = self._postprocess_cube(cube, pred_types[path])
 
             # Covariance
-            else:
-                if cov_weights is not None:
-                    if cube.shape != cov_weights.shape:
-                        logger.warning(
-                            "Cannot postprocess all prediction cubes, "
-                            "expected shapes %s or %s (for covariance), got "
-                            "%s", ref_shape, cov_weights.shape, cube.shape)
-                        continue
+            elif cube.shape == (ref_size, ref_size):
                 cube = self._postprocess_covariance(cube, cov_weights)
+
+            # Other cases
+            else:
+                logger.warning(
+                    "Cannot postprocess prediction cube '%s', expected shapes "
+                    "%s or %s (for covariance), got %s", path, ref_cube.shape,
+                    (ref_size, ref_size), cube.shape)
+                continue
 
             # Fix attributes and append
             new_path = self._get_postprocessed_filename(path, ref_path)
@@ -2000,60 +2051,36 @@ class MLRModel():
             pred_dict[idx_to_name.get(idx, idx)] = pred
         return pred_dict
 
-    def _propagate_input_errors(self, pred_name, pred_dict):
+    def _propagate_input_errors(self, x_pred, x_err):
         """Propagate errors from prediction input."""
-        x_error = self._extract_prediction_input_error(pred_name)
-        if x_error is None:
-            msg = '' if pred_name is None else f" for '{pred_name}'"
-            logger.debug(
-                "Propagating prediction input errors%s not possible, no "
-                "'prediction_input_error' datasets given", msg)
-            return pred_dict
-        cfg = deepcopy(self._cfg['estimate_prediction_error'])
-        cfg.setdefault('type', 'cv')
-        cfg.setdefault('kwargs', {})
-        cfg['kwargs'].setdefault('cv', 5)
-        cfg['kwargs'].setdefault('scoring', 'neg_mean_squared_error')
-        logger.debug("Estimating squared prediction error using %s", cfg)
-        error = None
-
-        # Test data set
-        if cfg['type'] == 'test':
-            if 'test' in self.data:
-                y_pred = self._clf.predict(self.get_x_array('test'))
-                error = metrics.mean_squared_error(self.get_y_array('test'),
-                                                   y_pred)
-            else:
-                logger.warning(
-                    "Cannot estimate squared prediction error using 'type: "
-                    "test', no test data set given (use 'test_size' option), "
-                    "using cross-validation instead")
-                cfg['type'] = 'cv'
-
-        # CV
-        if cfg['type'] == 'cv':
-            error = cross_val_score(self._clf, self.get_x_array('train'),
-                                    self.get_y_array('train'), **cfg['kwargs'])
-            error = np.mean(error)
-            if cfg['kwargs']['scoring'].startswith('neg_'):
-                error = -error
-            if 'squared' not in cfg['kwargs']['scoring']:
-                error *= error
-
-        # Get correct shape and mask
-        if error is None:
-            logger.warning(
-                "Got invalid type for prediction error estimation, got '%s', "
-                "expected 'test' or 'cv'", cfg['type'])
-            return pred_dict
-        units = self._units_power(self.label_units, 2)
-        pred_error = np.where(np.isnan(pred_dict[None]), np.nan, error)
-        pred_dict[f"squared_error_estim_{cfg['type']}"] = pred_error
         logger.info(
-            "Estimated squared prediction error by %s %s using %s data", error,
-            units.symbol if units.origin is None else units.origin,
-            cfg['type'])
-        return pred_dict
+            "Propagating prediction input errors using LIME (this may take a "
+            "while...)")
+
+        # Propagated error for single input
+        def _propagated_error(x_single_pred, x_single_err, interpreter,
+                              predict_fn, features, categorical_features):
+            """Get propagated prediction input error for single input."""
+            exp = interpreter.explain_instance(x_single_pred, predict_fn)
+            x_err_scaled = x_single_err / interpreter.scaler.scale_
+            squared_error = 0.0
+            for (idx, coef) in exp.local_exp[1]:
+                if features[idx] in categorical_features:
+                    continue
+                squared_error += (x_err_scaled[idx] * coef)**2
+            return squared_error
+
+        # Apply on whole input (using multiple processes)
+        _propagated_error = partial(
+            _propagated_error,
+            interpreter=self._skater['local_interpreter'],
+            predict_fn=self._clf.predict,
+            features=self.features,
+            categorical_features=self.categorical_features,
+        )
+        pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
+        return np.array(
+            pool.map(_propagated_error, x_pred.values, x_err.values))
 
     def _remove_missing_features(self, x_data, y_data):
         """Remove missing values in the features data (if desired)."""
@@ -2138,11 +2165,11 @@ class MLRModel():
             cube.long_name += (' (variance)'
                                if pred_type == 'var' else ' (covariance)')
             cube.units = self._units_power(cube.units, 2)
-        elif 'squared_error_estim' in pred_type:
+        elif 'squared_mlr_model_error_estim' in pred_type:
             cube.var_name += suffix
-            cube.long_name += (' (squared error estimation using {})'.format(
-                'cross-validation' if 'cv' in
-                pred_type else 'holdout test data set'))
+            cube.long_name += (' (squared MLR model error estimation using {})'
+                               .format('cross-validation' if 'cv' in
+                                       pred_type else 'holdout test data set'))
             cube.units = self._units_power(cube.units, 2)
         elif pred_type == 'lime':
             cube.var_name = 'lime_feature_importance'
@@ -2218,6 +2245,11 @@ class MLRModel():
     def _get_coordinate_data(ref_cube, var_type, tag, text=None):
         """Get coordinate variable `ref_cube` which can be used as x data."""
         msg = '' if text is None else text
+        if var_type == 'prediction_input_error':
+            logger.debug(
+                "Prediction input error of coordinate feature '%s'%s is set "
+                "to 0.0", tag, msg)
+            return 0.0
         try:
             coord = ref_cube.coord(tag)
         except iris.exceptions.CoordinateNotFoundError:
@@ -2266,7 +2298,7 @@ class MLRModel():
             return 1
         if pred_type in ('cov', 'var'):
             return 2
-        if 'squared_error_estim' in pred_type:
+        if 'squared_mlr_model_error_estim' in pred_type:
             return 2
         default = 1
         logger.debug(

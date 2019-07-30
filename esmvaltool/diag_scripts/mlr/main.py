@@ -134,7 +134,13 @@ def set_parameters(cfg, model_type):
 
 def main(cfg):
     """Run the diagnostic."""
-    model_type = cfg.get('mlr_model', 'gbr_sklearn')
+    if 'mlr_model' not in cfg:
+        default = 'gbr_sklearn'
+        logger.warning("'mlr_model' not given in recipe, defaulting to '%s'",
+                       default)
+        model_type = default
+    else:
+        model_type = cfg['mlr_model']
     set_parameters(cfg, model_type)
     run_mlr_model(cfg, model_type)
 
