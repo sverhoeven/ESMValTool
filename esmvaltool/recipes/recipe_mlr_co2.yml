@@ -83,91 +83,99 @@ diagnostics:
         tag: T
         convert_units_to: celsius
 
-  # diag_mlr_input_tas_trend:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #   scripts:
-  #     monthly_trend: &monthly_trend
-  #       script: mlr/simple_pp.py
-  #       aggregate_by:
-  #         month_number: trend
-  #       convert_units_to: celsius yr-1
-  #       tag: T_trend
+  diag_mlr_input_tas_trend:
+    variables:
+      features:
+        <<: *variable_settings_features
+      prediction_input:
+        <<: *variable_settings_prediction_input
+    scripts:
+      monthly_trend: &monthly_trend
+        script: mlr/simple_pp.py
+        aggregate_by:
+          month_number: trend
+        return_trend_stderr: true
+        convert_units_to: celsius yr-1
+        tag: T_trend
 
-  # diag_mlr_input_pr:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: pr
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: pr
-  #       additional_datasets:
-  #         - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: PR
-  #       convert_units_to: kg m-2 day-1
+  diag_mlr_input_pr:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: pr
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: pr
+        additional_datasets:
+          - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: PR
+        convert_units_to: kg m-2 day-1
 
-  # diag_mlr_input_pr_trend:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: pr
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: pr
-  #       additional_datasets:
-  #         - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
-  #   scripts:
-  #     monthly_trend:
-  #       <<: *monthly_trend
-  #       tag: PR_trend
-  #       convert_units_to: celsius yr-1
+  diag_mlr_input_pr_trend:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: pr
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: pr
+        additional_datasets:
+          - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
+    scripts:
+      monthly_trend:
+        <<: *monthly_trend
+        tag: PR_trend
+        convert_units_to: celsius yr-1
 
-  # diag_mlr_input_et:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: et
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: et
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: ET
-  #       convert_units_to: mm day-1
+  diag_mlr_input_et:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: et
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: et
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
+      prediction_input_error:
+        <<: *variable_settings_prediction_input
+        short_name: etStderr
+        mip: Lmon
+        var_type: prediction_input_error
+        additional_datasets:
+          - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: ET
+        convert_units_to: mm day-1
 
-  # diag_mlr_input_et_trend:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: et
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: et
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
-  #   scripts:
-  #     monthly_trend:
-  #       <<: *monthly_trend
-  #       tag: ET_trend
-  #       convert_units_to: mm day-1 yr-1
+  diag_mlr_input_et_trend:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: et
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: et
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
+    scripts:
+      monthly_trend:
+        <<: *monthly_trend
+        tag: ET_trend
+        convert_units_to: mm day-1 yr-1
 
   diag_mlr_input_gpp:
     variables:
@@ -196,88 +204,88 @@ diagnostics:
         tag: GPP
         convert_units_to: t km-2 yr-1
 
-  # diag_mlr_input_gpp_trend:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: gpp_grid
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: gpp_grid
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
-  #   scripts:
-  #     monthly_trend:
-  #       <<: *monthly_trend
-  #       tag: GPP_trend
-  #       convert_units_to: t km-2 yr-2
+  diag_mlr_input_gpp_trend:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
+    scripts:
+      monthly_trend:
+        <<: *monthly_trend
+        tag: GPP_trend
+        convert_units_to: t km-2 yr-2
 
-  # diag_mlr_input_gpp_ranking:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: gpp_grid
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: gpp_grid
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: GPP_RANK
-  #       convert_units_to: no unit
-  #       argsort:
-  #         coord: month_number
-  #         descending: true
+  diag_mlr_input_gpp_ranking:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: GPP_RANK
+        convert_units_to: no unit
+        argsort:
+          coord: month_number
+          descending: true
 
-  # diag_mlr_input_lai:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: lai_grid
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: lai_grid
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: LAI3g, project: OBS, type: reanaly, version: 1_regridded, tier: 3}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: LAI
-  #       convert_units_to: null
+  diag_mlr_input_lai:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: lai_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: lai_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: LAI3g, project: OBS, type: reanaly, version: 1_regridded, tier: 3}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: LAI
+        convert_units_to: null
 
-  # diag_mlr_input_lai_trend:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: lai_grid
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: lai_grid
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: LAI3g, project: OBS, type: reanaly, version: 1_regridded, tier: 3}
-  #   scripts:
-  #     monthly_trend:
-  #       <<: *monthly_trend
-  #       tag: LAI_trend
-  #       convert_units_to: yr-1
+  diag_mlr_input_lai_trend:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: lai_grid
+        mip: Lmon
+        derive: true
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: lai_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: LAI3g, project: OBS, type: reanaly, version: 1_regridded, tier: 3}
+    scripts:
+      monthly_trend:
+        <<: *monthly_trend
+        tag: LAI_trend
+        convert_units_to: yr-1
 
   diag_mlr_gpp:
     description: Perform MLR on GPP.
@@ -317,10 +325,10 @@ diagnostics:
         mlr_model: gbr_xgboost
         n_jobs: 24
         parameters_final_regressor:
-          n_estimators: 100
+          n_estimators: 500
           subsample: 0.5
           learning_rate: 0.1
-          max_depth: 6
+          max_depth: 8
         prediction_pp:
           mean: ['time']
           sum: ['latitude', 'longitude']

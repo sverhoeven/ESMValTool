@@ -2068,6 +2068,7 @@ class MLRModel():
                 if features[idx] in categorical_features:
                     continue
                 squared_error += (x_err_scaled[idx] * coef)**2
+                print(features[idx], x_single_err[idx], coef)
             return squared_error
 
         # Apply on whole input (using multiple processes)
@@ -2170,6 +2171,11 @@ class MLRModel():
             cube.long_name += (' (squared MLR model error estimation using {})'
                                .format('cross-validation' if 'cv' in
                                        pred_type else 'holdout test data set'))
+            cube.units = self._units_power(cube.units, 2)
+        elif pred_type == 'squared_propagated_input_error':
+            cube.var_name += suffix
+            cube.long_name += (' (squared propagated error of prediction '
+                               'input estimated by LIME)')
             cube.units = self._units_power(cube.units, 2)
         elif pred_type == 'lime':
             cube.var_name = 'lime_feature_importance'

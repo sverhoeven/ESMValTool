@@ -109,7 +109,7 @@ def run_mlr_model(cfg, model_type):
         mlr_model.print_regression_metrics()
 
         # Plots
-        mlr_model.plot_pairplots()
+        # mlr_model.plot_pairplots()
         mlr_model.plot_scatterplots()
         for idx in range(10):
             mlr_model.plot_lime(idx)
