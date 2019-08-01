@@ -31,9 +31,11 @@ Additional parameters see :mod:`esmvaltool.diag_scripts.mlr.models`.
 
 import logging
 import os
+import warnings
 from pprint import pformat
 
 from george import kernels as george_kernels
+from iris.fileformats.netcdf import UnknownCellMethodWarning
 from sklearn.gaussian_process import kernels as sklearn_kernels
 
 from esmvaltool.diag_scripts.mlr.models import MLRModel
@@ -42,9 +44,18 @@ from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
 
 logger = logging.getLogger(os.path.basename(__file__))
 
+WARNINGS_TO_IGNORE = [
+    {
+        'message': ".* contains unknown cell method 'trend'",
+        'category': UnknownCellMethodWarning,
+        'module': 'iris',
+    },
+]
+
 
 def _get_grouped_datasets(cfg):
     """Group input datasets according to given settings."""
+    logger.info("Reading metadata of all input files")
     input_data = list(cfg['input_data'].values())
     input_data.extend(io.netcdf_to_metadata(cfg))
     if input_data:
@@ -74,12 +85,17 @@ def _update_mlr_model(model_type, mlr_model):
     """Update MLR model paramters during run time."""
     if model_type == 'gpr_george':
         n_features = mlr_model.features_after_preprocessing.size
-        new_kernel = (
-            george_kernels.ExpSquaredKernel(
-                1.0, ndim=n_features, metric_bounds=[(-10.0, 10.0)]) *
-            george_kernels.ConstantKernel(
-                0.0, ndim=n_features, bounds=[(-10.0, 10.0)])
+        exp_squared_kernel = george_kernels.ExpSquaredKernel(
+            1.0,
+            ndim=n_features,
+            metric_bounds=[(-10.0, 10.0)],
         )
+        constant_kernel = george_kernels.ConstantKernel(
+            0.0,
+            ndim=n_features,
+            bounds=[(-10.0, 10.0)],
+        )
+        new_kernel = exp_squared_kernel * constant_kernel
         mlr_model.update_parameters(final__regressor__kernel=new_kernel)
 
 
@@ -147,5 +163,8 @@ def main(cfg):
 
 # Run main function when this script is called
 if __name__ == '__main__':
+    for warning_kwargs in WARNINGS_TO_IGNORE:
+        warning_kwargs.setdefault('action', 'ignore')
+        warnings.filterwarnings(**warning_kwargs)
     with run_diagnostic() as config:
         main(config)

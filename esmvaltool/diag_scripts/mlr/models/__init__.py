@@ -1511,8 +1511,9 @@ class MLRModel():
             if pred_type is not None:
                 logger.debug("Found additional prediction type '%s'",
                              pred_type)
-        logger.info("Successfully created prediction array with %i point(s)",
-                    pred_dict[None].size)
+        logger.info(
+            "Successfully created prediction array(s) with %i point(s)",
+            pred_dict[None].size)
         return pred_dict
 
     def _get_prediction_cubes(self, pred_dict, pred_name, x_cube):
@@ -2068,7 +2069,6 @@ class MLRModel():
                 if features[idx] in categorical_features:
                     continue
                 squared_error += (x_err_scaled[idx] * coef)**2
-                print(features[idx], x_single_err[idx], coef)
             return squared_error
 
         # Apply on whole input (using multiple processes)
@@ -2304,12 +2304,12 @@ class MLRModel():
             return 1
         if pred_type in ('cov', 'var'):
             return 2
-        if 'squared_mlr_model_error_estim' in pred_type:
+        if 'squared_' in pred_type:
             return 2
         default = 1
-        logger.debug(
-            "No specific power for prediction type '%s' defined, defaulting "
-            "to %i", pred_type, default)
+        logger.warning(
+            "No specific power for post-processing prediction type '%s' "
+            "defined, defaulting to %i", pred_type, default)
         return default
 
     @staticmethod
