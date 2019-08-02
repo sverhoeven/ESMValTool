@@ -1279,8 +1279,9 @@ class MLRModel():
                 "Calculation of area weights for prediction cube '%s' failed",
                 cube.summary(shorten=True))
             logger.warning(str(exc))
-        power = self._pred_type_to_power(pred_type)
-        area_weights = area_weights**power
+        else:
+            power = self._pred_type_to_power(pred_type)
+            area_weights = area_weights**power
         return area_weights
 
     def _get_broadcasted_cube(self, dataset, ref_cube, text=None):
@@ -1311,6 +1312,16 @@ class MLRModel():
     def _get_clf_parameters(self, deep=True):
         """Get parameters of pipeline."""
         return self._clf.get_params(deep=deep)
+
+    def _get_cov_weights(self, cube):
+        """Get weights for covariance."""
+        logger.debug("Calculating covariance weights (memory-intensive)")
+        cov_weights = self._get_area_weights(cube)
+        if cov_weights is not None:
+            cov_weights = cov_weights.ravel()
+            cov_weights = cov_weights[~np.ma.getmaskarray(cube.data).ravel()]
+            cov_weights = np.outer(cov_weights, cov_weights)
+        return cov_weights
 
     def _get_features(self):
         """Extract all features from the `prediction_input` datasets."""
@@ -1939,8 +1950,7 @@ class MLRModel():
                 pred_type is None,
                 'return_cov' in kwargs,
         ]):
-            cov_weights = self._get_area_weights(cube).ravel()
-            cov_weights = cov_weights[~np.ma.getmaskarray(cube.data).ravel()]
+            cov_weights = self._get_cov_weights(cube)
         ops = {'mean': iris.analysis.MEAN, 'sum': iris.analysis.SUM}
 
         # Perform desired postprocessing operations
@@ -1976,11 +1986,8 @@ class MLRModel():
                     '' if pred_type is None else f" of type '{pred_type}'"))
 
         # Weights for covariance matrix
-        if cov_weights is not None:
-            logger.debug("Calculating covariance weights (memory-intensive)")
-            cov_weights = np.outer(cov_weights, cov_weights)
-            if n_points_mean is not None:
-                cov_weights /= n_points_mean**2
+        if cov_weights is not None and n_points_mean is not None:
+            cov_weights /= n_points_mean**2
         return (cube, cov_weights)
 
     def _postprocess_predictions(self, predictions, pred_types, **kwargs):
