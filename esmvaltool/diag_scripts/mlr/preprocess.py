@@ -19,8 +19,8 @@ Configuration options in recipe
 -------------------------------
 aggregate_by : dict, optional
     Aggregate over given coordinates (dict keys) using a desired aggregator
-    (dict values). Allowed aggregators are `mean`, `median`, `std`, `var`, and
-    `trend`.
+    (dict values). Allowed aggregators are `mean`, `median`, `sum`, `std`,
+    `var`, and `trend`.
 anomaly : dict, optional
     Calculate anomalies using reference datasets indicated by `ref: true`. Two
     datasets are matched using the list of metadata attributes given by the
@@ -81,6 +81,7 @@ AGGREGATORS = {
     'mean': iris.analysis.MEAN,
     'median': iris.analysis.MEDIAN,
     'std': iris.analysis.STD_DEV,
+    'sum': iris.analysis.SUM,
     'var:': iris.analysis.VARIANCE,
     'trend': 'trend',
 }
