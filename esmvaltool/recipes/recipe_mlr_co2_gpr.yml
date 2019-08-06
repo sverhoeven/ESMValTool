@@ -73,7 +73,7 @@ diagnostics:
           - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
     scripts:
       monthly_clim: &monthly_clim
-        script: mlr/simple_pp.py
+        script: mlr/preprocess.py
         aggregate_by:
           season: mean
           # month_number: mean
@@ -337,7 +337,7 @@ diagnostics:
           units: 'Gt yr-1'
 
       # postprocess_mlr:
-      #   script: mlr/simple_pp.py
+      #   script: mlr/preprocess.py
       #   ancestors: ['diag_mlr/multiple_mlr_models']
       #   sum: all
       #   pattern: '*prediction*'
@@ -361,7 +361,7 @@ diagnostics:
         <<: *variable_settings_label
     scripts:
       global_sum:
-        script: mlr/simple_pp.py
+        script: mlr/preprocess.py
         mean: ['time']
         sum: ['latitude', 'longitude']
         anomaly:

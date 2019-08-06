@@ -1,10 +1,10 @@
-"""Unit tests for the module :mod:`esmvaltool.diag_scripts.mlr.simple_pp`."""
+"""Unit tests for the module :mod:`esmvaltool.diag_scripts.mlr.preprocess`."""
 
 import iris
 import numpy as np
 import pytest
 
-import esmvaltool.diag_scripts.mlr.simple_pp as simple_pp
+import esmvaltool.diag_scripts.mlr.preprocess as preprocess
 
 LONG_NAME_1 = 'loooong name'
 LONG_NAME_2 = ':)'
@@ -33,7 +33,7 @@ TEST_CHECK_COORDS = [
 @pytest.mark.parametrize('cube,coords,output', TEST_CHECK_COORDS)
 def test_has_valid_coords(cube, coords, output):
     """Test check for valid coords."""
-    out = simple_pp._has_valid_coords(cube, coords)
+    out = preprocess._has_valid_coords(cube, coords)
     assert out == output
 
 
@@ -57,5 +57,5 @@ TEST_GET_SLOPE = [
 @pytest.mark.parametrize('x_arr,y_arr,output', TEST_GET_SLOPE)
 def test_get_slope(x_arr, y_arr, output):
     """Test calculation of slope."""
-    out = simple_pp._get_slope(x_arr, y_arr)
+    out = preprocess._get_slope(x_arr, y_arr)
     assert ((out == output) | (np.isnan(output) & np.isnan(output))).all()

@@ -19,23 +19,23 @@ DATASET_ANCHOR: &datasets
   - {dataset: bcc-csm1-1}
   - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
-  - {dataset: CanESM2}
-  - {dataset: CCSM4}
-  - {dataset: CESM1-BGC}
-  - {dataset: CESM1-CAM5}
-  - {dataset: CESM1-WACCM, ensemble: r2i1p1}
-  - {dataset: GFDL-ESM2G}
-  - {dataset: GFDL-ESM2M}
-  - {dataset: HadGEM2-CC}
-  - {dataset: HadGEM2-ES}
-  - {dataset: inmcm4}
-  - {dataset: IPSL-CM5A-LR}
-  - {dataset: IPSL-CM5A-MR}
-  - {dataset: IPSL-CM5B-LR}
-  - {dataset: MIROC-ESM}
-  - {dataset: MIROC-ESM-CHEM}
-  - {dataset: NorESM1-M}
-  - {dataset: NorESM1-ME}
+  # - {dataset: CanESM2}
+  # - {dataset: CCSM4}
+  # - {dataset: CESM1-BGC}
+  # - {dataset: CESM1-CAM5}
+  # - {dataset: CESM1-WACCM, ensemble: r2i1p1}
+  # - {dataset: GFDL-ESM2G}
+  # - {dataset: GFDL-ESM2M}
+  # - {dataset: HadGEM2-CC}
+  # - {dataset: HadGEM2-ES}
+  # - {dataset: inmcm4}
+  # - {dataset: IPSL-CM5A-LR}
+  # - {dataset: IPSL-CM5A-MR}
+  # - {dataset: IPSL-CM5B-LR}
+  # - {dataset: MIROC-ESM}
+  # - {dataset: MIROC-ESM-CHEM}
+  # - {dataset: NorESM1-M}
+  # - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -77,7 +77,7 @@ diagnostics:
           - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
     scripts:
       monthly_clim: &monthly_clim
-        script: mlr/simple_pp.py
+        script: mlr/preprocess.py
         aggregate_by:
           month_number: mean
         tag: T
@@ -91,7 +91,7 @@ diagnostics:
         <<: *variable_settings_prediction_input
     scripts:
       monthly_trend: &monthly_trend
-        script: mlr/simple_pp.py
+        script: mlr/preprocess.py
         aggregate_by:
           month_number: trend
         return_trend_stderr: true
@@ -341,7 +341,7 @@ diagnostics:
         <<: *variable_settings_label
     scripts:
       global_sum: &global_sum
-        script: mlr/simple_pp.py
+        script: mlr/preprocess.py
         mean: ['time']
         sum: ['latitude', 'longitude']
         tag: GPP_future

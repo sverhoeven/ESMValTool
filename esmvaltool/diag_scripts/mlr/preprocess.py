@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Simple Pre-/Postprocessing for MLR models.
+"""Simple Preprocessing for MLR models.
 
 Description
 -----------
-This diagnostic performs simple pre-/postprocessing steps for variables in a
+This diagnostic performs simple preprocessing steps for variables in a
 desired way.
 
 Author

@@ -81,12 +81,12 @@ diagnostics:
           - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
     scripts:
       mean: &mean
-        script: mlr/simple_pp.py
+        script: mlr/preprocess.py
         mean: ['time']
         tag: T-Glob_c
         convert_units_to: celsius
       trend: &trend
-        script: mlr/simple_pp.py
+        script: mlr/preprocess.py
         trend: year
         tag: T-Glob_t
 
