@@ -1466,6 +1466,7 @@ class MLRModel():
         logger.info(
             "Calculating global feature importance using LIME (this may take "
             "a while...)")
+        x_pred = self._impute_nans(x_pred)
 
         # Most important feature for single input
         def _most_important_feature(x_single_pred, interpreter, predict_fn):
@@ -1489,7 +1490,8 @@ class MLRModel():
         mask = x_pred.isnull().any(axis=1).values
         if self._cfg['imputation_strategy'] == 'remove':
             x_pred = x_pred[~mask].reset_index(drop=True)
-            x_err = x_err[~mask].reset_index(drop=True)
+            if x_err is not None:
+                x_err = x_err[~mask].reset_index(drop=True)
             diff = mask.shape[0] - len(x_pred.index)
             if diff:
                 logger.info(
@@ -2064,12 +2066,14 @@ class MLRModel():
         logger.info(
             "Propagating prediction input errors using LIME (this may take a "
             "while...)")
+        x_pred = self._impute_nans(x_pred)
 
         # Propagated error for single input
         def _propagated_error(x_single_pred, x_single_err, interpreter,
                               predict_fn, features, categorical_features):
             """Get propagated prediction input error for single input."""
             exp = interpreter.explain_instance(x_single_pred, predict_fn)
+            x_single_err = np.nan_to_num(x_single_err)
             x_err_scaled = x_single_err / interpreter.scaler.scale_
             squared_error = 0.0
             for (idx, coef) in exp.local_exp[1]:
@@ -2114,9 +2118,11 @@ class MLRModel():
         if copy:
             data_frame = data_frame.copy()
         if 'imputer' in self._clf.named_steps:
-            new_x = self._clf.named_steps['imputer'].transform(
-                data_frame.x.values)
-            data_frame.x.values[:] = new_x
+            transform = self._clf.named_steps['imputer'].transform
+            if 'x' in data_frame.columns:
+                data_frame.x.values[:] = transform(data_frame.x.values)
+            else:
+                data_frame.values[:] = transform(data_frame.values)
         return data_frame
 
     def _save_csv_file(self, data_type, filename, pred_name=None):
