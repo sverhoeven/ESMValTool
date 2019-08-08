@@ -265,7 +265,7 @@ diagnostics:
     scripts:
       monthly_clim:
         <<: *monthly_clim
-        tag: GPP_c
+        tag: GPP
         convert_units_to: 'Gt km-2 yr-1'
 
   diag_mlr_input_lai:
@@ -311,7 +311,7 @@ diagnostics:
         <<: *monthly_clim
         anomaly:
           matched_by: ['dataset']
-        tag: GPP_change
+        tag: GPP
         convert_units_to: 'Gt km-2 yr-1'
       multiple_mlr_models:
         script: mlr/main.py
@@ -329,24 +329,16 @@ diagnostics:
           white_noise: 0.05
           n_restarts_optimizer: 5
         predict_kwargs:
-          return_var: true
           return_cov: true
-        prediction_pp:
-          mean: ['time']
-          sum: ['latitude', 'longitude']
-          units: 'Gt yr-1'
-
-      # postprocess_mlr:
-      #   script: mlr/preprocess.py
-      #   ancestors: ['diag_mlr/multiple_mlr_models']
-      #   sum: all
-      #   pattern: '*prediction*'
-      # evaluate_mlr_models:
-      #   script: mlr/simple_multimodel_stats.py
-      #   ancestors: ['diag_mlr/postprocess_mlr']
-      #   pattern: '*prediction*mean*'
-      #   mean: true
-      #   std: true
+      postprocess:
+        script: mlr/postprocess.py
+        ancestors: [
+          'diag_mlr/multiple_mlr_models',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
+        mean: ['time']
+        sum: ['latitude', 'longitude']
+        convert_units_to: Gt yr-1
 
   diag_mmm:
     description: Calculate simple multi-model mean of label data.

@@ -2,7 +2,9 @@
 
 import logging
 import os
+import re
 
+from cf_units import Unit
 from sklearn.base import clone
 from sklearn.compose import TransformedTargetRegressor
 from sklearn.linear_model import LinearRegression
@@ -24,11 +26,13 @@ VAR_TYPES = [
     'prediction_input',
     'prediction_input_error',
     'prediction_output',
+    'prediction_output_error',
 ]
 
 
 class AdvancedPipeline(Pipeline):
     """Expand `sklearn.pipeline.Pipeline` class."""
+
     def fit_transformers_only(self, x_data, y_data, **fit_kwargs):
         """Fit only `transform` steps of Pipeline."""
         transformer_steps = [s[0] for s in self.steps[:-1]]
@@ -65,6 +69,7 @@ class AdvancedPipeline(Pipeline):
 
 class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
     """Expand `sklearn.compose.TransformedTargetRegressor` class."""
+
     def fit(self, x_data, y_data, **fit_kwargs):
         """Expand `fit()` method to accept kwargs."""
         y_data = check_array(y_data,
@@ -228,6 +233,56 @@ def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
                 dataset, dataset.get('var_type'), VAR_TYPES)
             output = False
     return output
+
+
+def units_power(units, power):
+    """Raise a :mod:`cf_units.Unit` to given power preserving symbols.
+
+    Raise :mod:`cf_units.Unit` to given power without expanding it first. For
+    example, raising `'J'` to the power of `2` gives `'kg2 m4 s-4'`, not
+    `'W2'`.
+
+    Parameters
+    ----------
+    units : cf_units.Unit
+        Input units.
+    power : int
+        Desired exponent.
+
+    Returns
+    -------
+    cf_units.Unit
+        Input units raised to given power.
+
+    """
+    if round(power) != power:
+        raise TypeError(f"Expected integer power for units "
+                        f"exponentiation, got {power}")
+    if any([units.is_no_unit(), units.is_unknown()]):
+        logger.warning("Cannot raise units '%s' to power %i", units.name,
+                       power)
+        return units
+    if units.origin is None:
+        logger.warning(
+            "Symbol-preserving exponentiation of units '%s' is not "
+            "supported, origin is not given", units.symbol)
+        return units**power
+    if units.origin.split()[0][0].isdigit():
+        logger.warning(
+            "Symbol-preserving exponentiation of units '%s' is not "
+            "supported yet because of leading numbers", units.symbol)
+        return units**power
+    new_units_list = []
+    for split in units.origin.split():
+        for elem in split.split('.'):
+            if elem[-1].isdigit():
+                exp = [int(d) for d in re.findall(r'-?\d+', elem)][0]
+                val = ''.join([abc for abc in re.findall(r'[A-Za-z]', elem)])
+                new_units_list.append(f'{val}{exp * power}')
+            else:
+                new_units_list.append(f'{elem}{power}')
+    new_units = ' '.join(new_units_list)
+    return Unit(new_units)
 
 
 def write_cube(cube, attributes, path):

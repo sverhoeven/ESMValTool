@@ -3,7 +3,6 @@
 import importlib
 import logging
 import os
-import re
 from copy import deepcopy
 from functools import partial
 from inspect import getfullargspec
@@ -44,7 +43,9 @@ class MLRModel():
     dataset. Possible values are `feature` (independent variables used for
     training/testing), `label` (dependent variables, y-axis) or
     `prediction_input` (independent variables used for prediction of dependent
-    variables, usually observational data).
+    variables, usually observational data). All datasets can be converted to
+    new units in the loading step by specifying the key `convert_units_to` in
+    the respective dataset(s).
 
     Training data
     -------------
@@ -134,10 +135,6 @@ class MLRModel():
         pipeline step can be given via the `parameters` key.
     predict_kwargs : dict, optional
         Optional keyword arguments for the regressor's `predict()` function.
-    prediction_pp : dict, optional
-        Postprocess prediction output (e.g. combine best estimate and standard
-        deviation in one cube). Accepts keywords `mean` and `sum` (followed by
-        list of coordinates) and `area_weights` (bool, default: True).
     return_lime_importance : bool, optional (default: False)
         Return cube with feature importance given by LIME (Local Interpretable
         Model-agnostic Explanations) during prediction.
@@ -237,7 +234,6 @@ class MLRModel():
         self._cfg.setdefault('n_jobs', 1)
         self._cfg.setdefault('parameters', {})
         self._cfg.setdefault('pca', False)
-        self._cfg.setdefault('prediction_pp', {})
         self._cfg.setdefault('standardize_data', True)
         self._cfg.setdefault('test_size', 0.25)
         logger.info("Using imputation strategy '%s'",
@@ -833,14 +829,8 @@ class MLRModel():
                                                       axis=1,
                                                       keys=['x', 'y'])
 
-            # Get prediction cubes and save them to disk
-            (predictions,
-             pred_types) = self._get_prediction_cubes(pred_dict, pred_name,
-                                                      x_cube)
-
-            # Postprocess prediction cubes (if desired)
-            self._postprocess_predictions(predictions, pred_types,
-                                          **predict_kwargs)
+            # Save prediction cubes
+            self._save_prediction_cubes(pred_dict, pred_name, x_cube)
 
     def print_correlation_matrices(self):
         """Print correlation matrices for all datasets."""
@@ -1006,25 +996,6 @@ class MLRModel():
             return False
         return True
 
-    def _convert_units_in_cube(self, cube, new_units, power=None, text=None):
-        """Convert units of cube if possible."""
-        msg = '' if text is None else f' of {text}'
-        if isinstance(new_units, str):
-            new_units = Unit(new_units)
-        if power:
-            logger.debug("Raising target units of cube '%s' by power of %i",
-                         cube.summary(shorten=True), power)
-            new_units = self._units_power(new_units, power)
-        new_units_name = (new_units.symbol
-                          if new_units.origin is None else new_units.origin)
-        logger.debug("Converting units%s from '%s' to '%s'", msg,
-                     cube.units.symbol, new_units_name)
-        try:
-            cube.convert_units(new_units)
-        except ValueError:
-            logger.warning("Units conversion%s from '%s' to '%s' failed", msg,
-                           cube.units.symbol, new_units_name)
-
     def _create_pipeline(self):
         """Create pipeline with correct settings."""
         if not self._clf_is_valid(text='Creating pipeline'):
@@ -1134,7 +1105,7 @@ class MLRModel():
                 "Got invalid type for MLR model error estimation, got '%s', "
                 "expected 'test' or 'cv'", cfg['type'])
             return pred_dict
-        units = self._units_power(self.label_units, 2)
+        units = mlr.units_power(self.label_units, 2)
         pred_error = np.where(np.isnan(pred_dict[None]), np.nan, error)
         pred_dict[f"squared_mlr_model_error_estim_{cfg['type']}"] = pred_error
         logger.info("Estimated squared MLR model error by %s %s using %s data",
@@ -1265,25 +1236,6 @@ class MLRModel():
                 logger.debug("Skipping %s", dataset['filename'])
         return valid_datasets
 
-    def _get_area_weights(self, cube, pred_type=None):
-        """Get area weights for a cube."""
-        logger.debug("Calculating area weights")
-        area_weights = None
-        for coord in cube.coords(dim_coords=True):
-            if not coord.has_bounds():
-                coord.guess_bounds()
-        try:
-            area_weights = iris.analysis.cartography.area_weights(cube)
-        except ValueError as exc:
-            logger.warning(
-                "Calculation of area weights for prediction cube '%s' failed",
-                cube.summary(shorten=True))
-            logger.warning(str(exc))
-        else:
-            power = self._pred_type_to_power(pred_type)
-            area_weights = area_weights**power
-        return area_weights
-
     def _get_broadcasted_cube(self, dataset, ref_cube, text=None):
         """Get broadcasted cube."""
         msg = '' if text is None else text
@@ -1312,16 +1264,6 @@ class MLRModel():
     def _get_clf_parameters(self, deep=True):
         """Get parameters of pipeline."""
         return self._clf.get_params(deep=deep)
-
-    def _get_cov_weights(self, cube):
-        """Get weights for covariance."""
-        logger.debug("Calculating covariance weights (memory-intensive)")
-        cov_weights = self._get_area_weights(cube)
-        if cov_weights is not None:
-            cov_weights = cov_weights.ravel()
-            cov_weights = cov_weights[~np.ma.getmaskarray(cube.data).ravel()]
-            cov_weights = np.outer(cov_weights, cov_weights)
-        return cov_weights
 
     def _get_features(self):
         """Extract all features from the `prediction_input` datasets."""
@@ -1529,11 +1471,9 @@ class MLRModel():
             pred_dict[None].size)
         return pred_dict
 
-    def _get_prediction_cubes(self, pred_dict, pred_name, x_cube):
-        """Get (multi-dimensional) prediction output."""
+    def _save_prediction_cubes(self, pred_dict, pred_name, x_cube):
+        """Save (multi-dimensional) prediction output."""
         logger.debug("Creating output cubes")
-        prediction_cubes = {}
-        prediction_types = {}
         for (pred_type, y_pred) in pred_dict.items():
             if y_pred.size == np.prod(x_cube.shape, dtype=np.int):
                 y_pred = y_pred.reshape(x_cube.shape)
@@ -1552,10 +1492,7 @@ class MLRModel():
                                            dim_coords_and_dims=dim_coords)
             new_path = self._set_prediction_cube_attributes(
                 pred_cube, pred_type, pred_name=pred_name)
-            prediction_cubes[new_path] = pred_cube
-            prediction_types[new_path] = pred_type
             io.iris_save(pred_cube, new_path)
-        return (prediction_cubes, prediction_types)
 
     def _get_prediction_dtype(self):
         """Get `dtype` of the output of `predict()` of the final regressor."""
@@ -1926,121 +1863,6 @@ class MLRModel():
         )
         logger.debug("Loaded skater model with new regressor")
 
-    def _postprocess_covariance(self, cube, cov_weights):
-        """Postprocess covariance prediction cube."""
-        logger.debug("Postprocessing covariance matrix")
-        cube = cube.collapsed(cube.coords(dim_coords=True),
-                              iris.analysis.SUM,
-                              weights=cov_weights)
-        cube.units *= Unit('m4')
-        new_units = self._cfg['prediction_pp'].get('units')
-        if new_units:
-            self._convert_units_in_cube(cube,
-                                        new_units,
-                                        power=2,
-                                        text='postprocessed covariance')
-        return cube
-
-    def _postprocess_cube(self, cube, pred_type, **kwargs):
-        """Postprocess regular prediction cube."""
-        logger.debug("Postprocessing regular prediction cube%s",
-                     '' if pred_type is None else f" of type '{pred_type}'")
-        cfg = self._cfg['prediction_pp']
-        cov_weights = None
-        if all([
-                cfg['area_weights'],
-                pred_type is None,
-                'return_cov' in kwargs,
-        ]):
-            cov_weights = self._get_cov_weights(cube)
-        ops = {'mean': iris.analysis.MEAN, 'sum': iris.analysis.SUM}
-
-        # Perform desired postprocessing operations
-        n_points_mean = None
-        old_size = np.prod(cube.shape, dtype=np.int)
-        power = self._pred_type_to_power(pred_type)
-        for (op_type, iris_op) in ops.items():
-            if not cfg.get(op_type):
-                continue
-            logger.debug("Calculating %s for coordinates %s", op_type,
-                         cfg[op_type])
-            weights = None
-            if all([
-                    cfg['area_weights'],
-                    'latitude' in cfg[op_type],
-                    'longitude' in cfg[op_type],
-            ]):
-                weights = self._get_area_weights(cube, pred_type)
-            cube = cube.collapsed(cfg[op_type], iris_op, weights=weights)
-            if op_type == 'mean':
-                new_size = np.prod(cube.shape, dtype=np.int)
-                n_points_mean = int(old_size / new_size)
-            elif op_type == 'sum' and weights is not None:
-                cube.units *= self._units_power(Unit('m2'), power)
-
-        # Units conversion
-        if cfg.get('units'):
-            self._convert_units_in_cube(
-                cube,
-                cfg['units'],
-                power=power,
-                text='postprocessed prediction output{}'.format(
-                    '' if pred_type is None else f" of type '{pred_type}'"))
-
-        # Weights for covariance matrix
-        if cov_weights is not None and n_points_mean is not None:
-            cov_weights /= n_points_mean**2
-        return (cube, cov_weights)
-
-    def _postprocess_predictions(self, predictions, pred_types, **kwargs):
-        """Postprocess prediction cubes if desired."""
-        if not self._cfg['prediction_pp']:
-            return
-        self._cfg['prediction_pp'].setdefault('area_weights', True)
-        ref_path = list(pred_types.keys())[list(
-            pred_types.values()).index(None)]
-        logger.info("Postprocessing prediction output using %s",
-                    self._cfg['prediction_pp'])
-        logger.debug("Using reference cube at '%s'", ref_path)
-
-        # Process and save reference cube
-        ref_cube = predictions[ref_path]
-        (pp_cube,
-         cov_weights) = self._postprocess_cube(ref_cube, None, **kwargs)
-        pp_cube.attributes['source'] = ref_path
-        new_path = self._get_postprocessed_filename(ref_path, ref_path)
-        io.iris_save(pp_cube, new_path)
-
-        # Process other cubes
-        if cov_weights is None:
-            ref_size = np.ma.array(ref_cube.data).compressed().shape[0]
-        else:
-            ref_size = cov_weights.shape[0]
-        for (path, cube) in predictions.items():
-            if path == ref_path or cube.attributes.get('skip_for_pp'):
-                continue
-
-            # Regular cubes
-            if cube.shape == ref_cube.shape:
-                (cube, _) = self._postprocess_cube(cube, pred_types[path])
-
-            # Covariance
-            elif cube.shape == (ref_size, ref_size):
-                cube = self._postprocess_covariance(cube, cov_weights)
-
-            # Other cases
-            else:
-                logger.warning(
-                    "Cannot postprocess prediction cube '%s', expected shapes "
-                    "%s or %s (for covariance), got %s", path, ref_cube.shape,
-                    (ref_size, ref_size), cube.shape)
-                continue
-
-            # Fix attributes and append
-            new_path = self._get_postprocessed_filename(path, ref_path)
-            cube.attributes['source'] = path
-            io.iris_save(cube, new_path)
-
     def _prediction_to_dict(self, pred_out, **kwargs):
         """Convert output of `clf.predict()` to `dict`."""
         if not isinstance(pred_out, (list, tuple)):
@@ -2178,18 +2000,21 @@ class MLRModel():
             cube.var_name += suffix
             cube.long_name += (' (variance)'
                                if pred_type == 'var' else ' (covariance)')
-            cube.units = self._units_power(cube.units, 2)
+            cube.units = mlr.units_power(cube.units, 2)
+            cube.attributes['var_type'] = 'prediction_output_error'
         elif 'squared_mlr_model_error_estim' in pred_type:
             cube.var_name += suffix
             cube.long_name += (' (squared MLR model error estimation using {})'
                                .format('cross-validation' if 'cv' in
                                        pred_type else 'holdout test data set'))
-            cube.units = self._units_power(cube.units, 2)
+            cube.units = mlr.units_power(cube.units, 2)
+            cube.attributes['var_type'] = 'prediction_output_error'
         elif pred_type == 'squared_propagated_input_error':
             cube.var_name += suffix
             cube.long_name += (' (squared propagated error of prediction '
                                'input estimated by LIME)')
-            cube.units = self._units_power(cube.units, 2)
+            cube.units = mlr.units_power(cube.units, 2)
+            cube.attributes['var_type'] = 'prediction_output_error'
         elif pred_type == 'lime':
             cube.var_name = 'lime_feature_importance'
             cube.long_name = (f'Most important feature for predicting '
@@ -2198,7 +2023,7 @@ class MLRModel():
             cube.attributes.update({
                 'features':
                 pformat(dict(enumerate(self.features))),
-                'skip_for_pp':
+                'skip_for_postprocessing':
                 1,
             })
         else:
@@ -2240,6 +2065,26 @@ class MLRModel():
                 logger.warning("Got invalid parameter for fit function: '%s'",
                                param_name)
         return new_fit_kwargs
+
+    @staticmethod
+    def _convert_units_in_cube(cube, new_units, power=None, text=None):
+        """Convert units of cube if possible."""
+        msg = '' if text is None else f' of {text}'
+        if isinstance(new_units, str):
+            new_units = Unit(new_units)
+        if power:
+            logger.debug("Raising target units of cube '%s' by power of %i",
+                         cube.summary(shorten=True), power)
+            new_units = mlr.units_power(new_units, power)
+        new_units_name = (new_units.symbol
+                          if new_units.origin is None else new_units.origin)
+        logger.debug("Converting units%s from '%s' to '%s'", msg,
+                     cube.units.symbol, new_units_name)
+        try:
+            cube.convert_units(new_units)
+        except ValueError:
+            logger.warning("Units conversion%s from '%s' to '%s' failed", msg,
+                           cube.units.symbol, new_units_name)
 
     @staticmethod
     def _convert_units_in_metadata(datasets):
@@ -2296,34 +2141,11 @@ class MLRModel():
         return cube_data.ravel()
 
     @staticmethod
-    def _get_postprocessed_filename(path, ref_path):
-        """Get name of postprocessed prediction file."""
-        path = path.replace('.nc', '')
-        ref_path = ref_path.replace('.nc', '')
-        suffix = path.replace(ref_path, '')
-        return f'{ref_path}_pp{suffix}.nc'
-
-    @staticmethod
     def _group_prediction_datasets(datasets):
         """Group prediction datasets (use `prediction_name` key)."""
         for dataset in datasets:
             dataset['group_attribute'] = None
         return group_metadata(datasets, 'prediction_name')
-
-    @staticmethod
-    def _pred_type_to_power(pred_type):
-        """Get power for prediction type (e.g. 2 for variance)."""
-        if pred_type is None:
-            return 1
-        if pred_type in ('cov', 'var'):
-            return 2
-        if 'squared_' in pred_type:
-            return 2
-        default = 1
-        logger.warning(
-            "No specific power for post-processing prediction type '%s' "
-            "defined, defaulting to %i", pred_type, default)
-        return default
 
     @staticmethod
     def _remove_missing_labels(x_data, y_data):
@@ -2336,36 +2158,3 @@ class MLRModel():
             logger.info(
                 "Removed %i training point(s) where labels were missing", diff)
         return (new_x_data, new_y_data)
-
-    @staticmethod
-    def _units_power(units, power):
-        """Raise a :mod:`cf_units.Unit` to a given power preserving symbols."""
-        if round(power) != power:
-            raise TypeError(f"Expected integer power for units "
-                            f"exponentiation, got {power}")
-        if any([units.is_no_unit(), units.is_unknown()]):
-            logger.warning("Cannot raise units '%s' to power %i", units.name,
-                           power)
-            return units
-        if units.origin is None:
-            logger.warning(
-                "Symbol-preserving exponentiation of units '%s' is not "
-                "supported, origin is not given", units.symbol)
-            return units**power
-        if units.origin.split()[0][0].isdigit():
-            logger.warning(
-                "Symbol-preserving exponentiation of units '%s' is not "
-                "supported yet because of leading numbers", units.symbol)
-            return units**power
-        new_units_list = []
-        for split in units.origin.split():
-            for elem in split.split('.'):
-                if elem[-1].isdigit():
-                    exp = [int(d) for d in re.findall(r'-?\d+', elem)][0]
-                    val = ''.join(
-                        [abc for abc in re.findall(r'[A-Za-z]', elem)])
-                    new_units_list.append(f'{val}{exp * power}')
-                else:
-                    new_units_list.append(f'{elem}{power}')
-        new_units = ' '.join(new_units_list)
-        return Unit(new_units)
