@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Simple Preprocessing for MLR models.
+"""Simple preprocessing of MLR model input.
 
 Description
 -----------
-This diagnostic performs simple preprocessing steps for variables in a
-desired way.
+This diagnostic performs simple preprocessing operations for datasets used as
+MLR model input in a desired way.
 
 Author
 ------
@@ -150,13 +150,7 @@ def _calculate_slope_along_coord(cube, coord_name, return_stderr=False):
         slope_stderr = None
 
     # Get units
-    units = coord.units
-    if units.is_time_reference():
-        units = Unit(units.symbol.split()[0])
-        if not units.is_time():
-            raise ValueError(
-                f"Cannot convert time reference units {coord.units.symbol} to "
-                f"reasonable time units")
+    units = _get_time_units(coord.units)
 
     # Apply dummy aggregator for correct cell method and set data
     aggregator = iris.analysis.Aggregator('trend', _remove_axis)
@@ -219,6 +213,17 @@ def _get_slope_stderr(x_arr, y_arr):
         return np.nan
     reg = stats.linregress(x_arr, y_arr)
     return reg.stderr
+
+
+def _get_time_units(units):
+    """Get non-relative time units."""
+    if units.is_time_reference():
+        units = Unit(units.symbol.split()[0])
+        if not units.is_time():
+            raise ValueError(
+                f"Cannot convert time reference units {units.symbol} to "
+                f"reasonable time units")
+    return units
 
 
 def _get_time_weights(cfg, cube):
@@ -431,12 +436,11 @@ def calculate_sum_and_mean(cfg, cube, data):
             # Time (weighted)
             time_weights = _get_time_weights(cfg, cube)
             if 'time' in cfg[oper]:
+                time_units = _get_time_units(cube.coord('time').units)
                 cube = cube.collapsed(['time'], iris_op, weights=time_weights)
                 cfg[oper].remove('time')
                 if oper == 'sum' and time_weights is not None:
-                    time_units = (data['frequency']
-                                  if data['frequency'] != 'mon' else 'month')
-                    cube.units *= Unit(time_units)
+                    cube.units *= time_units
                     data['units'] = cube.units.symbol
 
             # Remaining operations
