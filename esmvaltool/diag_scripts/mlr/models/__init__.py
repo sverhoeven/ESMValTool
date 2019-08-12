@@ -1109,9 +1109,7 @@ class MLRModel():
         pred_error = np.where(np.isnan(pred_dict[None]), np.nan, error)
         pred_dict[f"squared_mlr_model_error_estim_{cfg['type']}"] = pred_error
         logger.info("Estimated squared MLR model error by %s %s using %s data",
-                    error,
-                    units.symbol if units.origin is None else units.origin,
-                    cfg['type'])
+                    error, units, cfg['type'])
         return pred_dict
 
     def _extract_features_and_labels(self):
@@ -1711,7 +1709,7 @@ class MLRModel():
                 f"Units of cube '{dataset['filename']}' for "
                 f"{dataset['var_type']} '{dataset['tag']}' differ from units "
                 f"given in dataset list (retrieved from ancestors or "
-                f"metadata.yml), got '{cube.units.symbol}' in cube and "
+                f"metadata.yml), got '{cube.units}' in cube and "
                 f"'{dataset['units']}' in dataset list")
         return cube
 
@@ -2076,15 +2074,13 @@ class MLRModel():
             logger.debug("Raising target units of cube '%s' by power of %i",
                          cube.summary(shorten=True), power)
             new_units = mlr.units_power(new_units, power)
-        new_units_name = (new_units.symbol
-                          if new_units.origin is None else new_units.origin)
-        logger.debug("Converting units%s from '%s' to '%s'", msg,
-                     cube.units.symbol, new_units_name)
+        logger.debug("Converting units%s from '%s' to '%s'", msg, cube.units,
+                     new_units)
         try:
             cube.convert_units(new_units)
         except ValueError:
             logger.warning("Units conversion%s from '%s' to '%s' failed", msg,
-                           cube.units.symbol, new_units_name)
+                           cube.units, new_units)
 
     @staticmethod
     def _convert_units_in_metadata(datasets):
@@ -2099,8 +2095,7 @@ class MLRModel():
             except ValueError:
                 logger.warning(
                     "Cannot convert units of %s '%s' from '%s' to '%s'",
-                    dataset['var_type'], dataset['tag'], units_from.origin,
-                    units_to.origin)
+                    dataset['var_type'], dataset['tag'], units_from, units_to)
                 dataset.pop('convert_units_to')
             else:
                 dataset['units'] = dataset['convert_units_to']

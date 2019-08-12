@@ -235,12 +235,42 @@ def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
     return output
 
 
+def get_absolute_time_units(units):
+    """Convert time reference units to absolute ones.
+
+    This function converts reference time units (like `'days since YYYY'`) to
+    absolute ones (like `'days'`).
+
+    Parameters
+    ----------
+    units : cf_units.Unit
+        Time units to convert.
+
+    Returns
+    -------
+    cf_units.Unit
+        Absolute time units.
+
+    Raises
+    ------
+    ValueError
+        If conversion failed (e.g. input units are not time units).
+
+    """
+    if units.is_time_reference():
+        units = Unit(units.symbol.split()[0])
+    if not units.is_time():
+        raise ValueError(
+            f"Cannot convert units '{units}' to reasonable time units")
+    return units
+
+
 def units_power(units, power):
     """Raise a :mod:`cf_units.Unit` to given power preserving symbols.
 
     Raise :mod:`cf_units.Unit` to given power without expanding it first. For
-    example, raising `'J'` to the power of `2` gives `'kg2 m4 s-4'`, not
-    `'W2'`.
+    example, raising `'J'` to the power of `2` (by using `**2`) gives
+    `'kg2 m4 s-4'`, not `'W2'`.
 
     Parameters
     ----------
@@ -265,12 +295,12 @@ def units_power(units, power):
     if units.origin is None:
         logger.warning(
             "Symbol-preserving exponentiation of units '%s' is not "
-            "supported, origin is not given", units.symbol)
+            "supported, origin is not given", units)
         return units**power
     if units.origin.split()[0][0].isdigit():
         logger.warning(
             "Symbol-preserving exponentiation of units '%s' is not "
-            "supported yet because of leading numbers", units.symbol)
+            "supported yet because of leading numbers", units)
         return units**power
     new_units_list = []
     for split in units.origin.split():

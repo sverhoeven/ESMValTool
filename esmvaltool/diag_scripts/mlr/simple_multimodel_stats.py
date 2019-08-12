@@ -131,9 +131,7 @@ def _plot_1d_cubes(cubes, error_cubes):
         x_labels = [label.strftime('%Y-%m-%d') for label in x_labels]
         plt.xticks(x_ticks, x_labels, rotation=45)
     else:
-        x_units = (x_coord.units.symbol
-                   if x_coord.units.origin is None else x_coord.units.origin)
-        axes.set_xlabel(f'{x_coord.name()} / {x_units}')
+        axes.set_xlabel(f'{x_coord.name()} / {x_coord.units}')
     legend = axes.legend(loc='center left',
                          ncol=2,
                          bbox_to_anchor=[1.05, 0.5],
@@ -183,13 +181,12 @@ def convert_units(cfg, cube, data):
         units_to = cfg_settings
         if data_settings:
             units_to = data_settings
-        logger.info("Converting units from '%s' to '%s'", cube.units.symbol,
-                    units_to)
+        logger.info("Converting units from '%s' to '%s'", cube.units, units_to)
         try:
             cube.convert_units(units_to)
         except ValueError:
             logger.warning("Cannot convert units from '%s' to '%s'",
-                           cube.units.symbol, units_to)
+                           cube.units, units_to)
 
 
 def extract_data(cfg, input_data, error_data):
@@ -261,9 +258,7 @@ def plot(cfg, cubes, error_cubes, datasets):
     (axes, legend) = plot_func(cubes_to_plot, error_cubes_to_plot)
 
     # Set plot appearance and save it
-    y_units = (cubes[0].units.symbol
-               if cubes[0].units.origin is None else cubes[0].units.origin)
-    axes.set_ylabel(f'{cubes[0].var_name} / {y_units}')
+    axes.set_ylabel(f'{cubes[0].var_name} / {cubes[0].units}')
     axes.set_title(f'{cubes[0].var_name} for multiple datasets')
     path = get_plot_filename('multi-model_stats', cfg)
     plt.savefig(path,

@@ -122,13 +122,13 @@ def _convert_units(cfg, cube):
     cfg_settings = cfg.get('convert_units_to')
     if cfg_settings:
         units_to = cfg_settings
-        logger.debug("Converting units from '%s' to '%s'", cube.units.symbol,
+        logger.debug("Converting units from '%s' to '%s'", cube.units,
                      units_to)
         try:
             cube.convert_units(units_to)
         except ValueError:
             logger.warning("Cannot convert units from '%s' to '%s'",
-                           cube.units.symbol, units_to)
+                           cube.units, units_to)
 
 
 def _collapse_covariance_cube(cfg, cov_cube, ref_cube):
@@ -363,7 +363,7 @@ def _get_normalization_factor(coords, ref_cube, normalize):
 def _get_time_weights(cfg, cube, power=1, normalize=False):
     """Calculate time weights."""
     time_weights = None
-    time_units = _get_time_units(cube.coord('time').units)
+    time_units = mlr.get_absolute_time_units(cube.coord('time').units)
     if cfg.get('time_weighted', True):
         for coord in cube.coords(dim_coords=True):
             if not coord.has_bounds():
@@ -384,17 +384,6 @@ def _get_time_weights(cfg, cube, power=1, normalize=False):
             time_weights = np.broadcast_to(time_weights, cube.shape)
             time_weights = time_weights**power
     return (time_weights, time_units**power)
-
-
-def _get_time_units(units):
-    """Get non-relative time units."""
-    if units.is_time_reference():
-        units = Unit(units.symbol.split()[0])
-        if not units.is_time():
-            raise ValueError(
-                f"Cannot convert time reference units {units.symbol} to "
-                f"reasonable time units")
-    return units
 
 
 def _has_valid_coords(cube, coord_names):

@@ -71,7 +71,7 @@ import numpy as np
 from cf_units import Unit
 from scipy import stats
 
-from esmvaltool.diag_scripts.mlr import write_cube
+from esmvaltool.diag_scripts.mlr import get_absolute_time_units, write_cube
 from esmvaltool.diag_scripts.shared import (get_diagnostic_filename, io,
                                             run_diagnostic, select_metadata)
 
@@ -150,7 +150,7 @@ def _calculate_slope_along_coord(cube, coord_name, return_stderr=False):
         slope_stderr = None
 
     # Get units
-    units = _get_time_units(coord.units)
+    units = get_absolute_time_units(coord.units)
 
     # Apply dummy aggregator for correct cell method and set data
     aggregator = iris.analysis.Aggregator('trend', _remove_axis)
@@ -215,17 +215,6 @@ def _get_slope_stderr(x_arr, y_arr):
     return reg.stderr
 
 
-def _get_time_units(units):
-    """Get non-relative time units."""
-    if units.is_time_reference():
-        units = Unit(units.symbol.split()[0])
-        if not units.is_time():
-            raise ValueError(
-                f"Cannot convert time reference units {units.symbol} to "
-                f"reasonable time units")
-    return units
-
-
 def _get_time_weights(cfg, cube):
     """Calculate time weights."""
     time_weights = None
@@ -271,7 +260,7 @@ def _set_trend_metadata(cfg, cube, cube_stderr, data, units):
     data['standard_name'] += '_trend'
     data['short_name'] += '_trend'
     data['long_name'] += ' (trend)'
-    data['units'] += f' {units.origin}-1'
+    data['units'] += f' ({units})-1'
     if cube_stderr is not None:
         cube_stderr.units /= units
         stderr = deepcopy(data)
@@ -431,17 +420,17 @@ def calculate_sum_and_mean(cfg, cube, data):
                 cfg[oper].remove('longitude')
                 if oper == 'sum' and area_weights is not None:
                     cube.units *= Unit('m2')
-                    data['units'] = cube.units.symbol
+                    data['units'] = str(cube.units)
 
             # Time (weighted)
             time_weights = _get_time_weights(cfg, cube)
             if 'time' in cfg[oper]:
-                time_units = _get_time_units(cube.coord('time').units)
+                time_units = get_absolute_time_units(cube.coord('time').units)
                 cube = cube.collapsed(['time'], iris_op, weights=time_weights)
                 cfg[oper].remove('time')
                 if oper == 'sum' and time_weights is not None:
                     cube.units *= time_units
-                    data['units'] = cube.units.symbol
+                    data['units'] = str(cube.units)
 
             # Remaining operations
             if cfg[oper]:
@@ -478,13 +467,13 @@ def convert_units(cfg, cube, data):
         units_to = cfg_settings
         if data_settings:
             units_to = data_settings
-        logger.debug("Converting units from '%s' to '%s'", cube.units.symbol,
+        logger.debug("Converting units from '%s' to '%s'", cube.units,
                      units_to)
         try:
             cube.convert_units(units_to)
         except ValueError:
             logger.warning("Cannot convert units from '%s' to '%s'",
-                           cube.units.symbol, units_to)
+                           cube.units, units_to)
         else:
             data['units'] = units_to
     return (cube, data)
@@ -492,8 +481,7 @@ def convert_units(cfg, cube, data):
 
 def normalize(cfg, cube, data):
     """Normalize final dataset (by mean and/or by standard deviation)."""
-    units = (cube.units.symbol
-             if cube.units.origin is None else cube.units.origin)
+    units = cube.units
     if cfg.get('normalize_mean'):
         logger.debug("Normalizing mean")
         area_weights = _get_area_weights(cfg, cube)
@@ -512,7 +500,7 @@ def normalize(cfg, cube, data):
         data['normalize_std'] = (
             f"Standard deviation scaled to 1.0 by division, original std was "
             f"{std} {units}")
-        data['original_units'] = units
+        data['original_units'] = str(units)
     return (cube, data)
 
 
