@@ -17,6 +17,10 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
+add_var_from_cov : bool, optional (default: True)
+    Calculate variances from covariance matrix (diagonal elements) and add
+    those to (squared) error datasets. Set to `False` if variance is already
+    given separately in prediction output.
 area_weighted : bool, optional (default: True)
     Calculate weighted averages/sums for area (using grid cell boundaries).
     convert_units_to : str, optional
@@ -129,25 +133,10 @@ def _convert_units(cfg, cube):
 
 def _collapse_covariance_cube(cfg, cov_cube, ref_cube):
     """Collapse covariance cube with using desired operations."""
-    cfg = deepcopy(cfg)
-    cov_cube = cov_cube.copy()
-
-    # Check shape of covariance_cube
-    ref_size = np.ma.array(ref_cube.data).compressed().shape[0]
-    if cov_cube.shape != (ref_size, ref_size):
-        logger.warning(
-            "Expected shape of covariance cube to be %s, got %s (after "
-            "removal of all missing values)", (ref_size, ref_size),
-            cov_cube.shape)
-        return None
-
-    # Calculate weights
     (weights, units, _) = _get_all_weights(cfg, ref_cube)
     weights = weights.ravel()
     weights = weights[~np.ma.getmaskarray(ref_cube.data).ravel()]
     weights = np.outer(weights, weights)
-
-    # Calculate covariance
     cov_cube = cov_cube.collapsed(cov_cube.coords(dim_coords=True),
                                   iris.analysis.SUM,
                                   weights=weights)
@@ -195,8 +184,6 @@ def _collapse_estimated_covariance(squared_error_cube, ref_cube, weights):
 
 def _collapse_regular_cube(cfg, cube, power=1):
     """Collapse cube with using desired operations."""
-    cfg = deepcopy(cfg)
-    cube = cube.copy()
     (weights, units, coords) = _get_all_weights(cfg, cube, power=power)
     cube = cube.collapsed(coords, iris.analysis.SUM, weights=weights)
     cube.units *= units
@@ -265,6 +252,7 @@ def _corrcoef(array, rowvar=True):
 
 def _get_all_weights(cfg, cube, power=1):
     """Get all necessary weights (including mean calculation)."""
+    cfg = deepcopy(cfg)
     all_coords = []
     weights = np.ones(cube.shape)
     units = Unit('1')
@@ -325,10 +313,12 @@ def _get_area_weights(cfg, cube, power=1, normalize=False):
     return (area_weights, Unit('m2')**power)
 
 
-def _get_covariance_dataset(error_datasets):
+def _get_covariance_dataset(error_datasets, ref_cube):
     """Extract covariance dataset."""
     cov_datasets = []
     other_datasets = []
+
+    # Get covariance dataset(s)
     for dataset in error_datasets:
         if '_cov' in dataset['short_name']:
             cov_datasets.append(dataset)
@@ -339,8 +329,17 @@ def _get_covariance_dataset(error_datasets):
     if len(cov_datasets) > 1:
         logger.warning(
             "Got multiple error datasets for covariance, using only first "
-            "one (%s)", cov_datasets[0]['filename'])
+            "one ('%s')", cov_datasets[0]['filename'])
+
+    # Check shape
     cov_cube = iris.load_cube(cov_datasets[0]['filename'])
+    ref_size = np.ma.array(ref_cube.data).compressed().shape[0]
+    if cov_cube.shape != (ref_size, ref_size):
+        logger.warning(
+            "Expected shape of covariance cube to be %s, got %s (after "
+            "removal of all missing values)", (ref_size, ref_size),
+            cov_cube.shape)
+        return (None, other_datasets)
     return (cov_cube, other_datasets)
 
 
@@ -445,7 +444,8 @@ def postprocess_errors(cfg, ref_cube, error_datasets, cov_estim_datasets):
     basepath = get_diagnostic_filename(basename, cfg)
 
     # Extract covariance
-    (cov_cube, error_datasets) = _get_covariance_dataset(error_datasets)
+    (cov_cube,
+     error_datasets) = _get_covariance_dataset(error_datasets, ref_cube)
 
     # Extract squared errors
     for dataset in error_datasets:
@@ -464,6 +464,20 @@ def postprocess_errors(cfg, ref_cube, error_datasets, cov_estim_datasets):
         if 'squared_' not in cube.var_name:
             new_data **= 2
         squared_error_cube.data += new_data
+        logger.debug("Added '%s' to squared error datasets", path)
+
+    # Extract variance from covariance if desired
+    if cfg.get('add_var_from_cov', True) and cov_cube is not None:
+        var = np.ma.empty(ref_cube.shape, dtype=ref_cube.dtype)
+        mask = np.ma.getmaskarray(ref_cube.data)
+        var[mask] = np.ma.masked
+        var[~mask] = np.diagonal(cov_cube.data.copy())
+        squared_error_cube.data += var
+        logger.debug(
+            "Added variance calculated from covariance to squared error "
+            "datasets")
+        if not error_datasets:
+            error_datasets = True
 
     # Lower and upper error bounds
     if error_datasets:
@@ -476,7 +490,7 @@ def postprocess_errors(cfg, ref_cube, error_datasets, cov_estim_datasets):
                                  cov_estim_datasets[0], basepath)
 
     # Calculate real error if possible
-    if cov_cube:
+    if cov_cube is not None:
         _calculate_real_error(cfg, ref_cube, cov_cube, basepath)
 
 
@@ -557,8 +571,13 @@ def main(cfg):
              cov_estim_datastets) = split_datasets(datasets, tag, pred_name)
 
             # Extract cubes
-            logger.debug("Loaded reference cube at %s", dataset['filename'])
+            logger.debug("Loaded reference cube at '%s'", dataset['filename'])
             ref_cube = iris.load_cube(dataset['filename'])
+            if ref_cube.ndim < 1:
+                logger.warning(
+                    "Postprocessing scalar dataset '%s' not possible",
+                    dataset['filename'])
+                continue
 
             # Process reference cube
             postprocess_ref(cfg, ref_cube, dataset)
