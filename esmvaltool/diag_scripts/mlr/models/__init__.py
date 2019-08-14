@@ -114,11 +114,18 @@ class MLRModel():
         `s`.
     group_datasets_by_attributes : list of str, optional
         List of dataset attributes which are used to group input data for
-        `features` and `labels`, e.g. specify `dataset` to use the different
-        `dataset`s as observations for the MLR model.
+        `features` and `labels`. For example, this is necessary if the MLR
+        model should consider multiple climate models in the training phase. If
+        this option is not given, specifying multiple datasets with identical
+        `var_type` and `tag` entries results in an error. If given, all the
+        input data is first grouped by the given attributes and then checked
+        for uniqueness within this group. After that, all groups are stacked to
+        form a single set of training data.
     imputation_strategy : str, optional (default: 'remove')
         Strategy for the imputation of missing values in the features. Must be
         one of `remove`, `mean`, `median`, `most_frequent` or `constant`.
+    model_name : str, optional
+        Human-readable name of the MLR model instance (e.g used for labels).
     n_jobs : int, optional (default: 1)
         Maximum number of jobs spawned by this class.
     parameters : dict, optional
@@ -130,6 +137,9 @@ class MLRModel():
         updated using the function `self.update_parameters()`, the new names
         have to be given for each step of the pipeline seperated by two
         underscores, i.e. `s__p` is the parameter `p` for step `s`.
+    pattern : str, optional
+        Pattern matched against ancestor files. Ignored if datasets are given
+        by `input_data` argument at class initialization.
     pca : bool, optional (default: False)
         Preprocess numerical input features using PCA. Parameters for this
         pipeline step can be given via the `parameters` key.
@@ -203,19 +213,19 @@ class MLRModel():
                     cls._MODELS[model]._CLF_TYPE)
         return cls._MODELS[model](*args, **kwargs)
 
-    def __init__(self, cfg, root_dir=None, **metadata):
+    def __init__(self, cfg, input_data=None, root_dir=None):
         """Initialize base class members.
 
         Parameters
         ----------
         cfg : dict
             Diagnostic script configuration.
+        input_data : list of dict, optional
+            List of datasets used as input. If not specified, these are
+            automatically extracted from the `cfg` dictionary.
         root_dir : str, optional
             Root directory for output (subdirectory in `work_dir` and
             `plot_dir`).
-        metadata : keyword arguments
-            Metadata for selecting only specific datasets as `features` and
-            `labels` (e.g. `dataset='CanESM2'`).
 
         """
         self._cfg = deepcopy(cfg)
@@ -231,6 +241,7 @@ class MLRModel():
         self._cfg.setdefault('cache_intermediate_results', True)
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('imputation_strategy', 'remove')
+        self._cfg.setdefault('model_name', f'{self._CLF_TYPE} model')
         self._cfg.setdefault('n_jobs', 1)
         self._cfg.setdefault('parameters', {})
         self._cfg.setdefault('pca', False)
@@ -258,7 +269,7 @@ class MLRModel():
             logger.info("Created %s", self._cfg['mlr_plot_dir'])
 
         # Load datasets, classes and training data
-        self._load_input_datasets(**metadata)
+        self._load_input_datasets(input_data=input_data)
         self._load_classes()
         self._load_data()
 
@@ -269,7 +280,7 @@ class MLRModel():
                          self._cfg['parameters'])
         self.update_parameters(**self._cfg['parameters'])
 
-        # Log successful initialerrorization
+        # Log successful initialization
         logger.info("Initialized MLR model (using at most %i processes)",
                     self._cfg['n_jobs'])
         logger.debug("With parameters")
@@ -557,7 +568,7 @@ class MLRModel():
                 "(neither using 'best_estimator_' nor 'best_params_'), "
                 "adapt 'grid_search_cv_kwargs' accordingly (see "
                 "<https://scikit-learn.org/stable/modules/generated/"
-                "sklearn.model_selection.GridSearchCV.html> for help)")
+                "sklearn.model_selection.GridSearchCV.html> for more help)")
         self._parameters = self._get_clf_parameters()
         logger.info(
             "Exhaustive grid search successful, found best parameter(s) %s",
@@ -598,7 +609,7 @@ class MLRModel():
                                                  method=method,
                                                  n_jobs=self._cfg['n_jobs'],
                                                  progressbar=progressbar))
-            axes.set_title(f'Variable Importance ({self._CLF_TYPE} Model)')
+            axes.set_title(f"Variable Importance ({self._cfg['model_name']})")
             axes.set_xlabel('Relative Importance')
             new_filename = (filename.format(method=method) + '.' +
                             self._cfg['output_file_type'])
@@ -718,7 +729,7 @@ class MLRModel():
                 feature_names=self.features,
                 **verbosity,
             )
-            plt.title(f'Partial dependence ({self._CLF_TYPE} Model)')
+            plt.title(f"Partial dependence ({self._cfg['model_name']})")
             plt.xlabel(f'{feature_name} / {self.features_units[feature_name]}')
             plt.ylabel(f'Partial dependence on {self.label}')
             new_filename = (filename.format(feature=feature_name) + '.' +
@@ -925,8 +936,8 @@ class MLRModel():
                 raise ValueError(
                     f"Expected cubes with shapes {ref_cube.shape}{msg}, got "
                     f"{cube.shape}. Consider regridding, pre-selecting data "
-                    f"at class initialization using '**metadata' or the "
-                    f"options 'broadcast_from' or 'group_datasets_by_"
+                    f"at class initialization using the argument 'input_data' "
+                    f"or the options 'broadcast_from' or 'group_datasets_by_"
                     f"attributes'")
             cube_coords = cube.coords(dim_coords=True)
             ref_coords = ref_cube.coords(dim_coords=True)
@@ -970,10 +981,10 @@ class MLRModel():
             return None
         if len(datasets) > 1:
             raise ValueError(
-                f"{var_type} '{tag}'{msg} not unique, consider the use of "
-                f"'**metadata' in class initialization to pre-select datasets "
-                f"or specify suitable attributes to group datasets with the "
-                f"option 'group_datasets_by_attributes'")
+                f"{var_type} '{tag}'{msg} not unique, consider the use of the "
+                f"argument 'input_data' at class initialization to pre-select "
+                f"datasets or specify suitable attributes to group datasets "
+                f"with the option 'group_datasets_by_attributes'")
         if var_type == 'label':
             units = self.label_units
         else:
@@ -1218,7 +1229,10 @@ class MLRModel():
 
     def _get_ancestor_datasets(self):
         """Get ancestor datasets."""
-        datasets = io.netcdf_to_metadata(self._cfg)
+        pattern = self._cfg.get('pattern')
+        if pattern is not None:
+            logger.debug("Matching ancestor files against pattern %s", pattern)
+        datasets = io.netcdf_to_metadata(self._cfg, pattern=pattern)
         if not datasets:
             logger.debug("Skipping loading ancestor datasets, no files found")
             return []
@@ -1228,10 +1242,10 @@ class MLRModel():
         # Check MLR attributes
         valid_datasets = []
         for dataset in datasets:
-            if mlr.datasets_have_mlr_attributes([dataset]):
+            if mlr.datasets_have_mlr_attributes([dataset], log_level='info'):
                 valid_datasets.append(dataset)
             else:
-                logger.debug("Skipping %s", dataset['filename'])
+                logger.info("Skipping ancestor file %s", dataset['filename'])
         return valid_datasets
 
     def _get_broadcasted_cube(self, dataset, ref_cube, text=None):
@@ -1642,6 +1656,10 @@ class MLRModel():
                     group_attribute += dataset[attribute] + '-'
             if not group_attribute:
                 group_attribute = dataset['dataset']
+                logger.warning(
+                    "Dataset %s does not contain any of the desired "
+                    "attributes %s for grouping, setting 'group_attribute' to "
+                    "'%s'", dataset['filename'], attributes, group_attribute)
             else:
                 group_attribute = group_attribute[:-1]
             dataset['group_attribute'] = group_attribute
@@ -1753,10 +1771,15 @@ class MLRModel():
             parameters.setdefault(param, verbosity)
         return parameters
 
-    def _load_input_datasets(self, **metadata):
+    def _load_input_datasets(self, input_data=None):
         """Load input datasets (including ancestors)."""
-        input_datasets = deepcopy(list(self._cfg['input_data'].values()))
-        input_datasets.extend(self._get_ancestor_datasets())
+        if input_data is None:
+            logger.debug("Loading input data from 'cfg' argument")
+            input_datasets = deepcopy(list(self._cfg['input_data'].values()))
+            input_datasets.extend(self._get_ancestor_datasets())
+        else:
+            logger.debug("Loading input data from 'input_data' argument")
+            input_datasets = deepcopy(input_data)
         mlr.datasets_have_mlr_attributes(input_datasets,
                                          log_level='warning',
                                          mode='only_var_type')
@@ -1764,11 +1787,6 @@ class MLRModel():
         # Extract features and labels
         feature_datasets = select_metadata(input_datasets, var_type='feature')
         label_datasets = select_metadata(input_datasets, var_type='label')
-        feature_datasets = select_metadata(feature_datasets, **metadata)
-        label_datasets = select_metadata(label_datasets, **metadata)
-        if metadata:
-            logger.info("Only considered features and labels matching %s",
-                        metadata)
         training_datasets = feature_datasets + label_datasets
 
         # Prediction datasets
@@ -1792,8 +1810,7 @@ class MLRModel():
 
         # Check if data was found
         if not training_datasets:
-            msg = f' for metadata {metadata}' if metadata else ''
-            raise ValueError(f"No training data (features/labels){msg} found")
+            raise ValueError("No training data (features/labels) found")
         if not prediction_datasets:
             raise ValueError("No prediction input data found")
 
@@ -1969,8 +1986,9 @@ class MLRModel():
     def _set_prediction_cube_attributes(self, cube, pred_type, pred_name=None):
         """Set the attributes of the prediction cube."""
         cube.attributes = {
-            'regressor': str(self._CLF_TYPE),
             'description': 'MLR model prediction',
+            'mlr_model_name': self._cfg['model_name'],
+            'regressor': str(self._CLF_TYPE),
             'tag': self.label,
             'var_type': 'prediction_output',
         }

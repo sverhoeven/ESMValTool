@@ -58,7 +58,7 @@ class GBRModel(MLRModel):
 
         # Plot appearance
         y_tick_labels = self.features_after_preprocessing[sorted_idx]
-        axes.set_title(f'Variable Importance ({str(self._CLF_TYPE)} Model)')
+        axes.set_title(f"Variable Importance ({self._cfg['model_name']})")
         axes.set_xlabel('Relative Importance')
         axes.set_yticks(pos)
         axes.set_yticklabels(y_tick_labels)
@@ -90,7 +90,7 @@ class GBRModel(MLRModel):
 
         # Appearance
         axes.legend(loc='upper right')
-        axes.set_title(f'Deviance ({str(self._CLF_TYPE)} Model)')
+        axes.set_title(f"Deviance ({self._cfg['model_name']})")
         axes.set_xlabel('Boosting Iterations')
         axes.set_ylabel('Deviance')
         new_filename = filename + '.' + self._cfg['output_file_type']

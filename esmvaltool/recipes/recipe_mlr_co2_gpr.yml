@@ -16,7 +16,7 @@ documentation:
 
 
 DATASET_ANCHOR: &datasets
-  # - {dataset: BNU-ESM}
+  - {dataset: BNU-ESM}
   - {dataset: CanESM2}
   # - {dataset: CCSM4}
   # - {dataset: CESM1-BGC}
@@ -321,10 +321,8 @@ diagnostics:
         ]
         mlr_model: gpr_george
         coords_as_features: ['month_number', 'latitude', 'longitude']
-        metadata_preselection:
-          select:
-            project: CMIP5
-          group: dataset
+        group_metadata: dataset
+        mlr_model: gpr_george
         parameters_final_regressor:
           white_noise: 0.05
           n_restarts_optimizer: 5
@@ -340,28 +338,26 @@ diagnostics:
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
-  diag_mmm:
-    description: Calculate simple multi-model mean of label data.
-    variables:
-      ref:
-        <<: *variable_settings_features
-        short_name: nbp_grid
-        mip: Lmon
-        derive: true
-        ref: true
-      label:
-        <<: *variable_settings_label
-    scripts:
-      global_sum:
-        script: mlr/preprocess.py
-        mean: ['time']
-        sum: ['latitude', 'longitude']
-        anomaly:
-          matched_by: ['dataset']
-        tag: NBP_change
-        convert_units_to: 'Gt yr-1'
-      mmm:
-        script: mlr/simple_multimodel_stats.py
-        ancestors: ['diag_mmm/global_sum']
-        unweighted_mean: true
-        std: true
+  # diag_mmm:
+  #   description: Use simple multi-model mean to predict label.
+  #   variables:
+  #     ref:
+  #       <<: *variable_settings_features
+  #       short_name: gpp_grid
+  #       mip: Lmon
+  #       derive: true
+  #       ref: true
+  #     label:
+  #       <<: *variable_settings_label
+  #   scripts:
+  #     monthly_clim:
+  #       <<: *monthly_clim
+  #       anomaly:
+  #         matched_by: ['dataset']
+  #       tag: GPP
+  #       convert_units_to: 'Gt km-2 yr-1'
+  #     mmm:
+  #       script: mlr/multi_model_mean_regression.py
+  #       ancestors: ['diag_mmm/monthly_clim']
+  #       unweighted_mean: true
+  #       std: true

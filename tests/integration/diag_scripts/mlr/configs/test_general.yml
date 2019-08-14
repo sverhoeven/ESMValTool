@@ -14,8 +14,7 @@ base_cfg: &base_cfg
 
 args:
   - *base_cfg
-  - /hello/world
 
 kwargs: &kwargs
-  dataset: My-Fancy-GCM
-  project: MIP
+  input_data: []
+  root_dir: /root/dir

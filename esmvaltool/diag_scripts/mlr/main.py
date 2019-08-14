@@ -17,13 +17,31 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-metadata_preselection : dict, optional
-    Pre-select metadata by specifying (key, value) pairs under the key `select`
-    and group input data by an attribute given under `group`. For every group
-    element, an individual MLR model is calculated.
+group_metadata : str, optional
+    Group input data by an attribute. For every group element (set of
+    datasets), an individual MLR model is calculated. Only affects `feature`
+    and `label` datasets. Cannot be used together with the option
+    `pseudo_reality`.
 model_type : str, optional (default: 'gbr_sklearn')
     MLR model type. The given model has to be defined in
     :mod:`esmvaltool.diag_scripts.mlr.models`.
+pseudo_reality : list of str, optional
+    List of dataset attributes which are used to group input data for a pseudo-
+    reality test (also known as 'model-as-truth' or 'perfect-model' setup). In
+    this setting, all `prediction_input` specified in the recipe is ignored.
+    On the contrary, for every element of the group a single MLR model is
+    fitted on all data EXCEPT for that of the specified group element.
+    This group element is then used as `prediction_input`. This allows a direct
+    assessment of the predictive power of the MLR model by comparing the MLR
+    prediction output and the true labels (similar to splitting the input data
+    in a training and test set, but not dividing the data randomly but using
+    specific datasets, e.g. the different climate models). Cannot be used
+    together with the option `group_metadata`.
+pattern : str, optional
+    Pattern matched against ancestor files.
+select_metadata : dict, optional
+    Pre-select input data by specifying (key, value) pairs. Affects all
+    datasets regardless of `var_type`.
 
 Additional parameters see :mod:`esmvaltool.diag_scripts.mlr.models`.
 
@@ -38,6 +56,7 @@ from george import kernels as george_kernels
 from iris.fileformats.netcdf import UnknownCellMethodWarning
 from sklearn.gaussian_process import kernels as sklearn_kernels
 
+from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
@@ -53,32 +72,73 @@ WARNINGS_TO_IGNORE = [
 ]
 
 
-def _get_grouped_datasets(cfg):
-    """Group input datasets according to given settings."""
-    logger.info("Reading metadata of all input files")
+def _get_grouped_data(cfg, input_data):
+    """Group input data to create individual MLR models for each group."""
+    group_attribute = cfg['group_metadata']
+    logger.info(
+        "Grouping training data by atribute '%s' and creating individual MLR "
+        "model for each group member", group_attribute)
+
+    # Group data using var types
+    var_types = group_metadata(input_data, 'var_type')
+    training_data = var_types.get('feature', []) + var_types.get('label', [])
+    prediction_data = []
+    for pred_type in var_types:
+        if 'prediction_' in pred_type:
+            prediction_data.extend(var_types[pred_type])
+
+    # Create groups of dataset using training data
+    grouped_datasets = group_metadata(training_data, group_attribute)
+    grouped_input_data = {}
+    for (group_val, datasets) in grouped_datasets.items():
+        datasets.extend(prediction_data)
+        grouped_input_data[group_val] = datasets
+    return (group_attribute, grouped_input_data)
+
+
+def _get_input_data(cfg):
+    """Get (grouped) input datasets according to given settings."""
+    input_data = get_raw_input_data(cfg)
+    if cfg.get('group_metadata'):
+        return _get_grouped_data(cfg, input_data)
+    if cfg.get('pseudo_reality'):
+        return _get_pseudo_reality_data(cfg, input_data)
+    logger.info("Creating single MLR model")
+    return (None, {None: input_data})
+
+
+def _get_pseudo_reality_data(cfg, input_data):
+    """Get input data groups for pseudo-reality experiment."""
+    pseudo_reality_attrs = cfg['pseudo_reality']
+    logger.info(
+        "Grouping input data for pseudo-reality experiment using attributes "
+        "%s", pseudo_reality_attrs)
+    return {}
+
+
+def get_raw_input_data(cfg):
+    """Extract all input datasets."""
     input_data = list(cfg['input_data'].values())
-    input_data.extend(io.netcdf_to_metadata(cfg))
-    if input_data:
-        preselection = cfg.get('metadata_preselection', {})
-        if preselection:
-            logger.info("Pre-selecting data using")
-            logger.info(pformat(preselection))
-        input_data = select_metadata(input_data,
-                                     **preselection.get('select', {}))
-        group = preselection.get('group')
-        grouped_datasets = group_metadata(input_data, group)
-        if not grouped_datasets:
-            logger.warning(
-                "No input data found for this diagnostic matching the "
-                "specified criteria")
-            logger.warning(pformat(preselection))
-    else:
-        logger.warning("No input data found")
-        group = None
-        grouped_datasets = {None: None}
-    if len(list(grouped_datasets.keys())) == 1 and None in grouped_datasets:
-        logger.info("Creating single MLR model")
-    return (group, grouped_datasets)
+    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
+    paths = [d['filename'] for d in input_data]
+    logger.debug("Found files:")
+    logger.debug(pformat(paths))
+    select_kwargs = cfg.get('select_metadata', {})
+    if select_kwargs:
+        logger.info("Only selecting files matching %s", select_kwargs)
+        input_data = select_metadata(input_data, **select_kwargs)
+        paths = [d['filename'] for d in input_data]
+        logger.debug("Remaining files:")
+        logger.debug(pformat(paths))
+    valid_datasets = []
+    for dataset in input_data:
+        if mlr.datasets_have_mlr_attributes([dataset], log_level='warning'):
+            valid_datasets.append(dataset)
+        else:
+            logger.warning("Skipping ancestor file %s", dataset['filename'])
+    if not input_data:
+        logger.warning("No input valid data found")
+    return input_data
 
 
 def _update_mlr_model(model_type, mlr_model):
@@ -99,14 +159,25 @@ def _update_mlr_model(model_type, mlr_model):
         mlr_model.update_parameters(final__regressor__kernel=new_kernel)
 
 
+def check_cfg(cfg):
+    """Check recipe configuration for invalid options."""
+    if cfg.get('group_metadata') and cfg.get('pseudo_reality'):
+        raise ValueError(
+            "The options 'group_metadata' and 'pseudo_reality' cannot be used "
+            "together")
+
+
 def run_mlr_model(cfg, model_type):
-    """Run all MLR model of desired type on input data."""
-    (group, grouped_datasets) = _get_grouped_datasets(cfg)
-    for attr in grouped_datasets:
-        if attr is not None:
-            logger.info("Processing %s", attr)
-        metadata = {} if group is None else {group: attr}
-        mlr_model = MLRModel.create(model_type, cfg, root_dir=attr, **metadata)
+    """Run MLR model(s) of desired type on input data."""
+    (group_attr, grouped_datasets) = _get_input_data(cfg)
+    for (descr, datasets) in grouped_datasets.items():
+        if descr is not None:
+            attr = '' if group_attr is None else f'{group_attr} '
+            logger.info("Creating MLR model for %s'%s'", attr, descr)
+        mlr_model = MLRModel.create(model_type,
+                                    cfg,
+                                    input_data=datasets,
+                                    root_dir=descr)
 
         # Update MLR model parameters dynamically
         _update_mlr_model(model_type, mlr_model)
@@ -127,8 +198,6 @@ def run_mlr_model(cfg, model_type):
         # Plots
         # mlr_model.plot_pairplots()
         mlr_model.plot_scatterplots()
-        for idx in range(10):
-            mlr_model.plot_lime(idx)
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
             # mlr_model.plot_partial_dependences()
@@ -150,6 +219,7 @@ def set_parameters(cfg, model_type):
 
 def main(cfg):
     """Run the diagnostic."""
+    check_cfg(cfg)
     if 'mlr_model' not in cfg:
         default = 'gbr_sklearn'
         logger.warning("'mlr_model' not given in recipe, defaulting to '%s'",

@@ -119,12 +119,9 @@ diagnostics:
         ancestors: ['feature_*', 'prediction_input_*', 'label',
                     'diag_external_ua/*']
         coords_as_features: ['air_pressure', 'latitude', 'longitude']
-        mlr_model: gbr_sklearn
+        group_metadata: dataset
         imputation_strategy: mean
-        metadata_preselection:
-          select:
-            project: CMIP5
-          group: dataset
+        mlr_model: gbr_sklearn
         parameters_final_regressor: &params
           learning_rate: 0.1
           loss: ls

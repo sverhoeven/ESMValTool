@@ -323,6 +323,7 @@ diagnostics:
         #     [4, 6, 8]
         group_datasets_by_attributes: ['dataset']
         mlr_model: gbr_xgboost
+        model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
           n_estimators: 20
@@ -340,20 +341,34 @@ diagnostics:
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
-  diag_mmm_gpp:
-    description: Calculate simple multi-model mean of GPP.
-    variables:
-      label:
-        <<: *variable_settings_label
-    scripts:
-      global_sum: &global_sum
-        script: mlr/preprocess.py
-        mean: ['time']
-        sum: ['latitude', 'longitude']
-        tag: GPP
-        convert_units_to: Gt yr-1
-      mmm: &mmm
-        script: mlr/simple_multimodel_stats.py
-        ancestors: ['diag_mmm_gpp/global_sum']
-        unweighted_mean: true
-        std: true
+  # diag_mlr_gpp_model_as_truth:
+  #   description: Validate MLR using model-as-truth experiment.
+  #   scripts:
+  #     mlr:
+  #       <<: *mlr
+  #       model_as_truth: ['dataset']
+      # postprocess:
+      #   script: mlr/postprocess.py
+      #   ancestors: [
+      #     'diag_mlr_gpp/mlr',
+      #     'diag_mlr_input_gpp/monthly_clim',
+      #   ]
+      #   mean: ['time']
+      #   sum: ['latitude', 'longitude']
+      #   convert_units_to: Gt yr-1
+
+  # diag_mmm_gpp:
+  #   description: Use simple multi-model mean to predict GPP.
+  #   variables:
+  #     label:
+  #       <<: *variable_settings_label
+  #   scripts:
+  #     monthly_clim:
+  #       <<: *monthly_clim
+  #       tag: GPP
+  #       convert_units_to: t km-2 yr-1
+  #     mmm: &mmm
+  #       script: mlr/multi_model_mean_regression.py
+  #       ancestors: ['diag_mmm_gpp/monthly_clim']
+  #       unweighted_mean: true
+  #       std: true
