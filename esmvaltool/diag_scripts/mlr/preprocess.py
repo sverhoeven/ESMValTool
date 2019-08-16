@@ -150,7 +150,10 @@ def _calculate_slope_along_coord(cube, coord_name, return_stderr=False):
         slope_stderr = None
 
     # Get units
-    units = get_absolute_time_units(coord.units)
+    if coord_name == 'time':
+        units = get_absolute_time_units(coord.units)
+    else:
+        units = coord.units
 
     # Apply dummy aggregator for correct cell method and set data
     aggregator = iris.analysis.Aggregator('trend', _remove_axis)

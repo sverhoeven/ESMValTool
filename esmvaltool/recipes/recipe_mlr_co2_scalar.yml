@@ -86,8 +86,10 @@ diagnostics:
         tag: T-Glob_c
         convert_units_to: celsius
       trend: &trend
+        aggregate_by:
+          year: mean
         script: mlr/preprocess.py
-        trend: year
+        trend: time
         tag: T-Glob_t
 
   diag_mlr_input_pr:

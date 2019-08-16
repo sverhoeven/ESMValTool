@@ -23,7 +23,7 @@ import os
 import iris
 
 from esmvaltool.diag_scripts.shared import io, run_diagnostic
-from esmvaltool.preprocessor._derive.uajet import DerivedVariable as Uajet
+from esmvalcore.preprocessor._derive.uajet import DerivedVariable as Uajet
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -44,7 +44,7 @@ def main(cfg):
             continue
 
         # Calculate jet position via preprocessor function
-        uajet = Uajet('ua')
+        uajet = Uajet()
         jet_position_cube = uajet.calculate(cubes)
         units = jet_position_cube.units.name
         logger.info("Found file '%s'", data['filename'])
