@@ -162,6 +162,7 @@ class MLRModel():
 
     _CLF_TYPE = None
     _MODELS = {}
+    _MODEL_TYPE = None
 
     @staticmethod
     def _load_mlr_models():
@@ -182,36 +183,38 @@ class MLRModel():
                     pass
 
     @classmethod
-    def register_mlr_model(cls, model):
+    def register_mlr_model(cls, model_type):
         """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
-        logger.debug("Found available MLR model '%s'", model)
+        logger.debug("Found available MLR model '%s'", model_type)
 
         def decorator(subclass):
             """Decorate subclass."""
-            cls._MODELS[model] = subclass
+            subclass._MODEL_TYPE = model_type
+            cls._MODELS[model_type] = subclass
             return subclass
 
         return decorator
 
     @classmethod
-    def create(cls, model, *args, **kwargs):
+    def create(cls, model_type, *args, **kwargs):
         """Create desired MLR model subclass (factory method)."""
         cls._load_mlr_models()
         if not cls._MODELS:
-            logger.warning("No MLR models found, please add subclasses to "
-                           "'esmvaltool.diag_scripts.mlr.models' decorated by "
-                           "'MLRModel.register_mlr_model'")
-            return cls(*args, **kwargs)
-        default_model = list(cls._MODELS.keys())[0]
-        if model not in cls._MODELS:
             logger.warning(
-                "MLR model '%s' not found in 'esmvaltool."
-                "diag_scripts.mlr.models', using default model "
-                "'%s'", model, default_model)
-            model = default_model
-        logger.info("Created MLR model '%s' with final regressor %s", model,
-                    cls._MODELS[model]._CLF_TYPE)
-        return cls._MODELS[model](*args, **kwargs)
+                "No MLR models found, please add subclasses to 'esmvaltool."
+                "diag_scripts.mlr.models' decorated by 'MLRModel."
+                "register_mlr_model'")
+            return cls(*args, **kwargs)
+        default_model_type = list(cls._MODELS.keys())[0]
+        if model_type not in cls._MODELS:
+            logger.warning(
+                "MLR model type '%s' not found in 'esmvaltool.diag_scripts."
+                "mlr.models', using default model type '%s'", model_type,
+                default_model_type)
+            model_type = default_model_type
+        logger.info("Created MLR model '%s' with final regressor %s",
+                    model_type, cls._MODELS[model_type]._CLF_TYPE)
+        return cls._MODELS[model_type](*args, **kwargs)
 
     def __init__(self, cfg, input_data=None, root_dir=None):
         """Initialize base class members.
@@ -825,7 +828,8 @@ class MLRModel():
                 logger.info("Predicting '%s'", pred_name)
 
             # Prediction
-            (x_pred, x_err, x_cube) = self._extract_prediction_input(pred_name)
+            (x_pred, x_err, y_true,
+             x_cube) = self._extract_prediction_input(pred_name)
             pred_dict = self._get_prediction_dict(x_pred, x_err,
                                                   **predict_kwargs)
 
@@ -857,7 +861,7 @@ class MLRModel():
                         self.data[data_type].corr())
 
     def print_regression_metrics(self):
-        """Print all available regression metrics for the test data."""
+        """Print all available regression metrics for training data."""
         if not self._is_fitted():
             logger.warning(
                 "Printing regression metrics not possible, MLR model is not "
@@ -968,6 +972,8 @@ class MLRModel():
         msg = '' if text is None else text
         if not datasets:
             if var_type == 'prediction_input_error':
+                return None
+            if var_type == 'prediction_output':
                 return None
             if var_type == 'label':
                 raise ValueError(f"Label '{tag}'{msg} not found")
@@ -1125,9 +1131,9 @@ class MLRModel():
 
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
-        datasets = self._datasets['training']
-        (x_data, _) = self._extract_x_data(datasets, 'feature')
-        y_data = self._extract_y_data(datasets)
+        (x_data, _) = self._extract_x_data(self._datasets['feature'],
+                                           'feature')
+        y_data = self._extract_y_data(self._datasets['label'], 'label')
 
         # Check number of input points
         if len(x_data.index) != len(y_data.index):
@@ -1148,13 +1154,35 @@ class MLRModel():
 
     def _extract_prediction_input(self, prediction_name):
         """Extract prediction input data points for `prediction_name`."""
-        datasets = self._datasets['prediction_input'][prediction_name]
-        (x_pred,
-         prediction_input_cube) = self._extract_x_data(datasets,
-                                                       'prediction_input')
+        (x_pred, prediction_input_cube) = self._extract_x_data(
+            self._datasets['prediction_input'][prediction_name],
+            'prediction_input')
         logger.info(
             "Found %i raw prediction input data point(s) with data type '%s'",
             len(x_pred.index), self._cfg['dtype'])
+
+        # Prediction output
+        if prediction_name not in self._datasets['prediction_output']:
+            y_true = None
+            msg = (''
+                   if prediction_name is None else f" for '{prediction_name}'")
+            logger.debug("No prediction output%s available", msg)
+        else:
+            y_true = self._extract_y_data(
+                self._datasets['prediction_output'][prediction_name],
+                'prediction_output')
+            if y_true is not None:
+                if len(x_pred.index) != len(y_true.index):
+                    raise ValueError(
+                        "Sizes of prediction input and prediction output do "
+                        "not match, got {:d} point(s) for the prediction "
+                        "input and {:d} point(s) for the prediction "
+                        "output".format(len(x_pred.index), len(y_true.index)))
+                else:
+                    logger.info(
+                        "Found %i raw prediction output data point(s) with "
+                        "data type '%s'", len(y_true.index),
+                        self._cfg['dtype'])
 
         # Error
         if prediction_name not in self._datasets['prediction_input_error']:
@@ -1165,14 +1193,20 @@ class MLRModel():
                 "Propagating prediction input errors%s not possible, no "
                 "'prediction_input_error' datasets given", msg)
         else:
-            error_datasets = self._datasets['prediction_input_error'][
-                prediction_name]
-            (x_err, _) = self._extract_x_data(error_datasets,
-                                              'prediction_input_error')
+            (x_err, _) = self._extract_x_data(
+                self._datasets['prediction_input_error'][prediction_name],
+                'prediction_input_error')
+            if len(x_pred.index) != len(x_err.index):
+                raise ValueError(
+                    "Sizes of prediction input and prediction input error do "
+                    "not match, got {:d} point(s) for the prediction input "
+                    "and {:d} point(s) for the prediction input errors".format(
+                        len(x_pred.index), len(x_err.index)))
             logger.info(
                 "Found %i raw prediction input error data point(s) with data "
                 "type '%s'", len(x_err.index), self._cfg['dtype'])
-        return (x_pred, x_err, prediction_input_cube)
+
+        return (x_pred, x_err, y_true, prediction_input_cube)
 
     def _extract_x_data(self, datasets, var_type):
         """Extract required x data of type `var_type` from `datasets`."""
@@ -1182,13 +1216,11 @@ class MLRModel():
             raise ValueError(
                 f"Excepted one of '{allowed_types}' for 'var_type', got "
                 f"'{var_type}'")
-
-        # Collect data from datasets and return it
-        datasets = select_metadata(datasets, var_type=var_type)
         x_data = pd.DataFrame(columns=self.features, dtype=self._cfg['dtype'])
         cube = None
 
         # Iterate over datasets
+        datasets = select_metadata(datasets, var_type=var_type)
         if var_type == 'feature':
             groups = self.group_attributes
         else:
@@ -1208,18 +1240,33 @@ class MLRModel():
 
         return (x_data, cube)
 
-    def _extract_y_data(self, datasets):
-        """Extract y data (labels) from `datasets`."""
-        datasets = select_metadata(datasets, var_type='label')
+    def _extract_y_data(self, datasets, var_type):
+        """Extract required y data of type `var_type` from `datasets`."""
+        allowed_types = ('label', 'prediction_output')
+        if var_type not in allowed_types:
+            raise ValueError(
+                f"Excepted one of '{allowed_types}' for 'var_type', got "
+                f"'{var_type}'")
         y_data = pd.DataFrame(columns=[self.label], dtype=self._cfg['dtype'])
-        for group_attr in self.group_attributes:
+
+        # Iterate over datasets
+        datasets = select_metadata(datasets, var_type=var_type)
+        if var_type == 'label':
+            groups = self.group_attributes
+        else:
+            groups = [None]
+        for group_attr in groups:
             if group_attr is not None:
-                logger.info("Loading 'label' data of '%s'", group_attr)
+                logger.info("Loading '%s' data of '%s'", var_type, group_attr)
             msg = '' if group_attr is None else f" for '{group_attr}'"
-            datasets_ = select_metadata(datasets, group_attribute=group_attr)
-            dataset = self._check_dataset(datasets_, 'label', self.label, msg)
+            group_datasets = select_metadata(datasets,
+                                             group_attribute=group_attr)
+            dataset = self._check_dataset(group_datasets, var_type, self.label,
+                                          msg)
+            if dataset is None:
+                return None
             cube = self._load_cube(dataset)
-            text = f"label '{self.label}'{msg}"
+            text = f"{var_type} '{self.label}'{msg}"
             self._check_cube_dimensions(cube, None, text)
             cube_data = pd.DataFrame(self._get_cube_data(cube),
                                      columns=[self.label],
@@ -1380,9 +1427,7 @@ class MLRModel():
     def _get_group_attributes(self):
         """Get all group attributes from `label` datasets."""
         logger.debug("Extracting group attributes from 'label' datasets")
-        datasets = select_metadata(self._datasets['training'],
-                                   var_type='label')
-        grouped_datasets = group_metadata(datasets,
+        grouped_datasets = group_metadata(self._datasets['label'],
                                           'group_attribute',
                                           sort=True)
         group_attributes = list(grouped_datasets.keys())
@@ -1398,15 +1443,11 @@ class MLRModel():
     def _get_label(self):
         """Extract label from training data."""
         logger.debug("Extracting label from training datasets")
-        datasets = select_metadata(self._datasets['training'],
-                                   var_type='label')
-        if not datasets:
-            raise ValueError("No 'label' datasets given")
-        grouped_datasets = group_metadata(datasets, 'tag')
+        grouped_datasets = group_metadata(self._datasets['label'], 'tag')
         labels = list(grouped_datasets.keys())
         if len(labels) > 1:
             raise ValueError(f"Expected unique label tag, got {labels}")
-        units = Unit(datasets[0]['units'])
+        units = Unit(self._datasets['label'][0]['units'])
         logger.info(
             "Found label '%s' with units '%s' (defined in 'label' "
             "data)", labels[0], units)
@@ -1514,11 +1555,9 @@ class MLRModel():
 
     def _get_prediction_properties(self):
         """Get important properties of prediction input."""
-        datasets = select_metadata(self._datasets['training'],
-                                   var_type='label')
         properties = {}
         for attr in ('dataset', 'exp', 'project', 'start_year', 'end_year'):
-            attrs = list(group_metadata(datasets, attr).keys())
+            attrs = list(group_metadata(self._datasets['label'], attr).keys())
             properties[attr] = attrs[0]
             if len(attrs) > 1:
                 if attr == 'start_year':
@@ -1650,19 +1689,7 @@ class MLRModel():
                     dataset['group_attribute'] = None
                 return datasets
         for dataset in datasets:
-            group_attribute = ''
-            for attribute in attributes:
-                if attribute in dataset:
-                    group_attribute += dataset[attribute] + '-'
-            if not group_attribute:
-                group_attribute = dataset['dataset']
-                logger.warning(
-                    "Dataset %s does not contain any of the desired "
-                    "attributes %s for grouping, setting 'group_attribute' to "
-                    "'%s'", dataset['filename'], attributes, group_attribute)
-            else:
-                group_attribute = group_attribute[:-1]
-            dataset['group_attribute'] = group_attribute
+            dataset['group_attribute'] = mlr.create_alias(dataset, attributes)
         logger.info("Grouped feature and label datasets by %s", attributes)
         return datasets
 
@@ -1784,57 +1811,73 @@ class MLRModel():
                                          log_level='warning',
                                          mode='only_var_type')
 
-        # Extract features and labels
+        # Training datasets
         feature_datasets = select_metadata(input_datasets, var_type='feature')
         label_datasets = select_metadata(input_datasets, var_type='label')
-        training_datasets = feature_datasets + label_datasets
 
         # Prediction datasets
-        prediction_datasets = select_metadata(input_datasets,
-                                              var_type='prediction_input')
-        error_datasets = select_metadata(input_datasets,
-                                         var_type='prediction_input_error')
+        pred_in_datasets = select_metadata(input_datasets,
+                                           var_type='prediction_input')
+        pred_in_err_datasets = select_metadata(
+            input_datasets, var_type='prediction_input_error')
+        pred_out_datasets = select_metadata(input_datasets,
+                                            var_type='prediction_output')
 
         # Check datasets
         msg = ("At least one '{}' dataset does not have necessary MLR "
                "attributes")
-        if not mlr.datasets_have_mlr_attributes(training_datasets,
-                                                log_level='error'):
-            raise ValueError(msg.format('feature/label'))
-        if not mlr.datasets_have_mlr_attributes(prediction_datasets,
-                                                log_level='error'):
-            raise ValueError(msg.format('prediction_input'))
-        if not mlr.datasets_have_mlr_attributes(error_datasets,
-                                                log_level='error'):
-            raise ValueError(msg.format('prediction_input_error'))
+        datasets_to_check = {
+            'feature': feature_datasets,
+            'label': label_datasets,
+            'prediction_input': pred_in_datasets,
+            'prediction_input_error': pred_in_err_datasets,
+            'prediction_output': pred_out_datasets,
+        }
+        for (label, datasets) in datasets_to_check.items():
+            if not mlr.datasets_have_mlr_attributes(datasets,
+                                                    log_level='error'):
+                raise ValueError(msg.format(label))
 
         # Check if data was found
-        if not training_datasets:
-            raise ValueError("No training data (features/labels) found")
-        if not prediction_datasets:
-            raise ValueError("No prediction input data found")
+        if not feature_datasets:
+            raise ValueError("No 'feature' data found")
+        if not label_datasets:
+            raise ValueError("No 'label' data found")
+        if not pred_in_datasets:
+            raise ValueError("No 'prediction_input' data found")
 
         # Convert units
-        self._convert_units_in_metadata(training_datasets)
-        self._convert_units_in_metadata(prediction_datasets)
+        self._convert_units_in_metadata(feature_datasets)
+        self._convert_units_in_metadata(label_datasets)
+        self._convert_units_in_metadata(pred_in_datasets)
+        self._convert_units_in_metadata(pred_in_err_datasets)
+        self._convert_units_in_metadata(pred_out_datasets)
 
-        # Set datasets
+        # Save datasets
         logger.info(
-            "Found %i training dataset(s), %i prediction input dataset(s) and "
-            "%i prediction input error dataset(s)", len(training_datasets),
-            len(prediction_datasets), len(error_datasets))
-        logger.debug("Training datasets:")
-        logger.debug(pformat([d['filename'] for d in training_datasets]))
-        logger.debug("Prediction input datasets:")
-        logger.debug(pformat([d['filename'] for d in prediction_datasets]))
-        logger.debug("Prediction input error datasets:")
-        logger.debug(pformat([d['filename'] for d in error_datasets]))
-        self._datasets['training'] = self._group_by_attributes(
-            training_datasets)
+            "Found %i 'feature' dataset(s), %i 'label' dataset(s), %i "
+            "'prediction_input' dataset(s), %i 'prediction_input_error' "
+            "dataset(s) and %i 'prediction_output' datasets(s)",
+            len(feature_datasets), len(label_datasets), len(pred_in_datasets),
+            len(pred_in_err_datasets), len(pred_out_datasets))
+        labeled_datasets = {
+            'Feature': feature_datasets,
+            'Label': label_datasets,
+            'Prediction input': pred_in_datasets,
+            'Prediction input error': pred_in_err_datasets,
+            'Prediction output': pred_out_datasets,
+        }
+        for (msg, datasets) in labeled_datasets.items():
+            logger.debug("%s datasets:", msg)
+            logger.debug(pformat([d['filename'] for d in datasets]))
+        self._datasets['feature'] = self._group_by_attributes(feature_datasets)
+        self._datasets['label'] = self._group_by_attributes(label_datasets)
         self._datasets['prediction_input'] = self._group_prediction_datasets(
-            prediction_datasets)
+            pred_in_datasets)
         self._datasets['prediction_input_error'] = (
-            self._group_prediction_datasets(error_datasets))
+            self._group_prediction_datasets(pred_in_err_datasets))
+        self._datasets['prediction_output'] = self._group_prediction_datasets(
+            pred_out_datasets)
 
     def _load_skater_interpreters(self):
         """Load :mod:`skater` interpretation modules."""
@@ -1988,7 +2031,8 @@ class MLRModel():
         cube.attributes = {
             'description': 'MLR model prediction',
             'mlr_model_name': self._cfg['model_name'],
-            'regressor': str(self._CLF_TYPE),
+            'mlr_model_type': self._MODEL_TYPE,
+            'final_regressor': str(self._CLF_TYPE),
             'tag': self.label,
             'var_type': 'prediction_output',
         }
@@ -1997,8 +2041,7 @@ class MLRModel():
         cube.attributes.update(self._get_prediction_properties())
         for (key, val) in self.parameters.items():
             cube.attributes[key] = str(val)
-        label = select_metadata(self._datasets['training'],
-                                var_type='label')[0]
+        label = self._datasets['label'][0]
         label_cube = self._load_cube(label)
         for attr in ('standard_name', 'var_name', 'long_name', 'units'):
             setattr(cube, attr, getattr(label_cube, attr))
@@ -2012,6 +2055,7 @@ class MLRModel():
             cube.long_name += ' {:d}'.format(pred_type)
             logger.warning("Got unknown prediction type with index %i",
                            pred_type)
+            cube.attributes['var_type'] = 'prediction_output_misc'
         elif pred_type in ('var', 'cov'):
             cube.var_name += suffix
             cube.long_name += (' (variance)'
@@ -2036,12 +2080,9 @@ class MLRModel():
             cube.long_name = (f'Most important feature for predicting '
                               f'{self.label} given by LIME')
             cube.units = Unit('no_unit')
-            cube.attributes.update({
-                'features':
-                pformat(dict(enumerate(self.features))),
-                'skip_for_postprocessing':
-                1,
-            })
+            cube.attributes['features'] = pformat(
+                dict(enumerate(self.features)))
+            cube.attributes['var_type'] = 'prediction_output_misc'
         else:
             logger.warning(
                 "Got unknown prediction type '%s', setting correct attributes "
@@ -2050,8 +2091,9 @@ class MLRModel():
         # Get new path
         pred_str = '' if pred_name is None else f'_{pred_name}'
         root_str = ('' if self._cfg['root_dir'] == '' else
-                    f"{self._cfg['root_dir']}_")
-        filename = f'{root_str}prediction{pred_str}{suffix}.nc'
+                    f"_for_{self._cfg['root_dir']}")
+        filename = (f'{self._MODEL_TYPE}_{self.label}_prediction{suffix}'
+                    f'{pred_str}{root_str}.nc')
         new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
         cube.attributes['filename'] = new_path
         return new_path
