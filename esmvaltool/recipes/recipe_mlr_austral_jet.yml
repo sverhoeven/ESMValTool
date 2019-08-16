@@ -121,7 +121,7 @@ diagnostics:
         coords_as_features: ['air_pressure', 'latitude', 'longitude']
         group_metadata: dataset
         imputation_strategy: mean
-        mlr_model: gbr_sklearn
+        mlr_model_type: gbr_sklearn
         parameters_final_regressor: &params
           learning_rate: 0.1
           loss: ls
@@ -133,7 +133,7 @@ diagnostics:
       #   ancestors: ['feature_*', 'prediction_input_*', 'label',
       #               'diag_external_ua/*']
       #   coords_as_features: ['air_pressure', 'latitude', 'longitude']
-      #   mlr_model: gbr_sklearn
+      #   mlr_model_type: gbr_sklearn
       #   imputation_strategy: mean
       #   group_datasets_by_attributes: ['dataset']
       #   parameters_final_regressor: *params

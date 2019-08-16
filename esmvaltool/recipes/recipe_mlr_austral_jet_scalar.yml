@@ -396,7 +396,7 @@ diagnostics:
           'diag_mlr_input_*/mean',
           'diag_mlr_input_*/trend',
         ]
-        mlr_model: gbr_sklearn
+        mlr_model_type: gbr_sklearn
         accept_only_scalar_data: true
         group_datasets_by_attributes: ['dataset', 'ensemble']
         parameters_final_regressor:
