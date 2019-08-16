@@ -57,7 +57,7 @@ CFG = {
         ['dataset', 'project'],
     ],
     'imputation_strategy': [None, None, 'remove', 'mean'],
-    'mlr_model': [None, None, 'gbr', 'gpr'],
+    'mlr_model_type': [None, None, 'gbr', 'gpr'],
     'parameters': [
         None,
         None,

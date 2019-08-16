@@ -32,6 +32,7 @@ class TestMLRModel():
             pass
 
         assert MLRModel._MODELS == {'test_model': MyMLRModel}
+        assert MyMLRModel._MODEL_TYPE == 'test_model'
         mock_logger.debug.assert_called_once()
         MLRModel._MODELS = {}
 

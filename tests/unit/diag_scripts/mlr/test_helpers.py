@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 from cf_units import Unit
 
+from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 
 
@@ -109,16 +110,60 @@ TEST_UNITS_POWER = [
 
 
 @pytest.mark.parametrize('units_in,power,output,logger', TEST_UNITS_POWER)
-@mock.patch('esmvaltool.diag_scripts.mlr.models.logger', autospec=True)
+@mock.patch.object(mlr, 'logger', autospec=True)
 def test_units_power(mock_logger, units_in, power, output, logger):
     """Test exponentiation of :mod:`cf_units.Unit`."""
     if isinstance(output, type):
         with pytest.raises(output):
-            new_units = MLRModel._units_power(units_in, power)
+            new_units = mlr.units_power(units_in, power)
         return
-    new_units = MLRModel._units_power(units_in, power)
+    new_units = mlr.units_power(units_in, power)
     assert new_units == output
     assert new_units.origin == output.origin
+    if logger:
+        mock_logger.warning.assert_called_once()
+    else:
+        mock_logger.warning.assert_not_called()
+
+
+DATASET = {
+    'dataset': 'TEST',
+    'exp': 'iceage',
+    'filename': 'highway/to/hell',
+    'project': 'CMIP4',
+}
+TEST_CREATE_ALIAS = [
+    ([], None, None, 'TEST', True),
+    ([], None, 'x', 'TEST', True),
+    ([], 'exp', None, 'iceage', True),
+    ([], 'project', 'x', 'CMIP4', True),
+    (['no'], None, None, 'TEST', True),
+    (['no'], None, 'x', 'TEST', True),
+    (['no'], 'exp', None, 'iceage', True),
+    (['no'], 'project', 'x', 'CMIP4', True),
+    (['dataset'], None, None, 'TEST', False),
+    (['dataset'], None, 'x', 'TEST', False),
+    (['dataset'], 'exp', None, 'TEST', False),
+    (['dataset'], 'project', 'x', 'TEST', False),
+    (['dataset', 'project'], None, None, 'TEST-CMIP4', False),
+    (['dataset', 'project'], None, 'x', 'TESTxCMIP4', False),
+    (['dataset', 'project'], 'exp', None, 'TEST-CMIP4', False),
+    (['dataset', 'project'], 'project', 'x', 'TESTxCMIP4', False),
+]
+
+
+@pytest.mark.parametrize('attrs,default,delim,output,logger',
+                         TEST_CREATE_ALIAS)
+@mock.patch.object(mlr, 'logger', autospec=True)
+def test_create_alias(mock_logger, attrs, default, delim, output, logger):
+    """Test alias creation."""
+    kwargs = {}
+    if default is not None:
+        kwargs['default'] = default
+    if delim is not None:
+        kwargs['delimiter'] = delim
+    alias = mlr.create_alias(DATASET, attrs, **kwargs)
+    assert alias == output
     if logger:
         mock_logger.warning.assert_called_once()
     else:
