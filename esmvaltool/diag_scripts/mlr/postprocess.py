@@ -498,7 +498,6 @@ def postprocess_ref(cfg, ref_cube, data):
 def split_datasets(datasets, tag, pred_name):
     """Split datasets into mean and error."""
     msg = f' for {pred_name}' if pred_name is not None else ''
-    datasets = [d for d in datasets if not d.get('skip_for_postprocessing')]
     grouped_data = group_metadata(datasets, 'var_type')
 
     # Mean/reference dataset

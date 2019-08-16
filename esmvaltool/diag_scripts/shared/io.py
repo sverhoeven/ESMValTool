@@ -131,7 +131,7 @@ def netcdf_to_metadata(cfg, pattern=None, root=None):
         cube = iris.load_cube(path)
         dataset_info = dict(cube.attributes)
         for var_key in VAR_KEYS:
-            dataset_info[var_key] = getattr(cube, var_key)
+            dataset_info[var_key] = str(getattr(cube, var_key))
         dataset_info['short_name'] = cube.var_name
         dataset_info['standard_name'] = cube.standard_name
         dataset_info['filename'] = path
