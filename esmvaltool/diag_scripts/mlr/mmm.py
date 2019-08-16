@@ -46,13 +46,6 @@ from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
 
 logger = logging.getLogger(os.path.basename(__file__))
 
-STATS = {
-    'unweighted_mean': iris.analysis.MEAN,
-    'median': iris.analysis.MEDIAN,
-    'std': iris.analysis.STD_DEV,
-    'var': iris.analysis.VARIANCE,
-}
-
 
 def add_mmm_attributes(cube, datasets, tag):
     """Add attribute to cube."""
@@ -61,6 +54,7 @@ def add_mmm_attributes(cube, datasets, tag):
     cube.attributes['dataset'] = 'Multi-model mean'
     cube.attributes['project'] = project
     cube.attributes['tag'] = tag
+    cube.attributes['var_type'] = 'prediction_output'
 
 
 def convert_units(cfg, cube, data):
@@ -95,16 +89,21 @@ def get_cubes(cfg, datasets):
     return (cubes, dataset_labels)
 
 
-def get_grouped_data(cfg):
+def get_grouped_data(cfg, input_data=None):
     """Get input files."""
-    input_data = list(cfg['input_data'].values())
-    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
+    if input_data is None:
+        logger.debug("Loading input data from 'cfg' argument")
+        input_data = list(cfg['input_data'].values())
+        input_data.extend(
+            io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
+    else:
+        logger.debug("Loading input data from 'input_data' argument")
     paths = [d['filename'] for d in input_data]
     logger.debug("Found files")
     logger.debug(pformat(paths))
 
     # Extract prediction input
-    logger.info("Extracting files with 'var_type' 'label'")
+    logger.info("Extracting files with var_type 'label'")
     input_data = select_metadata(input_data, var_type='label')
     paths = [d['filename'] for d in input_data]
     logger.debug("Found files")
@@ -126,16 +125,17 @@ def preprocess_cube(cube, dataset_label):
     cube.add_aux_coord(dataset_label_coord, [])
 
 
-def main(cfg):
+def main(cfg, input_data=None, description=None):
     """Run the diagnostic."""
-    grouped_data = get_grouped_data(cfg)
+    grouped_data = get_grouped_data(cfg, input_data=input_data)
+    descr = '' if description is None else f'_for_{description}'
     if not grouped_data:
         logger.error("No input data found")
         return
 
     # Loop over all tags
     for (tag, datasets) in grouped_data.items():
-        logger.info("Processing label '%s'")
+        logger.info("Processing label '%s'", tag)
 
         # Extract data
         (cubes, dataset_labels) = get_cubes(cfg, datasets)
@@ -146,7 +146,7 @@ def main(cfg):
         # Calculate (unweighted) multi-dataset mean
         if len(dataset_labels) > 1:
             mm_cube = mm_cube.collapsed(['dataset_label'], iris.analysis.MEAN)
-        new_path = get_diagnostic_filename(f'{tag}_mmm', cfg)
+        new_path = get_diagnostic_filename(f'mmm_{tag}_prediction{descr}', cfg)
         add_mmm_attributes(mm_cube, datasets, tag)
         io.iris_save(mm_cube, new_path)
 

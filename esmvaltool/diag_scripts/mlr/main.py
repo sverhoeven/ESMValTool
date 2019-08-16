@@ -50,6 +50,7 @@ Additional parameters see :mod:`esmvaltool.diag_scripts.mlr.models`.
 import logging
 import os
 import warnings
+from copy import deepcopy
 from pprint import pformat
 
 from george import kernels as george_kernels
@@ -57,6 +58,7 @@ from iris.fileformats.netcdf import UnknownCellMethodWarning
 from sklearn.gaussian_process import kernels as sklearn_kernels
 
 from esmvaltool.diag_scripts import mlr
+from esmvaltool.diag_scripts.mlr.mmm import main as create_mmm_model
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
                                             select_metadata)
@@ -96,7 +98,7 @@ def _get_grouped_data(cfg, input_data):
     return (group_attribute, grouped_input_data)
 
 
-def _get_input_data(cfg):
+def get_input_data(cfg):
     """Get (grouped) input datasets according to given settings."""
     input_data = get_raw_input_data(cfg)
     if cfg.get('group_metadata'):
@@ -113,7 +115,36 @@ def _get_pseudo_reality_data(cfg, input_data):
     logger.info(
         "Grouping input data for pseudo-reality experiment using attributes "
         "%s", pseudo_reality_attrs)
-    return {}
+
+    # Extract training data
+    var_types = group_metadata(input_data, 'var_type')
+    training_data = var_types.get('feature', []) + var_types.get('label', [])
+    for pred_type in var_types:
+        if 'prediction_' in pred_type:
+            logger.info("Dropped '%s' datasets", pred_type)
+            logger.debug(pformat([d['filename']
+                                  for d in var_types[pred_type]]))
+
+    # Add aliases and group datasets
+    for dataset in training_data:
+        dataset['pseudo_reality_group'] = mlr.create_alias(
+            dataset, pseudo_reality_attrs)
+    grouped_datasets = group_metadata(training_data, 'pseudo_reality_group')
+    grouped_input_data = {}
+    for (group_val, datasets) in grouped_datasets.items():
+        logger.debug("Found pseudo reality group '%s'", group_val)
+        pred_datasets = deepcopy(datasets)
+        for dataset in pred_datasets:
+            if dataset['var_type'] == 'feature':
+                dataset['var_type'] = 'prediction_input'
+            else:
+                dataset['var_type'] = 'prediction_output'
+        remaining_datasets = []
+        for data in training_data:
+            if data['pseudo_reality_group'] != group_val:
+                remaining_datasets.append(deepcopy(data))
+        grouped_input_data[group_val] = pred_datasets + remaining_datasets
+    return ('pseudo-reality', grouped_input_data)
 
 
 def get_raw_input_data(cfg):
@@ -157,6 +188,10 @@ def _update_mlr_model(model_type, mlr_model):
         )
         new_kernel = exp_squared_kernel * constant_kernel
         mlr_model.update_parameters(final__regressor__kernel=new_kernel)
+    elif model_type == 'gpr_sklearn':
+        new_kernel = (sklearn_kernels.ConstantKernel(1.0, (1e-5, 1e5)) *
+                      sklearn_kernels.RBF(1.0, (1e-5, 1e5)))
+        mlr_model.update_parameters(final__regressor__kernel=new_kernel)
 
 
 def check_cfg(cfg):
@@ -167,13 +202,13 @@ def check_cfg(cfg):
             "together")
 
 
-def run_mlr_model(cfg, model_type):
+def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
     """Run MLR model(s) of desired type on input data."""
-    (group_attr, grouped_datasets) = _get_input_data(cfg)
     for (descr, datasets) in grouped_datasets.items():
         if descr is not None:
-            attr = '' if group_attr is None else f'{group_attr} '
-            logger.info("Creating MLR model for %s'%s'", attr, descr)
+            attr = '' if group_attribute is None else f'{group_attribute} '
+            logger.info("Creating MLR model '%s' for %s'%s'", model_type, attr,
+                        descr)
         mlr_model = MLRModel.create(model_type,
                                     cfg,
                                     input_data=datasets,
@@ -197,38 +232,43 @@ def run_mlr_model(cfg, model_type):
 
         # Plots
         # mlr_model.plot_pairplots()
-        mlr_model.plot_scatterplots()
-        if not cfg.get('accept_only_scalar_data'):
-            mlr_model.plot_feature_importance()
-            # mlr_model.plot_partial_dependences()
-        if 'gbr' in model_type:
-            mlr_model.plot_gbr_feature_importance()
-            mlr_model.plot_prediction_error()
-        if 'gpr' in model_type and not cfg.get('accept_only_scalar_data'):
-            mlr_model.print_kernel_info()
+        # mlr_model.plot_scatterplots()
+        # if not cfg.get('accept_only_scalar_data'):
+        #     mlr_model.plot_feature_importance()
+        #     # mlr_model.plot_partial_dependences()
+        # if 'gbr' in model_type:
+        #     mlr_model.plot_gbr_feature_importance()
+        #     mlr_model.plot_prediction_error()
+        # if 'gpr' in model_type and not cfg.get('accept_only_scalar_data'):
+        #     mlr_model.print_kernel_info()
 
 
-def set_parameters(cfg, model_type):
-    """Update MLR paramters."""
-    cfg.setdefault('parameters_final_regressor', {})
-    if model_type == 'gpr_sklearn':
-        kernel = (sklearn_kernels.ConstantKernel(1.0, (1e-5, 1e5)) *
-                  sklearn_kernels.RBF(1.0, (1e-5, 1e5)))
-        cfg['parameters_final_regressor']['kernel'] = kernel
+def run_mmm_model(cfg, group_attribute, grouped_datasets):
+    """Run simple MMM model(s) on input data."""
+    for (descr, datasets) in grouped_datasets.items():
+        if descr is not None:
+            attr = '' if group_attribute is None else f'{group_attribute} '
+            logger.info("Creating MMM model for %s'%s'", attr, descr)
+        create_mmm_model(cfg, input_data=datasets, description=descr)
 
 
 def main(cfg):
     """Run the diagnostic."""
     check_cfg(cfg)
-    if 'mlr_model' not in cfg:
+    if 'mlr_model_type' not in cfg:
         default = 'gbr_sklearn'
-        logger.warning("'mlr_model' not given in recipe, defaulting to '%s'",
-                       default)
+        logger.warning(
+            "'mlr_model_type' not given in recipe, defaulting to '%s'",
+            default)
         model_type = default
     else:
-        model_type = cfg['mlr_model']
-    set_parameters(cfg, model_type)
-    run_mlr_model(cfg, model_type)
+        model_type = cfg['mlr_model_type']
+        logger.info("Found mlr_model_type '%s'", model_type)
+    (group_attr, grouped_datasets) = get_input_data(cfg)
+    if model_type == 'mmm':
+        run_mmm_model(cfg, group_attr, grouped_datasets)
+    else:
+        run_mlr_model(cfg, model_type, group_attr, grouped_datasets)
 
 
 # Run main function when this script is called

@@ -27,6 +27,7 @@ VAR_TYPES = [
     'prediction_input_error',
     'prediction_output',
     'prediction_output_error',
+    'prediction_output_misc',
 ]
 
 
@@ -196,6 +197,39 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
                 "Keyword arguments %s for transformer of %s are not "
                 "supported yet", transformer_kwargs, str(self.__class__))
         return (transformer_kwargs, regressor_kwargs)
+
+
+def create_alias(dataset, attributes, default='dataset', delimiter='-'):
+    """Create alias key of a dataset using a list of attributes.
+
+    Parameters
+    ----------
+    dataset : dict
+        Metadata dictionary representing a single dataset.
+    attributes : list of str
+        List of attributes used to create the alias.
+    default : str, optional (default: 'dataset')
+        Default alias `dataset` does not contain any of the given attributes.
+    delimiter : str, optional (default : '-')
+        Delimiter used to separate different attributes in the alias.
+
+    Returns
+    -------
+    str
+        Dataset alias.
+
+    """
+    alias = []
+    for attribute in attributes:
+        if attribute in dataset:
+            alias.append(dataset[attribute])
+    if not alias:
+        alias = [dataset[default]]
+        logger.warning(
+            "Dataset '%s' does not contain any of the desired attributes %s "
+            "for creating an alias, setting it to '%s'", dataset['filename'],
+            attributes, alias)
+    return delimiter.join(alias)
 
 
 def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
