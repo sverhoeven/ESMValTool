@@ -321,7 +321,7 @@ diagnostics:
         ]
         coords_as_features: ['month_number', 'latitude', 'longitude']
         group_metadata: dataset
-        mlr_model_type: gpr_sklearn
+        mlr_model_type: gpr_george
         parameters_final_regressor:
           white_noise: 0.05
           n_restarts_optimizer: 5
