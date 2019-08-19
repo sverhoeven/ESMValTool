@@ -28,6 +28,8 @@ VAR_TYPES = [
     'prediction_output',
     'prediction_output_error',
     'prediction_output_misc',
+    'prediction_reference',
+    'prediction_residual',
 ]
 
 

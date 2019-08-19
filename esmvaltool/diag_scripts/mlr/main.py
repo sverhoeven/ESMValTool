@@ -47,6 +47,8 @@ Additional parameters see :mod:`esmvaltool.diag_scripts.mlr.models`.
 
 """
 
+# TODO: Modify description above!
+
 import logging
 import os
 import warnings
@@ -119,11 +121,13 @@ def _get_pseudo_reality_data(cfg, input_data):
     # Extract training data
     var_types = group_metadata(input_data, 'var_type')
     training_data = var_types.get('feature', []) + var_types.get('label', [])
+    prediction_data = []
     for pred_type in var_types:
         if 'prediction_' in pred_type:
-            logger.info("Dropped '%s' datasets", pred_type)
-            logger.debug(pformat([d['filename']
-                                  for d in var_types[pred_type]]))
+            prediction_data.extend(var_types[pred_type])
+            # logger.info("Dropped '%s' datasets", pred_type)
+            # logger.debug(pformat([d['filename']
+            #                       for d in var_types[pred_type]]))
 
     # Add aliases and group datasets
     for dataset in training_data:
@@ -138,7 +142,7 @@ def _get_pseudo_reality_data(cfg, input_data):
             if dataset['var_type'] == 'feature':
                 dataset['var_type'] = 'prediction_input'
             else:
-                dataset['var_type'] = 'prediction_output'
+                dataset['var_type'] = 'prediction_reference'
         remaining_datasets = []
         for data in training_data:
             if data['pseudo_reality_group'] != group_val:

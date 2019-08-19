@@ -19,8 +19,8 @@ DATASET_ANCHOR: &datasets
   - {dataset: bcc-csm1-1}
   - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
-  - {dataset: CanESM2}
-  - {dataset: CCSM4}
+  # - {dataset: CanESM2}
+  # - {dataset: CCSM4}
   # - {dataset: CESM1-BGC}
   # - {dataset: CESM1-CAM5}
   # - {dataset: CESM1-WACCM, ensemble: r2i1p1}
