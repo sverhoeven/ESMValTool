@@ -67,8 +67,8 @@ class MLRModel():
     error propagation given by LIME. Additionally, "true" values for
     `prediction_input` can be specified with `prediction_reference` datasets
     (together with the respective `prediction_name`). This allows an evaluation
-    of the performance of the MLR model by calculating residuals (true vs.
-    prediction values).
+    of the performance of the MLR model by calculating residuals (predicted
+    minus true values).
 
     Adding new MLR models
     ---------------------
@@ -149,6 +149,8 @@ class MLRModel():
         pipeline step can be given via the `parameters` key.
     predict_kwargs : dict, optional
         Optional keyword arguments for the regressor's `predict()` function.
+    propagate_input_errors : bool, optional (default: True)
+        Propagate errors from `prediction_input_error` datasets if possible.
     return_lime_importance : bool, optional (default: False)
         Return cube with feature importance given by LIME (Local Interpretable
         Model-agnostic Explanations) during prediction.
@@ -829,8 +831,7 @@ class MLRModel():
 
         # Iterate over different predictions
         for pred_name in self._datasets['prediction_input']:
-            if pred_name is not None:
-                logger.info("Predicting '%s'", pred_name)
+            logger.info("Predicting '%s'", self._get_name(pred_name))
 
             # Prediction
             (x_pred, x_err, y_ref,
@@ -1083,7 +1084,7 @@ class MLRModel():
         logger.debug("Created pipeline with steps %s",
                      list(self._clf.named_steps.keys()))
 
-    def _estimate_mlr_model_error(self):
+    def _estimate_mlr_model_error(self, target_length):
         """Estimate squared error of MLR model (using CV or test data)."""
         cfg = deepcopy(self._cfg['estimate_mlr_model_error'])
         cfg.setdefault('type', 'cv')
@@ -1126,11 +1127,12 @@ class MLRModel():
             if 'squared' not in cfg['kwargs']['scoring']:
                 error *= error
 
-        # Get correct shape and mask
+        # Get correct dtype
+        error_array = np.full(target_length, error, dtype=self._cfg['dtype'])
         units = mlr.units_power(self.label_units, 2)
         logger.info("Estimated squared MLR model error by %s %s using %s data",
-                    error, units, cfg['type'])
-        return (error, err_type)
+                    error, units, err_type)
+        return (error_array, err_type)
 
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
@@ -1167,9 +1169,9 @@ class MLRModel():
         # Prediction reference
         if prediction_name not in self._datasets['prediction_reference']:
             y_ref = None
-            msg = (''
-                   if prediction_name is None else f" for '{prediction_name}'")
-            logger.debug("No prediction reference%s available", msg)
+            logger.debug(
+                "No prediction reference for prediction '%s' available",
+                self._get_name(prediction_name))
         else:
             y_ref = self._extract_y_data(
                 self._datasets['prediction_reference'][prediction_name],
@@ -1189,11 +1191,10 @@ class MLRModel():
         # Error
         if prediction_name not in self._datasets['prediction_input_error']:
             x_err = None
-            msg = (''
-                   if prediction_name is None else f" for '{prediction_name}'")
             logger.debug(
-                "Propagating prediction input errors%s not possible, no "
-                "'prediction_input_error' datasets given", msg)
+                "Propagating prediction input errors for prediction '%s' not "
+                "possible, no 'prediction_input_error' datasets given",
+                self._get_name(prediction_name))
         else:
             (x_err, _) = self._extract_x_data(
                 self._datasets['prediction_input_error'][prediction_name],
@@ -1339,7 +1340,7 @@ class MLRModel():
         logger.debug("Extracting features from 'prediction_input' datasets")
         pred_name = list(self._datasets['prediction_input'].keys())[0]
         datasets = self._datasets['prediction_input'][pred_name]
-        msg = ('' if pred_name is None else f" for prediction '{pred_name}'")
+        msg = f"for prediction '{self._get_name(pred_name)}'"
         (units,
          types) = self._get_features_of_datasets(datasets, 'prediction_input',
                                                  msg)
@@ -1488,7 +1489,8 @@ class MLRModel():
             predict_fn=self._clf.predict,
         )
         pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
-        return np.array(pool.map(_most_important_feature, x_pred.values))
+        return np.array(pool.map(_most_important_feature, x_pred.values),
+                        dtype=self._cfg['dtype'])
 
     def _get_prediction_dict(self, x_pred, x_err, y_ref, **kwargs):
         """Get prediction output in a dictionary."""
@@ -1498,11 +1500,12 @@ class MLRModel():
 
         # Estimate error of MLR model itself
         if self._cfg['estimate_mlr_model_error']:
-            (pred_error, err_type) = self._estimate_mlr_model_error()
+            (pred_error,
+             err_type) = self._estimate_mlr_model_error(len(x_pred.index))
             pred_dict[f"squared_mlr_model_error_estim_{err_type}"] = pred_error
 
         # Propagate prediction input errors if possible
-        if x_err is not None:
+        if self._cfg.get('propagate_input_errors', True) and x_err is not None:
             pred_dict['squared_propagated_input_error'] = (
                 self._propagate_input_errors(x_pred, x_err))
 
@@ -1512,10 +1515,12 @@ class MLRModel():
 
         # Calculate residuals relative to reference if possible
         if y_ref is not None:
-            pred_dict['residuals'] = self._get_residuals(
-                pred_dict[None], y_ref)
+            y_ref = y_ref.values
+            if y_ref.ndim == 2 and y_ref.shape[1] == 1:
+                y_ref = np.squeeze(y_ref, axis=1)
+            pred_dict['residual'] = self._get_residuals(pred_dict[None], y_ref)
 
-        # Transform arrays correctly
+        # Return dictionary
         for pred_type in pred_dict:
             if pred_type is not None:
                 logger.debug("Found additional prediction type '%s'",
@@ -1754,7 +1759,7 @@ class MLRModel():
         self._data['all'] = pd.concat([x_all, y_all], axis=1, keys=['x', 'y'])
         if len(y_all.index) < 2:
             raise ValueError(
-                f"Need at least 2 datasets for MLR training, got only "
+                f"Need at least 2 data points for MLR training, got only "
                 f"{len(y_all.index)}")
         logger.info("Loaded %i input data point(s)", len(y_all.index))
 
@@ -1911,6 +1916,17 @@ class MLRModel():
         )
         logger.debug("Loaded skater model with new regressor")
 
+    def _mask_prediction_array(self, y_pred, ref_cube):
+        """Apply mask of reference cube to prediction array."""
+        mask = np.ma.getmaskarray(ref_cube.data).ravel()
+        if y_pred.ndim == 1 and y_pred.shape[0] != mask.shape[0]:
+            new_y_pred = np.empty(mask.shape[0], dtype=self._cfg['dtype'])
+            new_y_pred[mask] = np.nan
+            new_y_pred[~mask] = y_pred
+        else:
+            new_y_pred = y_pred
+        return np.ma.masked_invalid(new_y_pred)
+
     def _prediction_to_dict(self, pred_out, **kwargs):
         """Convert output of `clf.predict()` to `dict`."""
         if not isinstance(pred_out, (list, tuple)):
@@ -1976,11 +1992,11 @@ class MLRModel():
             units = Unit('no_unit')
             attributes['features'] = pformat(dict(enumerate(self.features)))
             attributes['var_type'] = 'prediction_output_misc'
-        elif pred_type == 'residuals':
+        elif pred_type == 'residual':
             var_name += suffix
-            long_name += ' (residuals)'
-            attributes['var_type'] = 'prediction_residuals'
-            attributes['residuals'] = 'predicted minus real values'
+            long_name += ' (residual)'
+            attributes['residual'] = 'predicted minus true values'
+            attributes['var_type'] = 'prediction_residual'
         else:
             logger.warning(
                 "Got unknown prediction type '%s', setting correct attributes "
@@ -2025,8 +2041,9 @@ class MLRModel():
             categorical_features=self.categorical_features,
         )
         pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
-        return np.array(
-            pool.map(_propagated_error, x_pred.values, x_err.values))
+        return np.array(pool.map(_propagated_error, x_pred.values,
+                                 x_err.values),
+                        dtype=self._cfg['dtype'])
 
     def _remove_missing_features(self, x_data, y_data):
         """Remove missing values in the features data (if desired)."""
@@ -2064,29 +2081,13 @@ class MLRModel():
                 "missing'", diff)
         return (x_pred, x_err, y_ref)
 
-    def _reshape_prediction_array(self, y_pred, ref_cube):
-        """Reshape prediction array to shape of reference cube is possible."""
-        mask = np.ma.getmaskarray(ref_cube.data).ravel()
-        y_pred = np.array(y_pred)
-        if y_pred.ndim == 1 and y_pred.shape[0] != mask.shape[0]:
-            new_y_pred = np.empty(mask.shape[0], dtype=self._cfg['dtype'])
-            new_y_pred[mask] = np.nan
-            new_y_pred[~mask] = y_pred
-        else:
-            new_y_pred = y_pred
-        return new_y_pred
-
     def _save_prediction_cubes(self, pred_dict, pred_name, x_cube):
         """Save (multi-dimensional) prediction output."""
         logger.debug("Creating output cubes")
         for (pred_type, y_pred) in pred_dict.items():
-            y_pred = self._reshape_prediction_array(y_pred, x_cube)
+            y_pred = self._mask_prediction_array(y_pred, x_cube)
             if y_pred.size == np.prod(x_cube.shape, dtype=np.int):
-                y_pred = y_pred.reshape(x_cube.shape)
-                if (self._cfg['imputation_strategy'] == 'remove'
-                        and np.ma.is_masked(x_cube.data)):
-                    y_pred[x_cube.data.mask] = np.nan
-                pred_cube = x_cube.copy(np.ma.masked_invalid(y_pred))
+                pred_cube = x_cube.copy(y_pred.reshape(x_cube.shape))
             else:
                 dim_coords = []
                 for (dim_idx, dim_size) in enumerate(y_pred.shape):
@@ -2094,7 +2095,7 @@ class MLRModel():
                         np.arange(dim_size, dtype=np.float64),
                         long_name=f'MLR prediction index {dim_idx}',
                         var_name=f'idx_{dim_idx}'), dim_idx))
-                pred_cube = iris.cube.Cube(np.ma.masked_invalid(y_pred),
+                pred_cube = iris.cube.Cube(y_pred,
                                            dim_coords_and_dims=dim_coords)
             new_path = self._set_prediction_cube_attributes(
                 pred_cube, pred_type, pred_name=pred_name)
@@ -2111,10 +2112,16 @@ class MLRModel():
 
         # Filename and path
         if filename is None:
-            if pred_name is None:
-                filename = f'{data_type}.csv'
+            if data_type == 'pred':
+                filename = '{data_type}_{pred_name}.csv'
+                format_kwargs = {
+                    'data_type': data_type,
+                    'pred_name': self._get_name(pred_name),
+                }
             else:
-                filename = f'{data_type}_{pred_name}.csv'
+                filename = '{data_type}.csv'
+                format_kwargs = {'data_type': data_type}
+        filename = filename.format(**format_kwargs)
         path = os.path.join(self._cfg['mlr_work_dir'], filename)
 
         # Save file
@@ -2128,10 +2135,9 @@ class MLRModel():
             'mlr_model_name': self._cfg['model_name'],
             'mlr_model_type': self._MODEL_TYPE,
             'final_regressor': str(self._CLF_TYPE),
+            'prediction_name': self._get_name(pred_name),
             'tag': self.label,
         }
-        if pred_name is not None:
-            cube.attributes['prediction_name'] = pred_name
         cube.attributes.update(self._get_prediction_properties())
         for (key, val) in self.parameters.items():
             cube.attributes[key] = str(val)
@@ -2144,7 +2150,7 @@ class MLRModel():
 
         # Get new path
         suffix = '' if pred_type is None else f'_{pred_type}'
-        pred_str = '' if pred_name is None else f'_{pred_name}'
+        pred_str = f'_{self._get_name(pred_name)}'
         root_str = ('' if self._cfg['root_dir'] == '' else
                     f"_for_{self._cfg['root_dir']}")
         filename = (f'{self._MODEL_TYPE}_{self.label}_prediction{suffix}'
@@ -2251,8 +2257,13 @@ class MLRModel():
         return cube_data.ravel()
 
     @staticmethod
+    def _get_name(string):
+        """Convert `None` to `str` if necessary."""
+        return 'unnamed' if string is None else string
+
+    @staticmethod
     def _get_residuals(y_pred, y_true):
-        """Calculate residuals (predicted - true values)."""
+        """Calculate residuals (predicted minus true values)."""
         logger.info("Calculating residuals")
         return y_pred - y_true
 
