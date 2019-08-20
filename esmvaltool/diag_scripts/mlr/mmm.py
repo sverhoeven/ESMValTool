@@ -47,14 +47,39 @@ from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def add_mmm_attributes(cube, datasets, tag):
-    """Add attribute to cube."""
+def _add_dataset_attributes(cube, datasets):
+    """Add dataset-related attributes to cube."""
+    dataset_names = list({d['dataset'] for d in datasets})
     projects = list({d['project'] for d in datasets})
-    project = '|'.join(projects)
-    cube.attributes['dataset'] = 'Multi-model mean'
-    cube.attributes['project'] = project
-    cube.attributes['tag'] = tag
+    start_years = list({d['start_year'] for d in datasets})
+    end_years = list({d['end_year'] for d in datasets})
+    cube.attributes['dataset'] = '|'.join(dataset_names)
+    cube.attributes['description'] = 'MMM prediction'
+    cube.attributes['end_year'] = min(end_years)
+    cube.attributes['mlr_model_name'] = 'MMM'
+    cube.attributes['mlr_model_type'] = 'mmm'
+    cube.attributes['project'] = '|'.join(projects)
+    cube.attributes['start_year'] = min(start_years)
     cube.attributes['var_type'] = 'prediction_output'
+
+
+def _preprocess_cube(cube, dataset_label):
+    """Preprocess single cubes."""
+    cube.attributes = {}
+    cube.cell_methods = ()
+    for coord in cube.coords(dim_coords=False):
+        cube.remove_coord(coord)
+    dataset_label_coord = iris.coords.AuxCoord(dataset_label,
+                                               var_name='dataset_label',
+                                               long_name='dataset_label')
+    cube.add_aux_coord(dataset_label_coord, [])
+
+
+def add_general_attributes(cube, **kwargs):
+    """Add general attributes to cube."""
+    for (key, val) in kwargs.items():
+        if val is not None:
+            cube.attributes[key] = val
 
 
 def convert_units(cfg, cube, data):
@@ -73,22 +98,6 @@ def convert_units(cfg, cube, data):
                            cube.units, units_to)
 
 
-def get_cubes(cfg, datasets):
-    """Extract data."""
-    cubes = iris.cube.CubeList()
-    dataset_labels = []
-    for dataset in datasets:
-        path = dataset['filename']
-        dataset_label = dataset[cfg.get('collapse_over', 'dataset')]
-        logger.info("Processing '%s'", path)
-        cube = iris.load_cube(path)
-        convert_units(cfg, cube, dataset)
-        preprocess_cube(cube, dataset_label)
-        cubes.append(cube)
-        dataset_labels.append(dataset_label)
-    return (cubes, dataset_labels)
-
-
 def get_grouped_data(cfg, input_data=None):
     """Get input files."""
     if input_data is None:
@@ -102,27 +111,71 @@ def get_grouped_data(cfg, input_data=None):
     logger.debug("Found files")
     logger.debug(pformat(paths))
 
-    # Extract prediction input
-    logger.info("Extracting files with var_type 'label'")
-    input_data = select_metadata(input_data, var_type='label')
-    paths = [d['filename'] for d in input_data]
+    # Extract necessary data
+    extracted_data = select_metadata(input_data, var_type='label')
+    extracted_data.extend(
+        select_metadata(input_data, var_type='prediction_reference'))
+    logger.debug(
+        "Extracted files with var_types 'label' and 'prediction_reference'")
+    paths = [d['filename'] for d in extracted_data]
     logger.debug("Found files")
     logger.debug(pformat(paths))
 
     # Return grouped data
-    return group_metadata(input_data, 'tag')
+    return group_metadata(extracted_data, 'tag')
 
 
-def preprocess_cube(cube, dataset_label):
-    """Preprocess single cubes."""
-    cube.attributes = {}
-    cube.cell_methods = ()
-    for coord in cube.coords(dim_coords=False):
-        cube.remove_coord(coord)
-    dataset_label_coord = iris.coords.AuxCoord(dataset_label,
-                                               var_name='dataset_label',
-                                               long_name='dataset_label')
-    cube.add_aux_coord(dataset_label_coord, [])
+def get_mm_cube(cfg, datasets):
+    """Extract data."""
+    cubes = iris.cube.CubeList()
+    dataset_labels = []
+    for dataset in select_metadata(datasets, var_type='label'):
+        path = dataset['filename']
+        dataset_label = dataset[cfg.get('collapse_over', 'dataset')]
+        logger.info("Processing '%s'", path)
+        cube = iris.load_cube(path)
+        convert_units(cfg, cube, dataset)
+        _preprocess_cube(cube, dataset_label)
+        cubes.append(cube)
+        dataset_labels.append(dataset_label)
+    mm_cube = cubes.merge_cube()
+    if len(dataset_labels) > 1:
+        mm_cube = mm_cube.collapsed(['dataset_label'], iris.analysis.MEAN)
+    _add_dataset_attributes(mm_cube, datasets)
+    return mm_cube
+
+
+def get_reference_dataset(datasets, tag):
+    """Get `prediction_reference` dataset."""
+    ref_datasets = select_metadata(datasets, var_type='prediction_reference')
+    if not ref_datasets:
+        logger.debug(
+            "Calculating residuals for '%s' not possible, no "
+            "'prediction_reference' dataset given", tag)
+        return (None, None)
+    if len(ref_datasets) > 1:
+        logger.warning(
+            "Multiple 'prediction_reference' datasets for '%s' given, "
+            "using only first one (%s)", tag, ref_datasets[0]['filename'])
+    return (ref_datasets[0], ref_datasets[0].get('prediction_name'))
+
+
+def get_residual_cube(mm_cube, ref_cube):
+    """Calculate residuals."""
+    logger.info("Calculating residuals")
+    if mm_cube.shape != ref_cube.shape:
+        logger.warning(
+            "Shapes of 'label' and 'prediction_reference' data differs, "
+            "got %s for 'label' and %s for 'prediction_reference'",
+            mm_cube.shape, ref_cube.shape)
+        return None
+    res_cube = mm_cube.copy()
+    res_cube.data -= ref_cube.data
+    res_cube.attributes['residuals'] = 'predicted minus true values'
+    res_cube.attributes['var_type'] = 'prediction_residual'
+    res_cube.var_name += '_residual'
+    res_cube.long_name += ' (residual)'
+    return res_cube
 
 
 def main(cfg, input_data=None, description=None):
@@ -137,18 +190,24 @@ def main(cfg, input_data=None, description=None):
     for (tag, datasets) in grouped_data.items():
         logger.info("Processing label '%s'", tag)
 
-        # Extract data
-        (cubes, dataset_labels) = get_cubes(cfg, datasets)
+        # Get reference dataset if possible
+        (ref_dataset, pred_name) = get_reference_dataset(datasets, tag)
 
-        # Merge cubes
-        mm_cube = cubes.merge_cube()
+        # Calculate multi-model mean
+        logger.info("Calculating multi-model mean")
+        mm_cube = get_mm_cube(cfg, datasets)
+        add_general_attributes(mm_cube, tag=tag, prediction_name=pred_name)
+        mm_path = get_diagnostic_filename(f'mmm_{tag}_prediction{descr}', cfg)
+        io.iris_save(mm_cube, mm_path)
 
-        # Calculate (unweighted) multi-dataset mean
-        if len(dataset_labels) > 1:
-            mm_cube = mm_cube.collapsed(['dataset_label'], iris.analysis.MEAN)
-        new_path = get_diagnostic_filename(f'mmm_{tag}_prediction{descr}', cfg)
-        add_mmm_attributes(mm_cube, datasets, tag)
-        io.iris_save(mm_cube, new_path)
+        # Calculate residuals
+        if ref_dataset is None:
+            continue
+        ref_cube = iris.load_cube(ref_dataset['filename'])
+        res_cube = get_residual_cube(mm_cube, ref_cube)
+        add_general_attributes(res_cube, tag=tag, prediction_name=pred_name)
+        res_path = mm_path.replace('_prediction', '_prediction_residual')
+        io.iris_save(res_cube, res_path)
 
 
 # Run main function when this script is called

@@ -325,6 +325,7 @@ def _get_covariance_dataset(error_datasets, ref_cube):
         else:
             other_datasets.append(dataset)
     if not cov_datasets:
+        logger.debug("No covariance dataset found")
         return (None, other_datasets)
     if len(cov_datasets) > 1:
         logger.warning(
@@ -497,25 +498,29 @@ def postprocess_ref(cfg, ref_cube, data):
 
 def split_datasets(datasets, tag, pred_name):
     """Split datasets into mean and error."""
-    msg = f' for {pred_name}' if pred_name is not None else ''
     grouped_data = group_metadata(datasets, 'var_type')
 
     # Mean/reference dataset
     mean = grouped_data.get('prediction_output')
     if not mean:
-        logger.warning("No 'prediction_output' for tag '%s'%s", tag, msg)
-        return (None, None)
+        logger.warning(
+            "No 'prediction_output' found for tag '%s' for prediction '%s'",
+            tag, pred_name)
+        return (None, None, None)
     if len(mean) > 1:
         logger.warning(
-            "Got multiple 'prediction_output' datasets for tag '%s'%s, using "
-            "only first one (%s)", tag, msg, mean[0]['filename'])
+            "Got multiple 'prediction_output' datasets for tag '%s' for "
+            "prediction '%s', using only first one (%s)", tag, pred_name,
+            mean[0]['filename'])
     else:
-        logger.debug("Found reference dataset (mean) for tag '%s'%s: %s", tag,
-                     msg, mean[0]['filename'])
+        logger.debug(
+            "Found reference dataset (mean) for tag '%s' for prediction '%s': "
+            "%s", tag, pred_name, mean[0]['filename'])
 
     # Errors
     error = grouped_data.get('prediction_output_error', [])
-    logger.debug("Found error datasets for tag '%s'%s:", tag, msg)
+    logger.debug("Found error datasets for tag '%s' for prediction '%s':", tag,
+                 pred_name)
     logger.debug(pformat([d['filename'] for d in error]))
 
     # Estimation for covariance
@@ -524,13 +529,14 @@ def split_datasets(datasets, tag, pred_name):
     if len(cov_estimation) > 1:
         logger.warning(
             "Got multiple 'prediction_input' datasets (used for covariance "
-            "estimation) for tag '%s'%s, using only first one (%s)", tag, msg,
-            cov_estimation[0]['filename'])
+            "estimation) for tag '%s' for prediction '%s', using only first "
+            "one (%s)", tag, pred_name, cov_estimation[0]['filename'])
         cov_estimation = [cov_estimation[0]]
     else:
         logger.debug(
-            "Found reference dataset for covariance estimation tag '%s'%s: %s",
-            tag, msg, [d['filename'] for d in cov_estimation])
+            "Found reference dataset for covariance estimation tag '%s' for "
+            "prediction '%s': %s", tag, pred_name,
+            [d['filename'] for d in cov_estimation])
 
     return (mean[0], error, cov_estimation)
 
@@ -553,10 +559,11 @@ def main(cfg):
         logger.info("Processing tag '%s'", tag)
         grouped_data = group_metadata(tag_datasets, 'prediction_name')
         for (pred_name, datasets) in grouped_data.items():
-            if pred_name is not None:
-                logger.info("Processing prediction '%s'", pred_name)
+            logger.info("Processing prediction '%s'", pred_name)
             (dataset, error_datasets,
              cov_estim_datastets) = split_datasets(datasets, tag, pred_name)
+            if dataset is None:
+                continue
 
             # Extract cubes
             logger.debug("Loaded reference cube at '%s'", dataset['filename'])

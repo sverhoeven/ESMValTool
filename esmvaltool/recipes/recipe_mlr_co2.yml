@@ -342,7 +342,7 @@ diagnostics:
         convert_units_to: Gt yr-1
 
   diag_mlr_gpp_pseudo_reality:
-    description: Validate MLR model using pseudo-reality approach
+    description: Validate MLR model using pseudo-reality approach.
     scripts:
       mlr:
         <<: *mlr
@@ -350,7 +350,7 @@ diagnostics:
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
-          'diag_mlr_gpp/mlr',
+          'diag_mlr_gpp_pseudo_reality/mlr',
           'diag_mlr_input_gpp/monthly_clim',
         ]
         mean: ['time']
@@ -360,7 +360,7 @@ diagnostics:
   diag_mmm_gpp:
     description: Use simple multi-model mean to predict GPP.
     scripts:
-      mmm:
+      mmm: &mmm
         script: mlr/main.py
         ancestors: [
           'diag_mlr_gpp/monthly_clim',
@@ -370,9 +370,36 @@ diagnostics:
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
-          'diag_mlr_gpp/mlr',
+          'diag_mmm_gpp/mmm',
           'diag_mlr_input_gpp/monthly_clim',
         ]
         mean: ['time']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
+
+  diag_mmm_gpp_pseudo_reality:
+    description: Validate MMM model using pseudo-reality approach.
+    scripts:
+      mmm:
+        <<: *mmm
+        pseudo_reality: ['dataset']
+      postprocess:
+        script: mlr/postprocess.py
+        ancestors: [
+          'diag_mmm_gpp_pseudo_reality/mmm',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
+        mean: ['time']
+        sum: ['latitude', 'longitude']
+        convert_units_to: Gt yr-1
+
+  diag_evaluate_residuals:
+    description: Evaluate residuals of different statistical models.
+    scripts:
+      evaluate_residuals:
+        script: mlr/evaluate_residuals.py
+        ancestors:
+          [
+            'diag_mlr_gpp_pseudo_reality/mlr',
+            'diag_mmm_gpp_pseudo_reality/mmm',
+          ]

@@ -27,15 +27,14 @@ model_type : str, optional (default: 'gbr_sklearn')
     :mod:`esmvaltool.diag_scripts.mlr.models`.
 pseudo_reality : list of str, optional
     List of dataset attributes which are used to group input data for a pseudo-
-    reality test (also known as 'model-as-truth' or 'perfect-model' setup). In
-    this setting, all `prediction_input` specified in the recipe is ignored.
-    On the contrary, for every element of the group a single MLR model is
-    fitted on all data EXCEPT for that of the specified group element.
-    This group element is then used as `prediction_input`. This allows a direct
-    assessment of the predictive power of the MLR model by comparing the MLR
-    prediction output and the true labels (similar to splitting the input data
-    in a training and test set, but not dividing the data randomly but using
-    specific datasets, e.g. the different climate models). Cannot be used
+    reality test (also known as 'model-as-truth' or 'perfect-model' setup). For
+    every element of the group a single MLR model is fitted on all data EXCEPT
+    for that of the specified group element. This group element is then used as
+    additional `prediction_input` and `prediction_reference`. This allows a
+    direct assessment of the predictive power of the MLR model by comparing the
+    MLR prediction output and the true labels (similar to splitting the input
+    data in a training and test set, but not dividing the data randomly but
+    using specific datasets, e.g. the different climate models). Cannot be used
     together with the option `group_metadata`.
 pattern : str, optional
     Pattern matched against ancestor files.
@@ -46,8 +45,6 @@ select_metadata : dict, optional
 Additional parameters see :mod:`esmvaltool.diag_scripts.mlr.models`.
 
 """
-
-# TODO: Modify description above!
 
 import logging
 import os
@@ -121,13 +118,13 @@ def _get_pseudo_reality_data(cfg, input_data):
     # Extract training data
     var_types = group_metadata(input_data, 'var_type')
     training_data = var_types.get('feature', []) + var_types.get('label', [])
-    prediction_data = []
+
+    # Extract given prediction datasets
+    original_prediction_data = []
     for pred_type in var_types:
         if 'prediction_' in pred_type:
-            prediction_data.extend(var_types[pred_type])
-            # logger.info("Dropped '%s' datasets", pred_type)
-            # logger.debug(pformat([d['filename']
-            #                       for d in var_types[pred_type]]))
+            original_prediction_data.extend(var_types[pred_type])
+    original_prediction_data = deepcopy(original_prediction_data)
 
     # Add aliases and group datasets
     for dataset in training_data:
@@ -139,6 +136,7 @@ def _get_pseudo_reality_data(cfg, input_data):
         logger.debug("Found pseudo reality group '%s'", group_val)
         pred_datasets = deepcopy(datasets)
         for dataset in pred_datasets:
+            dataset['prediction_name'] = group_val
             if dataset['var_type'] == 'feature':
                 dataset['var_type'] = 'prediction_input'
             else:
@@ -147,7 +145,8 @@ def _get_pseudo_reality_data(cfg, input_data):
         for data in training_data:
             if data['pseudo_reality_group'] != group_val:
                 remaining_datasets.append(deepcopy(data))
-        grouped_input_data[group_val] = pred_datasets + remaining_datasets
+        grouped_input_data[group_val] = (pred_datasets + remaining_datasets +
+                                         original_prediction_data)
     return ('pseudo-reality', grouped_input_data)
 
 

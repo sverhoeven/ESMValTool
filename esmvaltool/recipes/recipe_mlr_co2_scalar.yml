@@ -353,13 +353,13 @@ diagnostics:
           'diag_mlr_input_*/mean',
           'diag_mlr_input_*/trend',
         ]
-        mlr_model_type: gpr_george
+        mlr_model_type: gpr_sklearn
         accept_only_scalar_data: true
         allow_missing_features: true
         group_datasets_by_attributes: ['dataset', 'ensemble']
         imputation_strategy: mean
-        parameters_final_regressor:
-          n_estimators: 100
-          subsample: 0.5
-          learning_rate: 0.1
-          max_depth: 6
+        # parameters_final_regressor:
+        #   n_estimators: 100
+        #   subsample: 0.5
+        #   learning_rate: 0.1
+        #   max_depth: 6

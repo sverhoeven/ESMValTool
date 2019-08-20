@@ -256,17 +256,18 @@ def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
     """
     output = True
     for dataset in datasets:
+        path = dataset['filename']
         if mode != 'only_var_type':
             for key in NECESSARY_KEYS:
                 if key not in dataset:
                     getattr(logger, log_level)(
-                        "Dataset %s does not have necessary (MLR) attribute "
-                        "'%s'", dataset, key)
+                        "Dataset '%s' does not have necessary (MLR) attribute "
+                        "'%s'", path, key)
                     output = False
         if mode != 'only_missing' and dataset.get('var_type') not in VAR_TYPES:
             getattr(logger, log_level)(
-                "Dataset %s has invalid var_type '%s', must be one of %s",
-                dataset, dataset.get('var_type'), VAR_TYPES)
+                "Dataset '%s' has invalid var_type '%s', must be one of %s",
+                path, dataset.get('var_type'), VAR_TYPES)
             output = False
     return output
 
