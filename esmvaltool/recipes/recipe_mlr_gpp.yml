@@ -1,9 +1,10 @@
-# recipe_mlr_co2.yml
+# recipe_mlr_gpp.yml
 ---
 documentation:
 
   description: |
-    Use MLR (Machine Learning Regression) models to predict future CO2 fluxes.
+    Use MLR (Machine Learning Regression) models to predict future gross
+    primary production (GPP).
 
   authors:
     - schl_ma
@@ -19,23 +20,23 @@ DATASET_ANCHOR: &datasets
   - {dataset: bcc-csm1-1}
   - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
-  # - {dataset: CanESM2}
-  # - {dataset: CCSM4}
-  # - {dataset: CESM1-BGC}
-  # - {dataset: CESM1-CAM5}
-  # - {dataset: CESM1-WACCM, ensemble: r2i1p1}
-  # - {dataset: GFDL-ESM2G}
-  # - {dataset: GFDL-ESM2M}
-  # - {dataset: HadGEM2-CC}
-  # - {dataset: HadGEM2-ES}
-  # - {dataset: inmcm4}
-  # - {dataset: IPSL-CM5A-LR}
-  # - {dataset: IPSL-CM5A-MR}
-  # - {dataset: IPSL-CM5B-LR}
-  # - {dataset: MIROC-ESM}
-  # - {dataset: MIROC-ESM-CHEM}
-  # - {dataset: NorESM1-M}
-  # - {dataset: NorESM1-ME}
+  - {dataset: CanESM2}
+  - {dataset: CCSM4}
+  - {dataset: CESM2-BGC}
+  - {dataset: CESM1-CAM5}
+  - {dataset: CESM1-WACCM, ensemble: r2i1p1}
+  - {dataset: GFDL-ESM2G}
+  - {dataset: GFDL-ESM2M}
+  - {dataset: HadGEM2-CC}
+  - {dataset: HadGEM2-ES}
+  - {dataset: inmcm4}
+  - {dataset: IPSL-CM5A-LR}
+  - {dataset: IPSL-CM5A-MR}
+  - {dataset: IPSL-CM5B-LR}
+  - {dataset: MIROC-ESM}
+  - {dataset: MIROC-ESM-CHEM}
+  - {dataset: NorESM1-M}
+  - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -184,6 +185,15 @@ diagnostics:
         short_name: gpp_grid
         mip: Lmon
         derive: true
+      label:
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        exp: rcp85
+        start_year: 2083
+        end_year: 2099
+        derive: true
+        var_type: label
       prediction_input:
         <<: *variable_settings_prediction_input
         short_name: gpp_grid
@@ -287,29 +297,12 @@ diagnostics:
         tag: LAI_trend
         convert_units_to: yr-1
 
-  diag_mlr_gpp:
-    description: Perform MLR on GPP.
-    variables:
-      label: &variable_settings_label
-        <<: *variable_settings_features
-        short_name: gpp_grid
-        mip: Lmon
-        exp: rcp85
-        start_year: 2083
-        end_year: 2099
-        derive: true
-        var_type: label
+  diag_gbrt_gpp:
+    description: Use GBRT model to predict GPP.
     scripts:
-      monthly_clim:
-        <<: *monthly_clim
-        tag: GPP
-        convert_units_to: t km-2 yr-1
-      mlr: &mlr
+      gbrt: &gbrt
         script: mlr/main.py
-        ancestors: [
-          'diag_mlr_gpp/monthly_clim',
-          'diag_mlr_input_*/monthly_*',
-        ]
+        ancestors: ['diag_mlr_input_*/monthly_*']
         categorical_features: ['longitude', 'month_number']
         coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_mlr_model_error:
@@ -326,46 +319,76 @@ diagnostics:
         model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
-          n_estimators: 20
+          n_estimators: 200
           subsample: 0.5
           learning_rate: 0.1
           max_depth: 8
-        return_lime_importance: true
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
-          'diag_mlr_gpp/mlr',
+          'diag_gbrt_gpp/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
         mean: ['time']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
-  diag_mlr_gpp_pseudo_reality:
-    description: Validate MLR model using pseudo-reality approach.
+  diag_gbrt_gpp_pseudo_reality:
+    description: Validate GBRT model using pseudo-reality approach.
     scripts:
-      mlr:
-        <<: *mlr
+      gbrt:
+        <<: *gbrt
         pseudo_reality: ['dataset']
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
-          'diag_mlr_gpp_pseudo_reality/mlr',
+          'diag_gbrt_gpp_pseudo_reality/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
         mean: ['time']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
+
+  diag_gbrt_single_pred_gpp_pseudo_reality:
+    description: Validate GBRT model (with single predictor) using pseudo-reality approach.
+    scripts:
+      gbrt:
+        <<: *gbrt
+        ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        pseudo_reality: ['dataset']
+      postprocess:
+        script: mlr/postprocess.py
+        ancestors: [
+          'diag_gbrt_single_pred_gpp_pseudo_reality/gbrt',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
+        mean: ['time']
+        sum: ['latitude', 'longitude']
+        convert_units_to: Gt yr-1
+
+  diag_lasso_gpp_pseudo_reality:
+    description: Validate Lasso model using pseudo-reality approach.
+    scripts:
+      lasso:
+        script: mlr/main.py
+        ancestors: ['diag_mlr_input_*/monthly_*']
+        categorical_features: ['longitude', 'month_number']
+        coords_as_features: ['month_number', 'latitude', 'longitude']
+        group_datasets_by_attributes: ['dataset']
+        mlr_model_type: lasso_cv
+        model_name: Lasso
+        n_jobs: 24
+        parameters_final_regressor:
+          cv: 5
+          n_jobs: 24
+        pseudo_reality: ['dataset']
 
   diag_mmm_gpp:
     description: Use simple multi-model mean to predict GPP.
     scripts:
       mmm: &mmm
         script: mlr/main.py
-        ancestors: [
-          'diag_mlr_gpp/monthly_clim',
-          'diag_mlr_input_gpp/monthly_clim',
-        ]
+        ancestors: ['diag_mlr_input_gpp/monthly_clim']
         mlr_model_type: mmm
       postprocess:
         script: mlr/postprocess.py
@@ -400,6 +423,7 @@ diagnostics:
         script: mlr/evaluate_residuals.py
         ancestors:
           [
-            'diag_mlr_gpp_pseudo_reality/mlr',
+            'diag_gbrt_gpp_pseudo_reality/gbrt',
+            'diag_lasso_gpp_pseudo_reality/lasso',
             'diag_mmm_gpp_pseudo_reality/mmm',
           ]
