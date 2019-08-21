@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+from copy import deepcopy
 
 from cf_units import Unit
 from sklearn.base import clone
@@ -302,6 +303,39 @@ def get_absolute_time_units(units):
     return units
 
 
+def get_input_data(cfg, pattern=None):
+    """Get input data and check MLR attributes.
+
+    Use `input_data` and ancestors to get all relevant input files. Only
+    accepts files with all necessary MLR attributes.
+
+    Parameters
+    ----------
+    cfg : dict
+        Recipe configuration.
+    pattern : str, optional
+        Pattern matched against ancestor files.
+
+    Returns
+    -------
+    list of dict
+        List of input datasets.
+
+    """
+    input_data = list(cfg['input_data'].values())
+    input_data.extend(io.netcdf_to_metadata(cfg, pattern=pattern))
+    input_data = deepcopy(input_data)
+    valid_datasets = []
+    for dataset in input_data:
+        if datasets_have_mlr_attributes([dataset], log_level='warning'):
+            valid_datasets.append(dataset)
+        else:
+            logger.warning("Skipping file %s", dataset['filename'])
+    if not valid_datasets:
+        logger.warning("No valid input data found")
+    return valid_datasets
+
+
 def units_power(units, power):
     """Raise a :mod:`cf_units.Unit` to given power preserving symbols.
 
@@ -363,8 +397,6 @@ def write_cube(cube, attributes, path):
         Attributes for the cube (needed for MLR models).
     path : str
         Path to the new file.
-    cfg : dict
-        Diagnostic script configuration.
 
     """
     if not datasets_have_mlr_attributes([attributes], log_level='warning'):

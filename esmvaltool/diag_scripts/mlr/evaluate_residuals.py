@@ -60,10 +60,7 @@ def _convert_units(cfg, cube):
 
 def get_grouped_datasets(cfg):
     """Get grouped datasets (by MLR model name)."""
-    input_data = list(cfg['input_data'].values())
-    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
-    logger.debug("Found files")
-    logger.debug(pformat([d['filename'] for d in input_data]))
+    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
     return group_metadata(input_data, 'mlr_model_name')
 
 

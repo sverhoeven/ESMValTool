@@ -543,13 +543,7 @@ def split_datasets(datasets, tag, pred_name):
 
 def main(cfg):
     """Run the diagnostic."""
-    input_data = list(cfg['input_data'].values())
-    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
-    input_data = deepcopy(input_data)
-    if not mlr.datasets_have_mlr_attributes(input_data, log_level='error'):
-        return
-    logger.debug("Found files")
-    logger.debug(pformat([d['filename'] for d in input_data]))
+    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
 
     # Check cfg
     check_cfg(cfg)

@@ -64,15 +64,14 @@ import logging
 import os
 from copy import deepcopy
 from functools import partial
-from pprint import pformat
 
 import iris
 import numpy as np
 from cf_units import Unit
 from scipy import stats
 
-from esmvaltool.diag_scripts.mlr import get_absolute_time_units, write_cube
-from esmvaltool.diag_scripts.shared import (get_diagnostic_filename, io,
+from esmvaltool.diag_scripts import mlr
+from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
                                             run_diagnostic, select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -151,7 +150,7 @@ def _calculate_slope_along_coord(cube, coord_name, return_stderr=False):
 
     # Get units
     if coord_name == 'time':
-        units = get_absolute_time_units(coord.units)
+        units = mlr.get_absolute_time_units(coord.units)
     else:
         units = coord.units
 
@@ -428,7 +427,8 @@ def calculate_sum_and_mean(cfg, cube, data):
             # Time (weighted)
             time_weights = _get_time_weights(cfg, cube)
             if 'time' in cfg[oper]:
-                time_units = get_absolute_time_units(cube.coord('time').units)
+                time_units = mlr.get_absolute_time_units(
+                    cube.coord('time').units)
                 cube = cube.collapsed(['time'], iris_op, weights=time_weights)
                 cfg[oper].remove('time')
                 if oper == 'sum' and time_weights is not None:
@@ -509,11 +509,7 @@ def normalize(cfg, cube, data):
 
 def main(cfg):
     """Run the diagnostic."""
-    input_data = list(cfg['input_data'].values())
-    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
-    input_data = deepcopy(input_data)
-    logger.debug("Found files")
-    logger.debug(pformat([d['filename'] for d in input_data]))
+    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
 
     # Default options
     cfg.setdefault('return_trend_stderr', False)
@@ -558,7 +554,7 @@ def main(cfg):
 
         # Normalize and write cubes
         (cube, data) = normalize(cfg, cube, data)
-        write_cube(cube, data, data['filename'])
+        mlr.write_cube(cube, data, data['filename'])
 
 
 # Run main function when this script is called

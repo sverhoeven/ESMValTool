@@ -40,6 +40,7 @@ from pprint import pformat
 
 import iris
 
+from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
                                             group_metadata, io, run_diagnostic,
                                             select_metadata)
@@ -102,11 +103,19 @@ def get_grouped_data(cfg, input_data=None):
     """Get input files."""
     if input_data is None:
         logger.debug("Loading input data from 'cfg' argument")
-        input_data = list(cfg['input_data'].values())
-        input_data.extend(
-            io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
+        input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
     else:
         logger.debug("Loading input data from 'input_data' argument")
+        valid_datasets = []
+        for dataset in input_data:
+            if mlr.datasets_have_mlr_attributes([dataset],
+                                                log_level='warning'):
+                valid_datasets.append(dataset)
+            else:
+                logger.warning("Skipping file %s", dataset['filename'])
+        if not valid_datasets:
+            logger.warning("No valid input data found")
+        input_data = valid_datasets
     paths = [d['filename'] for d in input_data]
     logger.debug("Found files")
     logger.debug(pformat(paths))

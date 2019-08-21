@@ -59,7 +59,7 @@ from sklearn.gaussian_process import kernels as sklearn_kernels
 from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.mlr.mmm import main as create_mmm_model
 from esmvaltool.diag_scripts.mlr.models import MLRModel
-from esmvaltool.diag_scripts.shared import (group_metadata, io, run_diagnostic,
+from esmvaltool.diag_scripts.shared import (group_metadata, run_diagnostic,
                                             select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -95,17 +95,6 @@ def _get_grouped_data(cfg, input_data):
         datasets.extend(prediction_data)
         grouped_input_data[group_val] = datasets
     return (group_attribute, grouped_input_data)
-
-
-def get_input_data(cfg):
-    """Get (grouped) input datasets according to given settings."""
-    input_data = get_raw_input_data(cfg)
-    if cfg.get('group_metadata'):
-        return _get_grouped_data(cfg, input_data)
-    if cfg.get('pseudo_reality'):
-        return _get_pseudo_reality_data(cfg, input_data)
-    logger.info("Creating single MLR model")
-    return (None, {None: input_data})
 
 
 def _get_pseudo_reality_data(cfg, input_data):
@@ -150,13 +139,9 @@ def _get_pseudo_reality_data(cfg, input_data):
     return ('pseudo-reality', grouped_input_data)
 
 
-def get_raw_input_data(cfg):
+def _get_raw_input_data(cfg):
     """Extract all input datasets."""
-    input_data = list(cfg['input_data'].values())
-    input_data.extend(io.netcdf_to_metadata(cfg, pattern=cfg.get('pattern')))
-    paths = [d['filename'] for d in input_data]
-    logger.debug("Found files:")
-    logger.debug(pformat(paths))
+    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
     select_kwargs = cfg.get('select_metadata', {})
     if select_kwargs:
         logger.info("Only selecting files matching %s", select_kwargs)
@@ -164,14 +149,6 @@ def get_raw_input_data(cfg):
         paths = [d['filename'] for d in input_data]
         logger.debug("Remaining files:")
         logger.debug(pformat(paths))
-    valid_datasets = []
-    for dataset in input_data:
-        if mlr.datasets_have_mlr_attributes([dataset], log_level='warning'):
-            valid_datasets.append(dataset)
-        else:
-            logger.warning("Skipping ancestor file %s", dataset['filename'])
-    if not input_data:
-        logger.warning("No input valid data found")
     return input_data
 
 
@@ -203,6 +180,17 @@ def check_cfg(cfg):
         raise ValueError(
             "The options 'group_metadata' and 'pseudo_reality' cannot be used "
             "together")
+
+
+def get_grouped_data(cfg):
+    """Get (grouped) input datasets according to given settings."""
+    input_data = _get_raw_input_data(cfg)
+    if cfg.get('group_metadata'):
+        return _get_grouped_data(cfg, input_data)
+    if cfg.get('pseudo_reality'):
+        return _get_pseudo_reality_data(cfg, input_data)
+    logger.info("Creating single MLR model")
+    return (None, {None: input_data})
 
 
 def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
@@ -267,7 +255,7 @@ def main(cfg):
     else:
         model_type = cfg['mlr_model_type']
         logger.info("Found mlr_model_type '%s'", model_type)
-    (group_attr, grouped_datasets) = get_input_data(cfg)
+    (group_attr, grouped_datasets) = get_grouped_data(cfg)
     if model_type == 'mmm':
         run_mmm_model(cfg, group_attr, grouped_datasets)
     else:
