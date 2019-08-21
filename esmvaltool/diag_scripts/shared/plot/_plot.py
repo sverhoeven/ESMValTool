@@ -2,6 +2,7 @@
 import logging
 import os
 
+import cartopy.crs as ccrs
 import iris.quickplot
 import matplotlib.pyplot as plt
 import yaml
@@ -120,6 +121,57 @@ def get_dataset_style(dataset, style_file=None):
     return style[dataset]
 
 
+def global_contourf(cube, **kwargs):
+    """Plot global map for a cube.
+
+    Note
+    ----
+    This is only possible if the cube has the coordinates `latitude` and
+    `longitude`. A mean is performed over excessive coordinates.
+
+    Parameters
+    ----------
+    cube : iris.cube.Cube
+        Cube to plot.
+    **kwargs
+        Keyword argument for :mod:`iris.plot.contourf()`.
+
+    Returns
+    -------
+    matplotlib.contour.QuadContourSet
+        Plot object. If plotting was not successful, returns `None`.
+
+    """
+    logger.debug("Plotting global filled contour plot for cube %s",
+                 cube.summary(shorten=True))
+    required_coords = ['latitude', 'longitude']
+    coords = [coord.name() for coord in cube.coords(dim_coords=True)]
+
+    # Check if cubes has desired coordinates and calculate mean over others
+    for coord_name in required_coords:
+        if coord_name not in coords:
+            logger.warning(
+                "Cube %s does not contain necessary coordinate '%s' for "
+                "plotting global filled contour plot",
+                cube.summary(shorten=True), coord_name)
+            return None
+        coords.remove(coord_name)
+    if coords:
+        logger.debug("Collapsing coordinates %s by calculating mean", coords)
+        cube = cube.collapsed(coords, iris.analysis.MEAN)
+
+    # Create plot
+    axes = plt.axes(projection=ccrs.Robinson(central_longitude=10))
+    map_plot = iris.plot.contourf(cube, **kwargs)
+
+    # Appearance
+    axes.gridlines(color='lightgrey')
+    axes.coastlines()
+    axes.set_global()
+    plt.colorbar(orientation='horizontal', aspect=30)
+    return map_plot
+
+
 def quickplot(cube, filename, plot_type, **kwargs):
     """Plot a cube using one of the iris.quickplot functions."""
     logger.debug("Creating '%s' plot %s", plot_type, filename)
@@ -203,20 +255,20 @@ def multi_dataset_scatterplot(x_data, y_data, datasets, filepath, **kwargs):
             style['facecolor']
 
         # Plot
-        axes.plot(
-            x_data[idx],
-            y_data[idx],
-            markeredgecolor=style['color'],
-            markerfacecolor=facecolor,
-            marker=style['mark'],
-            **(kwargs.get('plot_kwargs', empty_dict)[idx]))
+        axes.plot(x_data[idx],
+                  y_data[idx],
+                  markeredgecolor=style['color'],
+                  markerfacecolor=facecolor,
+                  marker=style['mark'],
+                  **(kwargs.get('plot_kwargs', empty_dict)[idx]))
 
     # Costumize plot
     legend = _process_axes_functions(axes, kwargs.get('axes_functions'))
 
     # Save plot
-    fig.savefig(
-        filepath, additional_artists=[legend], **kwargs.get('save_kwargs', {}))
+    fig.savefig(filepath,
+                additional_artists=[legend],
+                **kwargs.get('save_kwargs', {}))
     logger.info("Wrote %s", filepath)
     plt.close()
 
@@ -270,8 +322,8 @@ def scatterplot(x_data, y_data, filepath, **kwargs):
             raise TypeError("{} is not a valid keyword argument".format(kwarg))
 
     # Check parameters
-    _check_size_of_parameters(x_data, y_data, kwargs.get(
-        'plot_kwargs', x_data))
+    _check_size_of_parameters(x_data, y_data,
+                              kwargs.get('plot_kwargs', x_data))
     empty_dict = [{} for _ in x_data]
 
     # Create matplotlib instances
@@ -294,7 +346,8 @@ def scatterplot(x_data, y_data, filepath, **kwargs):
     legend = _process_axes_functions(axes, kwargs.get('axes_functions'))
 
     # Save plot
-    fig.savefig(
-        filepath, additional_artists=[legend], **kwargs.get('save_kwargs', {}))
+    fig.savefig(filepath,
+                additional_artists=[legend],
+                **kwargs.get('save_kwargs', {}))
     logger.info("Wrote %s", filepath)
     plt.close()
