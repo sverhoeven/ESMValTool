@@ -509,7 +509,9 @@ def normalize(cfg, cube, data):
 
 def main(cfg):
     """Run the diagnostic."""
-    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
+    input_data = mlr.get_input_data(cfg,
+                                    pattern=cfg.get('pattern'),
+                                    check_mlr_attributes=False)
 
     # Default options
     cfg.setdefault('return_trend_stderr', False)

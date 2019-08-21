@@ -4,6 +4,7 @@ import logging
 import os
 import re
 from copy import deepcopy
+from pprint import pformat
 
 from cf_units import Unit
 from sklearn.base import clone
@@ -303,11 +304,11 @@ def get_absolute_time_units(units):
     return units
 
 
-def get_input_data(cfg, pattern=None):
-    """Get input data and check MLR attributes.
+def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
+    """Get input data and check MLR attributes if desired.
 
     Use `input_data` and ancestors to get all relevant input files. Only
-    accepts files with all necessary MLR attributes.
+    accepts files with all necessary MLR attributes if desired.
 
     Parameters
     ----------
@@ -315,6 +316,9 @@ def get_input_data(cfg, pattern=None):
         Recipe configuration.
     pattern : str, optional
         Pattern matched against ancestor files.
+    check_mlr_attributes : bool, optional (default: True)
+        If `True`, only returns datasets with valid MLR attributes. If `False`,
+        returns all found datasets.
 
     Returns
     -------
@@ -322,17 +326,23 @@ def get_input_data(cfg, pattern=None):
         List of input datasets.
 
     """
+    logger.debug("Extracting input files")
     input_data = list(cfg['input_data'].values())
     input_data.extend(io.netcdf_to_metadata(cfg, pattern=pattern))
     input_data = deepcopy(input_data)
-    valid_datasets = []
-    for dataset in input_data:
-        if datasets_have_mlr_attributes([dataset], log_level='warning'):
-            valid_datasets.append(dataset)
-        else:
-            logger.warning("Skipping file %s", dataset['filename'])
+    if check_mlr_attributes:
+        valid_datasets = []
+        for dataset in input_data:
+            if datasets_have_mlr_attributes([dataset], log_level='warning'):
+                valid_datasets.append(dataset)
+            else:
+                logger.warning("Skipping file %s", dataset['filename'])
+    else:
+        valid_datasets = input_data
     if not valid_datasets:
         logger.warning("No valid input data found")
+    logger.debug("Found files:")
+    logger.debug(pformat([d['filename'] for d in valid_datasets]))
     return valid_datasets
 
 
