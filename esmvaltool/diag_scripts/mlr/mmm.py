@@ -21,16 +21,8 @@ collapse_over : str, optional (default: 'dataset')
     Dataset attribute to collapse over.
 convert_units_to : str, optional
     Convert units of the input data. Can also be given as dataset option.
-unweighted_mean : bool, optional (default: False)
-    Calculate unweighted multi-model mean.
-median : bool, optional (default: False)
-    Calculate multi-model median.
-std : bool, optional (default: False)
-    Calculate multi-model standard deviation.
 pattern : str, optional
     Pattern matched against ancestor files.
-var : bool, optional (default: False)
-    Calculate multi-model variance.
 
 """
 
@@ -40,6 +32,7 @@ from pprint import pformat
 
 import iris
 
+import esmvaltool.diag_scripts.shared.iris_helpers as ih
 from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
                                             group_metadata, io, run_diagnostic,
@@ -62,18 +55,6 @@ def _add_dataset_attributes(cube, datasets):
     cube.attributes['project'] = '|'.join(projects)
     cube.attributes['start_year'] = min(start_years)
     cube.attributes['var_type'] = 'prediction_output'
-
-
-def _preprocess_cube(cube, dataset_label):
-    """Preprocess single cubes."""
-    cube.attributes = {}
-    cube.cell_methods = ()
-    for coord in cube.coords(dim_coords=False):
-        cube.remove_coord(coord)
-    dataset_label_coord = iris.coords.AuxCoord(dataset_label,
-                                               var_name='dataset_label',
-                                               long_name='dataset_label')
-    cube.add_aux_coord(dataset_label_coord, [])
 
 
 def add_general_attributes(cube, **kwargs):
@@ -137,19 +118,19 @@ def get_grouped_data(cfg, input_data=None):
 def get_mm_cube(cfg, datasets):
     """Extract data."""
     cubes = iris.cube.CubeList()
-    dataset_labels = []
+    cube_labels = []
     for dataset in select_metadata(datasets, var_type='label'):
         path = dataset['filename']
-        dataset_label = dataset[cfg.get('collapse_over', 'dataset')]
+        cube_label = dataset[cfg.get('collapse_over', 'dataset')]
         logger.info("Processing '%s'", path)
         cube = iris.load_cube(path)
         convert_units(cfg, cube, dataset)
-        _preprocess_cube(cube, dataset_label)
+        ih.preprocess_cube_before_merging(cube, cube_label)
         cubes.append(cube)
-        dataset_labels.append(dataset_label)
+        cube_labels.append(cube_label)
     mm_cube = cubes.merge_cube()
-    if len(dataset_labels) > 1:
-        mm_cube = mm_cube.collapsed(['dataset_label'], iris.analysis.MEAN)
+    if len(cube_labels) > 1:
+        mm_cube = mm_cube.collapsed(['cube_label'], iris.analysis.MEAN)
     _add_dataset_attributes(mm_cube, datasets)
     return mm_cube
 

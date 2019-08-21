@@ -323,7 +323,7 @@ CUBES_TO_INTERSECT = [
 
 @pytest.mark.parametrize('cubes,output', CUBES_TO_INTERSECT)
 def test_intersect_dataset_coords(cubes, output):
-    """Test unifying 1D cubes."""
+    """Test intersecting dataset coordinates."""
     # ValueErrors
     if isinstance(output, type):
         with pytest.raises(output):
@@ -335,6 +335,25 @@ def test_intersect_dataset_coords(cubes, output):
     output = iris.cube.CubeList(output)
     new_cubes = ih.intersect_dataset_coordinates(cubes)
     assert new_cubes == output
+
+
+def test_preprocess_cube_before_merging():
+    """Test preprocessing cubes before merging."""
+    label = 'abcde'
+    aux_coord = iris.coords.AuxCoord(label,
+                                     var_name='cube_label',
+                                     long_name='cube_label')
+    cube_in = CUBE_1.copy()
+    cube_in.cell_methods = [iris.coords.CellMethod('mean', coords=LONG_NAME)]
+    cube_out = iris.cube.Cube(
+        np.ma.masked_invalid([-1.0, np.nan, 2.0]),
+        var_name='a',
+        dim_coords_and_dims=[(DIM_COORD_1, 0)],
+        aux_coords_and_dims=[(aux_coord, [])],
+    )
+    assert cube_in != cube_out
+    ih.preprocess_cube_before_merging(cube_in, label)
+    assert cube_in == cube_out
 
 
 DIM_COORD_4 = DIM_COORD_1.copy([100.0, 150.0, 160.0])
@@ -387,3 +406,19 @@ def test_unify_1d_cubes(mock_unify_time, mock_transform, cubes, coord_name,
         assert mock_unify_time.call_count == 1
     else:
         assert not mock_unify_time.called
+
+
+def test_var_name_constraint():
+    """Test var_name constraint."""
+    cubes_in = iris.cube.CubeList([
+        iris.cube.Cube(0, var_name='a', long_name='aaa'),
+        iris.cube.Cube(1, var_name='a', long_name='bbb'),
+        iris.cube.Cube(2, var_name='b', long_name='a'),
+        iris.cube.Cube(3, var_name='c', long_name='aaa'),
+    ])
+    cubes_out = cubes_in[:2].copy()
+    constraint = ih.var_name_constraint('a')
+    assert cubes_in is not cubes_out
+    result = cubes_in.extract(constraint)
+    assert cubes_in is not result
+    assert result == cubes_out

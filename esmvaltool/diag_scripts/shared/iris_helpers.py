@@ -17,8 +17,8 @@ def _transform_coord_to_ref(cubes, ref_coord):
         ref_coord = iris.coords.DimCoord.from_coord(ref_coord)
     except ValueError:
         pass
-    if not np.array_equal(
-            np.unique(ref_coord.points), np.sort(ref_coord.points)):
+    if not np.array_equal(np.unique(ref_coord.points), np.sort(
+            ref_coord.points)):
         raise ValueError(
             f"Expected unique coordinate '{ref_coord.name()}', got "
             f"{ref_coord}")
@@ -215,6 +215,27 @@ def intersect_dataset_coordinates(cubes):
     return new_cubes
 
 
+def preprocess_cube_before_merging(cube, cube_label):
+    """Preprocess single :mod:`iris.cube.Cube` in order to merge it later.
+
+    Parameters
+    ----------
+    cube : iris.cube.Cube
+        Cube to be pre-processed.
+    cube_label : str
+        Label for the new scalar coordinate `cube_label`.
+
+    """
+    cube.attributes = {}
+    cube.cell_methods = ()
+    for coord in cube.coords(dim_coords=False):
+        cube.remove_coord(coord)
+    cube_label_coord = iris.coords.AuxCoord(cube_label,
+                                            var_name='cube_label',
+                                            long_name='cube_label')
+    cube.add_aux_coord(cube_label_coord, [])
+
+
 def unify_1d_cubes(cubes, coord_name):
     """Unify 1D cubes by transforming them to identical coordinates.
 
@@ -251,8 +272,8 @@ def unify_1d_cubes(cubes, coord_name):
         except iris.exceptions.CoordinateNotFoundError:
             raise iris.exceptions.CoordinateNotFoundError(
                 f"'{coord_name}' is not a coordinate of cube\n{cube}")
-        if not np.array_equal(
-                np.unique(new_coord.points), np.sort(new_coord.points)):
+        if not np.array_equal(np.unique(new_coord.points),
+                              np.sort(new_coord.points)):
             raise ValueError(
                 f"Coordinate '{coord_name}' of cube\n{cube}\n is not unique, "
                 f"unifying not possible")
