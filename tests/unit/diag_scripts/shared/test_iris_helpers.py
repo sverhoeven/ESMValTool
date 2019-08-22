@@ -204,6 +204,29 @@ PROJECT_CONSTRAINTS = [
 ]
 
 
+@mock.patch('esmvaltool.diag_scripts.shared.iris_helpers.iris.load_cube',
+            autospec=True)
+def test_get_mean_cube(mock_load_cube):
+    """Test calculation of mean cubes."""
+    datasets = [
+        {'test': 'x', 'filename': 'a/b.nc'},
+        {'test': 'y', 'filename': 'a/b/c.nc'},
+        {'test': 'z', 'filename': 'c/d.nc'},
+    ]
+    cube = CUBE_1.copy([-4.0, 2.0, -4.0])
+    cube.cell_methods = [iris.coords.CellMethod('mean', coords=LONG_NAME)]
+    cubes = [CUBE_1, CUBE_2, cube]
+    mock_load_cube.side_effect = cubes
+    cube_out = iris.cube.Cube(
+        [-2.0, 2.0, 0.0],
+        var_name='a',
+        dim_coords_and_dims=[(DIM_COORD_1, 0)],
+        cell_methods=[iris.coords.CellMethod('mean', coords='cube_label')],
+    )
+    result = ih.get_mean_cube(datasets)
+    assert result == cube_out
+
+
 @pytest.mark.parametrize('constr,negate,data,points', PROJECT_CONSTRAINTS)
 @mock.patch.object(ih, 'logger', autospec=True)
 def test_iris_project_constraint(mock_logger, constr, negate, data, points):

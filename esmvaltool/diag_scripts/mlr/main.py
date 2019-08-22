@@ -226,7 +226,7 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
         # mlr_model.plot_scatterplots()
         # if not cfg.get('accept_only_scalar_data'):
         #     mlr_model.plot_feature_importance()
-        #     # mlr_model.plot_partial_dependences()
+        # #     # mlr_model.plot_partial_dependences()
         # if 'gbr' in model_type:
         #     mlr_model.plot_gbr_feature_importance()
         #     mlr_model.plot_prediction_error()

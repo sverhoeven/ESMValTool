@@ -51,6 +51,7 @@ REQUIREMENTS = {
         'xarray>=0.12',
         'xgboost',
         'xlsxwriter',
+        'yellowbrick',
     ],
     # Test dependencies
     # Execute 'python setup.py test' to run tests

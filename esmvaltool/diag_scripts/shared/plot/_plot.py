@@ -121,7 +121,7 @@ def get_dataset_style(dataset, style_file=None):
     return style[dataset]
 
 
-def global_contourf(cube, **kwargs):
+def global_contourf(cube, cbar_ticks=None, cbar_label=None, **kwargs):
     """Plot global map for a cube.
 
     Note
@@ -133,6 +133,10 @@ def global_contourf(cube, **kwargs):
     ----------
     cube : iris.cube.Cube
         Cube to plot.
+    cbar_ticks : list, optional
+        Ticks for the colorbar.
+    cbar_label : str, optional
+        Label for the colorbar.
     **kwargs
         Keyword argument for :mod:`iris.plot.contourf()`.
 
@@ -168,7 +172,12 @@ def global_contourf(cube, **kwargs):
     axes.gridlines(color='lightgrey')
     axes.coastlines()
     axes.set_global()
-    plt.colorbar(orientation='horizontal', aspect=30)
+    colorbar = plt.colorbar(orientation='horizontal', aspect=30)
+    if cbar_ticks is not None:
+        colorbar.set_ticks(cbar_ticks)
+        colorbar.set_ticklabels([str(tick) for tick in cbar_ticks])
+    if cbar_label is not None:
+        colorbar.set_label(cbar_label)
     return map_plot
 
 

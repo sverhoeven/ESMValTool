@@ -92,6 +92,9 @@ def _apply_aggregator(cfg, cube, data, coord_name, operation):
         (cube, data) = _apply_trend_aggregator(cfg, cube, data, coord_name)
     else:
         cube = cube.aggregated_by(coord_name, operation)
+    aux_coords = [coord.name() for coord in cube.coords(dim_coords=False)]
+    if coord_name in aux_coords:
+        iris.util.promote_aux_coord_to_dim_coord(cube, coord_name)
     return (cube, data)
 
 

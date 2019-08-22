@@ -128,7 +128,7 @@ class MLRModel():
     imputation_strategy : str, optional (default: 'remove')
         Strategy for the imputation of missing values in the features. Must be
         one of `remove`, `mean`, `median`, `most_frequent` or `constant`.
-    model_name : str, optional
+    mlr_model_name : str, optional
         Human-readable name of the MLR model instance (e.g used for labels).
     n_jobs : int, optional (default: 1)
         Maximum number of jobs spawned by this class.
@@ -251,7 +251,7 @@ class MLRModel():
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('estimate_mlr_model_error', {})
         self._cfg.setdefault('imputation_strategy', 'remove')
-        self._cfg.setdefault('model_name', f'{self._CLF_TYPE} model')
+        self._cfg.setdefault('mlr_model_name', f'{self._CLF_TYPE} model')
         self._cfg.setdefault('n_jobs', 1)
         self._cfg.setdefault('parameters', {})
         self._cfg.setdefault('pca', False)
@@ -619,7 +619,8 @@ class MLRModel():
                                                  method=method,
                                                  n_jobs=self._cfg['n_jobs'],
                                                  progressbar=progressbar))
-            axes.set_title(f"Variable Importance ({self._cfg['model_name']})")
+            axes.set_title(
+                f"Variable Importance ({self._cfg['mlr_model_name']})")
             axes.set_xlabel('Relative Importance')
             new_filename = (filename.format(method=method) + '.' +
                             self._cfg['output_file_type'])
@@ -739,7 +740,7 @@ class MLRModel():
                 feature_names=self.features,
                 **verbosity,
             )
-            plt.title(f"Partial dependence ({self._cfg['model_name']})")
+            plt.title(f"Partial dependence ({self._cfg['mlr_model_name']})")
             plt.xlabel(f'{feature_name} / {self.features_units[feature_name]}')
             plt.ylabel(f'Partial dependence on {self.label}')
             new_filename = (filename.format(feature=feature_name) + '.' +
@@ -2132,7 +2133,7 @@ class MLRModel():
         """Set the attributes of the prediction cube."""
         cube.attributes = {
             'description': 'MLR model prediction',
-            'mlr_model_name': self._cfg['model_name'],
+            'mlr_model_name': self._cfg['mlr_model_name'],
             'mlr_model_type': self._MODEL_TYPE,
             'final_regressor': str(self._CLF_TYPE),
             'prediction_name': self._get_name(pred_name),

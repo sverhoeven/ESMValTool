@@ -21,6 +21,8 @@ collapse_over : str, optional (default: 'dataset')
     Dataset attribute to collapse over.
 convert_units_to : str, optional
     Convert units of the input data. Can also be given as dataset option.
+mlr_model_name : str, optional
+    Human-readable name of the MLR model instance (e.g used for labels).
 pattern : str, optional
     Pattern matched against ancestor files.
 
@@ -41,7 +43,7 @@ from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def _add_dataset_attributes(cube, datasets):
+def _add_dataset_attributes(cube, datasets, cfg):
     """Add dataset-related attributes to cube."""
     dataset_names = list({d['dataset'] for d in datasets})
     projects = list({d['project'] for d in datasets})
@@ -50,7 +52,7 @@ def _add_dataset_attributes(cube, datasets):
     cube.attributes['dataset'] = '|'.join(dataset_names)
     cube.attributes['description'] = 'MMM prediction'
     cube.attributes['end_year'] = min(end_years)
-    cube.attributes['mlr_model_name'] = 'MMM'
+    cube.attributes['mlr_model_name'] = cfg.get('mlr_model_name', 'MMM')
     cube.attributes['mlr_model_type'] = 'mmm'
     cube.attributes['project'] = '|'.join(projects)
     cube.attributes['start_year'] = min(start_years)
@@ -131,7 +133,7 @@ def get_mm_cube(cfg, datasets):
     mm_cube = cubes.merge_cube()
     if len(cube_labels) > 1:
         mm_cube = mm_cube.collapsed(['cube_label'], iris.analysis.MEAN)
-    _add_dataset_attributes(mm_cube, datasets)
+    _add_dataset_attributes(mm_cube, datasets, cfg)
     return mm_cube
 
 

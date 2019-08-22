@@ -22,21 +22,21 @@ DATASET_ANCHOR: &datasets
   - {dataset: BNU-ESM}
   - {dataset: CanESM2}
   - {dataset: CCSM4}
-  - {dataset: CESM2-BGC}
-  - {dataset: CESM1-CAM5}
-  - {dataset: CESM1-WACCM, ensemble: r2i1p1}
-  - {dataset: GFDL-ESM2G}
-  - {dataset: GFDL-ESM2M}
-  - {dataset: HadGEM2-CC}
-  - {dataset: HadGEM2-ES}
-  - {dataset: inmcm4}
-  - {dataset: IPSL-CM5A-LR}
-  - {dataset: IPSL-CM5A-MR}
-  - {dataset: IPSL-CM5B-LR}
-  - {dataset: MIROC-ESM}
-  - {dataset: MIROC-ESM-CHEM}
-  - {dataset: NorESM1-M}
-  - {dataset: NorESM1-ME}
+  - {dataset: CESM1-BGC}
+  # - {dataset: CESM1-CAM5}
+  # - {dataset: CESM1-WACCM, ensemble: r2i1p1}
+  # - {dataset: GFDL-ESM2G}
+  # - {dataset: GFDL-ESM2M}
+  # - {dataset: HadGEM2-CC}
+  # - {dataset: HadGEM2-ES}
+  # - {dataset: inmcm4}
+  # - {dataset: IPSL-CM5A-LR}
+  # - {dataset: IPSL-CM5A-MR}
+  # - {dataset: IPSL-CM5B-LR}
+  # - {dataset: MIROC-ESM}
+  # - {dataset: MIROC-ESM-CHEM}
+  # - {dataset: NorESM1-M}
+  # - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -73,6 +73,7 @@ diagnostics:
         additional_datasets: *datasets
       prediction_input: &variable_settings_prediction_input
         <<: *variable_settings_features
+        prediction_name: OBS
         var_type: prediction_input
         additional_datasets:
           - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
@@ -316,10 +317,10 @@ diagnostics:
         #     [4, 6, 8]
         group_datasets_by_attributes: ['dataset']
         mlr_model_type: gbr_xgboost
-        model_name: GBRT
+        mlr_model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
-          n_estimators: 200
+          n_estimators: 50
           subsample: 0.5
           learning_rate: 0.1
           max_depth: 8
@@ -338,7 +339,13 @@ diagnostics:
     scripts:
       gbrt:
         <<: *gbrt
+        grid_search_cv_param_grid: false
         pseudo_reality: ['dataset']
+        parameters_final_regressor:
+          n_estimators: 50
+          subsample: 0.5
+          learning_rate: 0.1
+          max_depth: 8
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
@@ -355,6 +362,7 @@ diagnostics:
       gbrt:
         <<: *gbrt
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        mlr_model_name: GBRT (single feature)
         pseudo_reality: ['dataset']
       postprocess:
         script: mlr/postprocess.py
@@ -376,7 +384,7 @@ diagnostics:
         coords_as_features: ['month_number', 'latitude', 'longitude']
         group_datasets_by_attributes: ['dataset']
         mlr_model_type: lasso_cv
-        model_name: Lasso
+        mlr_model_name: Lasso
         n_jobs: 24
         parameters_final_regressor:
           cv: 5
@@ -389,6 +397,7 @@ diagnostics:
       mmm: &mmm
         script: mlr/main.py
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        mlr_model_name: MMM
         mlr_model_type: mmm
       postprocess:
         script: mlr/postprocess.py
@@ -416,6 +425,17 @@ diagnostics:
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
+  diag_plots:
+    description: Create plots.
+    scripts:
+      plot:
+        script: mlr/plot.py
+        ancestors: [
+          'diag_gbrt_gpp/gbrt',
+          'diag_mmm_gpp/mmm',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
+
   diag_evaluate_residuals:
     description: Evaluate residuals of different statistical models.
     scripts:
@@ -427,3 +447,6 @@ diagnostics:
             'diag_lasso_gpp_pseudo_reality/lasso',
             'diag_mmm_gpp_pseudo_reality/mmm',
           ]
+        box_plot:
+          pyplot_kwargs:
+            ylabel: 'GPP / tC km$^{-2}$ yr$^{-1}$'

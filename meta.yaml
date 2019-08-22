@@ -64,6 +64,7 @@ requirements:
     - xarray>=0.12.0
     - xgboost
     - yamale  # in birdhouse channel
+    - yellowbrick
     - fiona
     - xlsxwriter
     # Command line tools used by diagnostic scripts

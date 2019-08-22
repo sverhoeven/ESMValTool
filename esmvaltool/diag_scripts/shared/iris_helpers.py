@@ -117,6 +117,33 @@ def convert_to_iris(dict_):
     return dict_
 
 
+def get_mean_cube(datasets):
+    """Get mean cube of a list of datasets.
+
+    Parameters
+    ----------
+    datasets : list of dict
+        List of datasets (given as metadata `dict`).
+
+    Returns
+    -------
+    iris.cube.Cube
+        Mean cube.
+
+    """
+    cubes = iris.cube.CubeList()
+    for dataset in datasets:
+        path = dataset['filename']
+        cube = iris.load_cube(path)
+        preprocess_cube_before_merging(cube, path)
+        cubes.append(cube)
+    mean_cube = cubes.merge_cube()
+    if len(cubes) > 1:
+        mean_cube = mean_cube.collapsed(['cube_label'], iris.analysis.MEAN)
+    mean_cube.remove_coord('cube_label')
+    return mean_cube
+
+
 def iris_project_constraint(projects, cfg, negate=False):
     """Create `iris.Constraint` to select specific projects from data.
 

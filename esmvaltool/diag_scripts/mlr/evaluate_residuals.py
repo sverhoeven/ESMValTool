@@ -16,8 +16,16 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
+box_plot : dict, optional
+    Specify additional keyword arguments for :mod:`seaborn.boxplot()` by
+    `plot_kwargs` and plot appearance options by `pyplot_kwargs` (processed as
+    functions of :mod:`matplotlib.pyplot`).
 pattern : str, optional
     Pattern matched against ancestor files.
+residual_plot : dict, optional
+    Specify additional keyword arguments for the residual plot function by
+    `plot_kwargs` and plot appearance options by `pyplot_kwargs` (processed as
+    functions of :mod:`matplotlib.pyplot`).
 seaborn_settings : dict, optional
     Options for seaborn's `set()` method (affects all plots), see
     <https://seaborn.pydata.org/generated/seaborn.set.html>.
@@ -33,8 +41,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+import esmvaltool.diag_scripts.mlr.plot as mlr_plot
 import esmvaltool.diag_scripts.shared.iris_helpers as ih
-from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (get_plot_filename, group_metadata,
                                             plot, run_diagnostic,
                                             select_metadata)
@@ -42,26 +50,22 @@ from esmvaltool.diag_scripts.shared import (get_plot_filename, group_metadata,
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def get_grouped_datasets(cfg):
-    """Get grouped datasets (by tag)."""
-    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
-    logger.debug("Extracting 'prediction_output' and 'prediction_residual'")
-    out_data = select_metadata(input_data, var_type='prediction_output')
-    res_data = select_metadata(input_data, var_type='prediction_residual')
-    input_data = out_data + res_data
-    return group_metadata(input_data, 'tag')
-
-
-def plot_boxplot(cfg, datasets, tag):
+def plot_boxplot(cfg, input_data):
     """Plot boxplot."""
+    logger.info("Creating box plot")
     mlr_models_rmse = []
-    datasets = select_metadata(datasets, var_type='prediction_residual')
-    grouped_datasets = group_metadata(datasets, 'mlr_model_name')
+    input_data = select_metadata(input_data, var_type='prediction_residual')
+    if not input_data:
+        logger.warning(
+            "Creating box plot not possible, no 'prediction_residual' data "
+            "found")
+        return
+    grouped_datasets = group_metadata(input_data, 'mlr_model_name')
 
     # Collect data of for every MLR model
-    for (model_name, model_datasets) in grouped_datasets.items():
+    for (model_name, datasets) in grouped_datasets.items():
         rmse_data = []
-        for dataset in model_datasets:
+        for dataset in datasets:
             cube = iris.load_cube(dataset['filename'])
             rmse_data.append(np.ma.sqrt(np.ma.mean(cube.data**2)))
         data_frame = pd.DataFrame(rmse_data, columns=[model_name])
@@ -81,76 +85,75 @@ def plot_boxplot(cfg, datasets, tag):
         },
         'whis': 'range',
     }
+    boxplot_kwargs.update(mlr_plot.get_plot_kwargs(cfg, 'box_plot'))
     sns.boxplot(**boxplot_kwargs)
     sns.stripplot(data=boxplot_data, color='black')
 
     # Plot appearance
     plt.title('RMSE for different statistical models')
-    plt.ylabel(f"{tag} / {datasets[0]['units']}")
+    plt.ylabel(f"{input_data[0]['tag']} / {input_data[0]['units']}")
     plt.ylim(0.0, plt.ylim()[1])
+    mlr_plot.process_pyplot_kwargs(cfg, 'box_plot')
 
     # Save plot
-    plot_path = get_plot_filename(f'{tag}_boxplot', cfg)
+    plot_path = get_plot_filename('boxplot', cfg)
     plt.savefig(plot_path, bbox_inches='tight', orientation='landscape')
     logger.info("Wrote %s", plot_path)
     plt.close()
 
 
-def plot_relative_errors(cfg, datasets, tag):
+def plot_residuals(cfg, input_data):
     """Plot relative errors for every MLR model."""
-    grouped_datasets = group_metadata(datasets, 'mlr_model_name')
-    for (model_name, model_datasets) in grouped_datasets.items():
-        logger.debug("Plotting relative error of MLR model '%s'", model_name)
-        res_datasets = select_metadata(model_datasets,
-                                       var_type='prediction_residual')
-        res_datasets = group_metadata(res_datasets, 'prediction_name')
-        abs_datasets = select_metadata(model_datasets,
-                                       var_type='prediction_output')
-        abs_datasets = group_metadata(abs_datasets, 'prediction_name')
-        rel_error_cubes = iris.cube.CubeList()
+    logger.info("Creating residual plots")
+    input_data = select_metadata(input_data, var_type='prediction_residual')
+    if not input_data:
+        logger.warning(
+            "Creating box plot not possible, no 'prediction_residual' data "
+            "found")
+        return
+    plot_kwargs = mlr_plot.get_plot_kwargs(cfg, 'residual_plot')
+    grouped_datasets = group_metadata(input_data, 'mlr_model_name')
+    for (model_name, datasets) in grouped_datasets.items():
+        logger.debug("Plotting residual plots for MLR model '%s'", model_name)
+        cubes = iris.cube.CubeList()
 
-        # Calculate relative errors for every prediction
-        for pred_name in res_datasets:
+        # Plot residuals for every prediction
+        pred_groups = group_metadata(datasets, 'prediction_name')
+        for (pred_name, pred_datasets) in pred_groups.items():
             if pred_name is None:
                 pred_name = 'unnamed_prediction'
-            if pred_name not in abs_datasets:
+            if len(pred_datasets) > 1:
                 logger.warning(
-                    "No 'prediction_output' for '%s' of MLR model '%s' "
-                    "available, skipping it for relative error calculation",
-                    pred_name, model_name)
-                continue
-            if len(res_datasets[pred_name]) > 1:
-                logger.warning(
-                    "Multiple 'prediction_residual' for '%s' of MLR model "
-                    "'%s' given, using only first one (%s)", pred_name,
-                    model_name, res_datasets[pred_name][0]['filename'])
-            if len(abs_datasets[pred_name]) > 1:
-                logger.warning(
-                    "Multiple 'prediction_output' for '%s' of MLR model '%s' "
-                    "given, using only first one (%s)", pred_name, model_name,
-                    abs_datasets[pred_name][0]['filename'])
-            res_cube = iris.load_cube(res_datasets[pred_name][0]['filename'])
-            abs_cube = iris.load_cube(abs_datasets[pred_name][0]['filename'])
-            res_cube.data = np.ma.abs(res_cube.data)
-            res_cube.data /= abs_cube.data
-            ih.preprocess_cube_before_merging(res_cube, pred_name)
-            rel_error_cubes.append(res_cube)
+                    "Multiple 'prediction_residual' datasets for prediction "
+                    "'%s' of MLR model '%s' found, using only first one (%s)",
+                    pred_name, model_name, pred_datasets[0]['filename'])
+            cube = iris.load_cube(pred_datasets[0]['filename'])
 
-        # Merge cubes if possible
-        if not rel_error_cubes:
-            logger.warning(
-                "No relative errors available for MLR model '%s', skipping "
-                "relative error plotting", model_name)
-            continue
-        rel_error_cube = rel_error_cubes.merge_cube()
-        if len(rel_error_cubes) > 1:
-            rel_error_cube = rel_error_cube.collapsed(['cube_label'],
-                                                      iris.analysis.MEAN)
+            # Create plot
+            plot.global_contourf(cube, **plot_kwargs)
+            mlr_plot.process_pyplot_kwargs(cfg, 'residual_plot')
+            plot_path = get_plot_filename(f'{model_name}_{pred_name}_residual',
+                                          cfg)
+            plt.savefig(plot_path,
+                        bbox_inches='tight',
+                        orientation='landscape')
+            logger.info("Wrote %s", plot_path)
+            plt.close()
 
-        # Create plot
-        rel_error_plot = plot.global_contourf(rel_error_cube)
-        plot_path = get_plot_filename(f'{tag}_{model_name}_relative_error',
-                                      cfg)
+            # Append cube for merging
+            ih.preprocess_cube_before_merging(cube, pred_name)
+            cubes.append(cube)
+
+        # Merge cubes to create mean
+        mean_cube = cubes.merge_cube()
+        if len(cubes) > 1:
+            mean_cube = mean_cube.collapsed(['cube_label'], iris.analysis.MEAN)
+
+        # Create mean plot
+        plot.global_contourf(mean_cube, **plot_kwargs)
+        mlr_plot.process_pyplot_kwargs(cfg, 'residual_plot')
+        plot_path = get_plot_filename(
+            f'{model_name}_mean_of_predictions_residual', cfg)
         plt.savefig(plot_path, bbox_inches='tight', orientation='landscape')
         logger.info("Wrote %s", plot_path)
         plt.close()
@@ -159,15 +162,11 @@ def plot_relative_errors(cfg, datasets, tag):
 def main(cfg):
     """Run the diagnostic."""
     sns.set(**cfg.get('seaborn_settings', {}))
-    grouped_datasets = get_grouped_datasets(cfg)
+    input_data = mlr_plot.get_input_datasets(cfg)
 
-    # Process data
-    for (tag, datasets) in grouped_datasets.items():
-        logger.info("Processing tag '%s'", tag)
-
-        # Plots
-        plot_boxplot(cfg, datasets, tag)
-        plot_relative_errors(cfg, datasets, tag)
+    # Plots
+    plot_boxplot(cfg, input_data)
+    plot_residuals(cfg, input_data)
 
 
 # Run main function when this script is called
