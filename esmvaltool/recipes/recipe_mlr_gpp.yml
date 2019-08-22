@@ -329,7 +329,7 @@ diagnostics:
         ancestors: [
           'diag_gbrt_gpp/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
-        # ]
+        ]
         mean: ['time']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
