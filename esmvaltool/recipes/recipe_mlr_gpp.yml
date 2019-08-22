@@ -23,20 +23,20 @@ DATASET_ANCHOR: &datasets
   - {dataset: CanESM2}
   - {dataset: CCSM4}
   - {dataset: CESM1-BGC}
-  # - {dataset: CESM1-CAM5}
-  # - {dataset: CESM1-WACCM, ensemble: r2i1p1}
-  # - {dataset: GFDL-ESM2G}
-  # - {dataset: GFDL-ESM2M}
-  # - {dataset: HadGEM2-CC}
-  # - {dataset: HadGEM2-ES}
-  # - {dataset: inmcm4}
-  # - {dataset: IPSL-CM5A-LR}
-  # - {dataset: IPSL-CM5A-MR}
-  # - {dataset: IPSL-CM5B-LR}
-  # - {dataset: MIROC-ESM}
-  # - {dataset: MIROC-ESM-CHEM}
-  # - {dataset: NorESM1-M}
-  # - {dataset: NorESM1-ME}
+  - {dataset: CESM1-CAM5}
+  - {dataset: CESM1-WACCM, ensemble: r2i1p1}
+  - {dataset: GFDL-ESM2G}
+  - {dataset: GFDL-ESM2M}
+  - {dataset: HadGEM2-CC}
+  - {dataset: HadGEM2-ES}
+  - {dataset: inmcm4}
+  - {dataset: IPSL-CM5A-LR}
+  - {dataset: IPSL-CM5A-MR}
+  - {dataset: IPSL-CM5B-LR}
+  - {dataset: MIROC-ESM}
+  - {dataset: MIROC-ESM-CHEM}
+  - {dataset: NorESM1-M}
+  - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -308,28 +308,28 @@ diagnostics:
         coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_mlr_model_error:
           type: test
-        # grid_search_cv_kwargs:
-        #   cv: 5
-        # grid_search_cv_param_grid:
-        #   final__regressor__learning_rate:
-        #     [0.1, 0.08, 0.05]
-        #   final__regressor__max_depth:
-        #     [4, 6, 8]
+        grid_search_cv_kwargs:
+          cv: 5
+        grid_search_cv_param_grid:
+          final__regressor__learning_rate:
+            [0.12, 0.1, 0.08, 0.05]
+          final__regressor__max_depth:
+            [4, 6, 8]
         group_datasets_by_attributes: ['dataset']
         mlr_model_type: gbr_xgboost
         mlr_model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
-          n_estimators: 50
+          n_estimators: 1000
           subsample: 0.5
-          learning_rate: 0.1
-          max_depth: 8
+          # learning_rate: 0.1
+          # max_depth: 8
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
           'diag_gbrt_gpp/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
-        ]
+        # ]
         mean: ['time']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
@@ -340,12 +340,12 @@ diagnostics:
       gbrt:
         <<: *gbrt
         grid_search_cv_param_grid: false
-        pseudo_reality: ['dataset']
         parameters_final_regressor:
           n_estimators: 50
           subsample: 0.5
           learning_rate: 0.1
           max_depth: 8
+        pseudo_reality: ['dataset']
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
@@ -362,7 +362,13 @@ diagnostics:
       gbrt:
         <<: *gbrt
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        grid_search_cv_param_grid: false
         mlr_model_name: GBRT (single feature)
+        parameters_final_regressor:
+          n_estimators: 50
+          subsample: 0.5
+          learning_rate: 0.1
+          max_depth: 8
         pseudo_reality: ['dataset']
       postprocess:
         script: mlr/postprocess.py
@@ -432,8 +438,25 @@ diagnostics:
         script: mlr/plot.py
         ancestors: [
           'diag_gbrt_gpp/gbrt',
-          'diag_mmm_gpp/mmm',
           'diag_mlr_input_gpp/monthly_clim',
+        ]
+        abs_plot:
+          plot_kwargs:
+            cbar_label: 'GPP / tC km$^{-2}$ yr$^{-1}$'
+            cbar_range: [0, 6000, 100]
+        bias_plot:
+          plot_kwargs:
+            cbar_label: 'ΔGPP / tC km$^{-2}$ yr$^{-1}$'
+            cbar_range: [-2500, 2500, 100]
+        aliases:
+          label: CMIP5
+          feature: CMIP5
+          prediction_output: GBRT
+          prediction_input: MTE
+        ignore_var_types: [
+          'prediction_input_error',
+          'prediction_output_error',
+          'prediction_output_misc',
         ]
 
   diag_evaluate_residuals:
@@ -444,6 +467,7 @@ diagnostics:
         ancestors:
           [
             'diag_gbrt_gpp_pseudo_reality/gbrt',
+            'diag_gbrt_single_pred_gpp_pseudo_reality/gbrt',
             'diag_lasso_gpp_pseudo_reality/lasso',
             'diag_mmm_gpp_pseudo_reality/mmm',
           ]

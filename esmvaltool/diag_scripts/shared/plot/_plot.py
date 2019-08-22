@@ -5,6 +5,7 @@ import os
 import cartopy.crs as ccrs
 import iris.quickplot
 import matplotlib.pyplot as plt
+import numpy as np
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,11 @@ def get_dataset_style(dataset, style_file=None):
     return style[dataset]
 
 
-def global_contourf(cube, cbar_ticks=None, cbar_label=None, **kwargs):
+def global_contourf(cube,
+                    cbar_label=None,
+                    cbar_range=None,
+                    cbar_ticks=None,
+                    **kwargs):
     """Plot global map for a cube.
 
     Note
@@ -133,10 +138,13 @@ def global_contourf(cube, cbar_ticks=None, cbar_label=None, **kwargs):
     ----------
     cube : iris.cube.Cube
         Cube to plot.
-    cbar_ticks : list, optional
-        Ticks for the colorbar.
     cbar_label : str, optional
         Label for the colorbar.
+    cbar_range : list of float, optional
+        Range of the colorbar (first and second list element) and number of
+        distinct colors (third element). See :mod:`numpy.linspace`.
+    cbar_ticks : list, optional
+        Ticks for the colorbar.
     **kwargs
         Keyword argument for :mod:`iris.plot.contourf()`.
 
@@ -165,6 +173,9 @@ def global_contourf(cube, cbar_ticks=None, cbar_label=None, **kwargs):
         cube = cube.collapsed(coords, iris.analysis.MEAN)
 
     # Create plot
+    if cbar_range is not None:
+        levels = np.linspace(*cbar_range)
+        kwargs.update({'levels': levels})
     axes = plt.axes(projection=ccrs.Robinson(central_longitude=10))
     map_plot = iris.plot.contourf(cube, **kwargs)
 
@@ -173,7 +184,14 @@ def global_contourf(cube, cbar_ticks=None, cbar_label=None, **kwargs):
     axes.coastlines()
     axes.set_global()
     colorbar = plt.colorbar(orientation='horizontal', aspect=30)
-    if cbar_ticks is not None:
+    if cbar_range is not None:
+        ticks = np.linspace(*cbar_range[:2],
+                            10,
+                            endpoint=False,
+                            dtype=type(cbar_range[0]))
+        colorbar.set_ticks(ticks)
+        colorbar.set_ticklabels([str(tick) for tick in ticks])
+    elif cbar_ticks is not None:
         colorbar.set_ticks(cbar_ticks)
         colorbar.set_ticklabels([str(tick) for tick in cbar_ticks])
     if cbar_label is not None:
