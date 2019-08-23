@@ -214,6 +214,7 @@ def test_get_mean_cube(mock_load_cube):
         {'test': 'z', 'filename': 'c/d.nc'},
     ]
     cube = CUBE_1.copy([-4.0, 2.0, -4.0])
+    cube.coord(DIM_COORD_1).attributes = {'test': 1}
     cube.cell_methods = [iris.coords.CellMethod('mean', coords=LONG_NAME)]
     cubes = [CUBE_1, CUBE_2, cube]
     mock_load_cube.side_effect = cubes
@@ -367,6 +368,7 @@ def test_preprocess_cube_before_merging():
                                      var_name='cube_label',
                                      long_name='cube_label')
     cube_in = CUBE_1.copy()
+    cube_in.coord(DIM_COORD_1).attributes = {'test_attr': 1}
     cube_in.cell_methods = [iris.coords.CellMethod('mean', coords=LONG_NAME)]
     cube_out = iris.cube.Cube(
         np.ma.masked_invalid([-1.0, np.nan, 2.0]),

@@ -255,6 +255,8 @@ def preprocess_cube_before_merging(cube, cube_label):
     """
     cube.attributes = {}
     cube.cell_methods = ()
+    for coord in cube.coords(dim_coords=True):
+        coord.attributes = {}
     for coord in cube.coords(dim_coords=False):
         cube.remove_coord(coord)
     cube_label_coord = iris.coords.AuxCoord(cube_label,
