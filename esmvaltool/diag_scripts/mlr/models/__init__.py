@@ -1354,8 +1354,8 @@ class MLRModel():
                 categorical[tag] = True
             else:
                 logger.warning(
-                    "Cannot treat '%s' as categorical variable, "
-                    "feature not found", tag)
+                    "Cannot treat '%s' as categorical variable, feature not "
+                    "found", tag)
 
         # Check if features were found
         if not units:

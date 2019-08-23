@@ -308,29 +308,30 @@ diagnostics:
         coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_mlr_model_error:
           type: test
-        grid_search_cv_kwargs:
-          cv: 5
-        grid_search_cv_param_grid:
-          final__regressor__learning_rate:
-            [0.12, 0.1, 0.08, 0.05]
-          final__regressor__max_depth:
-            [4, 6, 8]
+        # grid_search_cv_kwargs:
+        #   cv: 5
+        # grid_search_cv_param_grid:
+        #   final__regressor__learning_rate:
+        #     [0.12, 0.1, 0.08, 0.05]
+        #   final__regressor__max_depth:
+        #     [4, 6, 8]
         group_datasets_by_attributes: ['dataset']
+        imputation_strategy: mean
         mlr_model_type: gbr_xgboost
         mlr_model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
-          n_estimators: 1000
+          n_estimators: 50
           subsample: 0.5
-          # learning_rate: 0.1
-          # max_depth: 8
+          learning_rate: 0.1
+          max_depth: 8
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
           'diag_gbrt_gpp/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['time']
+        mean: ['month_number']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
@@ -352,7 +353,7 @@ diagnostics:
           'diag_gbrt_gpp_pseudo_reality/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['time']
+        mean: ['month_number']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
@@ -376,7 +377,7 @@ diagnostics:
           'diag_gbrt_single_pred_gpp_pseudo_reality/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['time']
+        mean: ['month_number']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
@@ -411,7 +412,7 @@ diagnostics:
           'diag_mmm_gpp/mmm',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['time']
+        mean: ['month_number']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
@@ -427,7 +428,7 @@ diagnostics:
           'diag_mmm_gpp_pseudo_reality/mmm',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['time']
+        mean: ['month_number']
         sum: ['latitude', 'longitude']
         convert_units_to: Gt yr-1
 
