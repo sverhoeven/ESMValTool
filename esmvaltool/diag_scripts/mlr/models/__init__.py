@@ -1508,8 +1508,8 @@ class MLRModel():
         if self._cfg['imputation_strategy'] == 'remove':
             mask = x_data.isnull().any(axis=1).values
             logger.debug(
-                "Removing in total %i %s point(s) where at least one feature "
-                "is missing (because 'imputation_strategy'= True)", mask.sum(),
+                "Removing total %i %s point(s) where at least one feature is "
+                "missing (because 'imputation_strategy'= True)", mask.sum(),
                 data_type)
 
         return mask
@@ -2148,6 +2148,7 @@ class MLRModel():
 
     def _set_prediction_cube_attributes(self, cube, pred_type, pred_name=None):
         """Set the attributes of the prediction cube."""
+        cube.cell_methods = None
         cube.attributes = {
             'description': 'MLR model prediction',
             'mlr_model_name': self._cfg['mlr_model_name'],
