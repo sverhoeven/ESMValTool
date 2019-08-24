@@ -95,6 +95,9 @@ def _apply_aggregator(cfg, cube, data, coord_name, operation):
     aux_coords = [coord.name() for coord in cube.coords(dim_coords=False)]
     if coord_name in aux_coords:
         iris.util.promote_aux_coord_to_dim_coord(cube, coord_name)
+        stderr_cube = data.get('stderr', {}).get('cube')
+        if stderr_cube is not None:
+            iris.util.promote_aux_coord_to_dim_coord(stderr_cube, coord_name)
     return (cube, data)
 
 
@@ -164,7 +167,6 @@ def _calculate_slope_along_coord(cube, coord_name, return_stderr=False):
     if slope_stderr is not None:
         cube_stderr = cube.copy()
         cube_stderr.data = np.ma.masked_invalid(slope_stderr)
-        logger.debug("Calculated standard error of trend")
     else:
         cube_stderr = None
     return (cube, cube_stderr, units)
