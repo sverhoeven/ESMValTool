@@ -1210,13 +1210,14 @@ class MLRModel():
                 "Found %i raw prediction input error data point(s) with data "
                 "type '%s'", len(x_err.index), self._cfg['dtype'])
 
-        # Assign correct mask to cube
-        mask = x_pred.isnull().any(axis=1).values.reshape(x_cube.shape)
-        x_cube.data = np.ma.array(x_cube.data, mask=mask)
-
         # Remove missing values if necessary
-        (x_pred, x_err,
-         y_ref) = self._remove_missing_pred_input(x_pred, x_err, y_ref)
+        (x_pred, x_err, y_ref,
+         mask) = self._remove_missing_pred_input(x_pred, x_err, y_ref)
+
+        # Create cube with appropriate mask for output
+        mask = mask.reshape(x_cube.shape)
+        cube_data = np.empty(mask.shape, dtype=self._cfg['dtype'])
+        x_cube.data = np.ma.array(cube_data, mask=mask)
 
         return (x_pred, x_err, y_ref, x_cube)
 
@@ -1492,6 +1493,26 @@ class MLRModel():
         pool = mp.ProcessPool(processes=self._cfg['n_jobs'])
         return np.array(pool.map(_most_important_feature, x_pred.values),
                         dtype=self._cfg['dtype'])
+
+    def _get_mask(self, x_data, data_type):
+        """Get mask for missing features."""
+        x_regular = x_data[self.features[self.features_types == 'regular']]
+
+        # Get points where no regular feature is given
+        mask = x_regular.isnull().all(axis=1).values
+        logger.debug(
+            "Removing %i %s point(s) where all regular features are missing",
+            mask.sum(), data_type)
+
+        # Get other missing points if desired
+        if self._cfg['imputation_strategy'] == 'remove':
+            mask = x_data.isnull().any(axis=1).values
+            logger.debug(
+                "Removing in total %i %s point(s) where at least one feature "
+                "is missing (because 'imputation_strategy'= True)", mask.sum(),
+                data_type)
+
+        return mask
 
     def _get_prediction_dict(self, x_pred, x_err, y_ref, **kwargs):
         """Get prediction output in a dictionary."""
@@ -2048,12 +2069,10 @@ class MLRModel():
 
     def _remove_missing_features(self, x_data, y_data):
         """Remove missing values in the features data (if desired)."""
-        if self._cfg['imputation_strategy'] != 'remove':
-            return (x_data, y_data)
-        mask = x_data.isnull().any(axis=1).values
+        mask = self._get_mask(x_data, 'training')
         x_data = x_data[~mask].reset_index(drop=True)
         y_data = y_data[~mask].reset_index(drop=True)
-        diff = mask.shape[0] - len(y_data.index)
+        diff = mask.sum()
         if diff:
             msg = ('Removed %i training point(s) where features were '
                    'missing')
@@ -2067,20 +2086,18 @@ class MLRModel():
 
     def _remove_missing_pred_input(self, x_pred, x_err=None, y_ref=None):
         """Remove missing values in the prediction input data."""
-        if self._cfg['imputation_strategy'] != 'remove':
-            return (x_pred, x_err, y_ref)
-        mask = x_pred.isnull().any(axis=1).values
+        mask = self._get_mask(x_pred, 'prediction input')
         x_pred = x_pred[~mask].reset_index(drop=True)
         if x_err is not None:
             x_err = x_err[~mask].reset_index(drop=True)
         if y_ref is not None:
             y_ref = y_ref[~mask].reset_index(drop=True)
-        diff = mask.shape[0] - len(x_pred.index)
+        diff = mask.sum()
         if diff:
             logger.info(
                 "Removed %i prediction input point(s) where features were "
-                "missing'", diff)
-        return (x_pred, x_err, y_ref)
+                "missing", diff)
+        return (x_pred, x_err, y_ref, mask)
 
     def _save_prediction_cubes(self, pred_dict, pred_name, x_cube):
         """Save (multi-dimensional) prediction output."""
@@ -2281,7 +2298,7 @@ class MLRModel():
         mask = y_data.isnull().values
         new_x_data = x_data[~mask].reset_index(drop=True)
         new_y_data = y_data[~mask].reset_index(drop=True)
-        diff = len(y_data.index) - len(new_y_data.index)
+        diff = mask.sum()
         if diff:
             logger.info(
                 "Removed %i training point(s) where labels were missing", diff)
