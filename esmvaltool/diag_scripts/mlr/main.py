@@ -17,6 +17,8 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
+create_plots : bool, optional (default: True)
+    Create plots (Time intensive).
 group_metadata : str, optional
     Group input data by an attribute. For every group element (set of
     datasets), an individual MLR model is calculated. Only affects `feature`
@@ -25,6 +27,8 @@ group_metadata : str, optional
 model_type : str, optional (default: 'gbr_sklearn')
     MLR model type. The given model has to be defined in
     :mod:`esmvaltool.diag_scripts.mlr.models`.
+pattern : str, optional
+    Pattern matched against ancestor files.
 pseudo_reality : list of str, optional
     List of dataset attributes which are used to group input data for a pseudo-
     reality test (also known as 'model-as-truth' or 'perfect-model' setup). For
@@ -36,8 +40,6 @@ pseudo_reality : list of str, optional
     data in a training and test set, but not dividing the data randomly but
     using specific datasets, e.g. the different climate models). Cannot be used
     together with the option `group_metadata`.
-pattern : str, optional
-    Pattern matched against ancestor files.
 select_metadata : dict, optional
     Pre-select input data by specifying (key, value) pairs. Affects all
     datasets regardless of `var_type`.
@@ -222,6 +224,8 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
         mlr_model.print_regression_metrics()
 
         # Plots
+        if not cfg.get('create_plots', True):
+            continue
         mlr_model.plot_residuals()
         mlr_model.plot_prediction_errors()
         # mlr_model.plot_pairplots()

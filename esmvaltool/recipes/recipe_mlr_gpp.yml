@@ -284,10 +284,12 @@ diagnostics:
         grid_search_cv_kwargs:
           cv: 5
         grid_search_cv_param_grid:
-          final__regressor__learning_rate:
-            [0.12, 0.1, 0.08, 0.06, 0.04]
-          final__regressor__max_depth:
-            [6, 8]
+          final__regressor__n_estimators:
+            [1000, 2000, 3000, 4000]
+          # final__regressor__learning_rate:
+          #   [0.12, 0.1, 0.08, 0.06, 0.04]
+          # final__regressor__max_depth:
+          #   [6, 8]
         fit_kwargs:
           final__regressor__early_stopping_rounds: 10
         group_datasets_by_attributes: ['dataset']
@@ -296,10 +298,10 @@ diagnostics:
         mlr_model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
-          n_estimators: 1000
+          # n_estimators: 1000
           subsample: 0.5
-          # learning_rate: 0.1
-          # max_depth: 8
+          learning_rate: 0.1
+          max_depth: 8
         plot_units:
           't km-2 yr-1': 'tC km$^{-2}$ yr$^{-1}$'
       postprocess:
@@ -317,9 +319,10 @@ diagnostics:
     scripts:
       gbrt:
         <<: *gbrt
+        create_plots: false
         grid_search_cv_param_grid: false
         parameters_final_regressor:
-          n_estimators: 50
+          n_estimators: 1000
           subsample: 0.5
           learning_rate: 0.1
           max_depth: 8
@@ -340,10 +343,11 @@ diagnostics:
       gbrt:
         <<: *gbrt
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        create_plots: false
         grid_search_cv_param_grid: false
         mlr_model_name: GBRT (single feature)
         parameters_final_regressor:
-          n_estimators: 50
+          n_estimators: 1000
           subsample: 0.5
           learning_rate: 0.1
           max_depth: 8
@@ -365,6 +369,7 @@ diagnostics:
         script: mlr/main.py
         ancestors: ['diag_mlr_input_*/monthly_*']
         categorical_features: ['longitude', 'month_number']
+        create_plots: false
         coords_as_features: ['month_number', 'latitude', 'longitude']
         group_datasets_by_attributes: ['dataset']
         mlr_model_type: lasso_cv
