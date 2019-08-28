@@ -67,8 +67,8 @@ class MLRModel():
     error propagation given by LIME. Additionally, "true" values for
     `prediction_input` can be specified with `prediction_reference` datasets
     (together with the respective `prediction_name`). This allows an evaluation
-    of the performance of the MLR model by calculating residuals (predicted
-    minus true values).
+    of the performance of the MLR model by calculating residuals (true minus
+    predicted values).
 
     Adding new MLR models
     ---------------------
@@ -147,6 +147,8 @@ class MLRModel():
     pca : bool, optional (default: False)
         Preprocess numerical input features using PCA. Parameters for this
         pipeline step can be given via the `parameters` key.
+    plot_units : dict, optional
+        Replace specific units (keys) with other text (values) in plots.
     predict_kwargs : dict, optional
         Optional keyword arguments for the regressor's `predict()` function.
     propagate_input_errors : bool, optional (default: True)
@@ -154,6 +156,8 @@ class MLRModel():
     return_lime_importance : bool, optional (default: False)
         Return cube with feature importance given by LIME (Local Interpretable
         Model-agnostic Explanations) during prediction.
+    savefig_kwargs : dict, optional
+        Keyword arguments for :mod:`matplotlib.pyplot.savefig()`.
     seaborn_settings : dict, optional
         Options for seaborn's `set()` method (affects all plots), see
         <https://seaborn.pydata.org/generated/seaborn.set.html>.
@@ -255,6 +259,12 @@ class MLRModel():
         self._cfg.setdefault('n_jobs', 1)
         self._cfg.setdefault('parameters', {})
         self._cfg.setdefault('pca', False)
+        self._cfg.setdefault('plot_units', {})
+        self._cfg.setdefault('savefig_kwargs', {
+            'bbox_inches': 'tight',
+            'dpi': 300,
+            'orientation': 'landscape',
+        })
         self._cfg.setdefault('standardize_data', True)
         self._cfg.setdefault('test_size', 0.25)
         logger.info("Using imputation strategy '%s'",
@@ -624,9 +634,9 @@ class MLRModel():
             axes.set_xlabel('Relative Importance')
             new_filename = (filename.format(method=method) + '.' +
                             self._cfg['output_file_type'])
-            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
-            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-            logger.info("Wrote %s", new_path)
+            plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+            plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
+            logger.info("Wrote %s", plot_path)
             plt.close()
 
     def plot_lime(self, index=0, data_type='test', filename=None):
@@ -681,7 +691,7 @@ class MLRModel():
 
         # Plot
         explainer.as_pyplot_figure()
-        plt.savefig(plot_path, orientation='landscape', bbox_inches='tight')
+        plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
         logger.info("Wrote %s", plot_path)
         plt.close()
 
@@ -708,9 +718,9 @@ class MLRModel():
             sns.pairplot(data_frame)
             new_filename = (filename.format(data_type=data_type) + '.' +
                             self._cfg['output_file_type'])
-            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
-            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-            logger.info("Wrote %s", new_path)
+            plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+            plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
+            logger.info("Wrote %s", plot_path)
             plt.close()
 
     def plot_partial_dependences(self, filename=None):
@@ -741,14 +751,143 @@ class MLRModel():
                 **verbosity,
             )
             plt.title(f"Partial dependence ({self._cfg['mlr_model_name']})")
-            plt.xlabel(f'{feature_name} / {self.features_units[feature_name]}')
+            plt.xlabel(self._get_plot_feature(feature_name))
             plt.ylabel(f'Partial dependence on {self.label}')
             new_filename = (filename.format(feature=feature_name) + '.' +
                             self._cfg['output_file_type'])
-            new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
-            plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-            logger.info("Wrote %s", new_path)
+            plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+            plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
+            logger.info("Wrote %s", plot_path)
             plt.close()
+
+    def plot_prediction_errors(self, filename=None):
+        """Plot predicted vs. true values.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'prediction_errors')
+            Name of the plot file.
+
+        """
+        if not self._is_ready_for_plotting():
+            return
+        logger.info("Plotting prediction errors")
+        if filename is None:
+            filename = 'prediction_errors'
+        (_, axes) = plt.subplots()
+
+        # Get available datasets
+        data_to_plot = {
+            'train': {
+                'marker': 'o',
+                'color': 'blue',
+                's': 6,
+                'alpha': 0.5,
+            },
+        }
+        if 'test' in self.data:
+            data_to_plot['test'] = dict(data_to_plot['train'])
+            data_to_plot['test']['color'] = 'green'
+
+        # Create plot
+        for (data_type, plot_kwargs) in data_to_plot.items():
+            logger.debug("Plotting prediction error of '%s' data", data_type)
+            x_data = self.get_data_frame(data_type).x
+            y_true = self.get_y_array(data_type)
+            y_pred = self._clf.predict(x_data)
+            axes.scatter(y_true,
+                         y_pred,
+                         label=f'{data_type} data',
+                         **plot_kwargs)
+
+        # Plot appearance
+        lims = [
+            np.min([axes.get_xlim(), axes.get_ylim()]),
+            np.max([axes.get_xlim(), axes.get_ylim()]),
+        ]
+        axes.plot(lims, lims, linestyle='--', color='black', alpha=0.75)
+        axes.set_aspect('equal')
+        axes.set_xlim(lims)
+        axes.set_ylim(lims)
+        axes.set_title(f"Prediction errors ({self._cfg['mlr_model_name']})")
+        axes.set_xlabel(f'True {self._get_plot_label()}')
+        axes.set_ylabel(f'Predicted {self._get_plot_label()}')
+        legend = axes.legend(loc='center left',
+                             bbox_to_anchor=[1.05, 0.5],
+                             borderaxespad=0.0)
+
+        # Save plot
+        plot_path = os.path.join(
+            self._cfg['mlr_plot_dir'],
+            filename + '.' + self._cfg['output_file_type'],
+        )
+        savefig_kwargs = {
+            **self._cfg['savefig_kwargs'],
+            'additional_artists': [legend],
+        }
+        plt.savefig(plot_path, **savefig_kwargs)
+        logger.info("Wrote %s", plot_path)
+        plt.close()
+
+    def plot_residuals(self, filename=None):
+        """Plot residuals of training and test (if available) data.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'residuals')
+            Name of the plot file.
+
+        """
+        if not self._is_ready_for_plotting():
+            return
+        logger.info("Plotting residuals")
+        if filename is None:
+            filename = 'residuals'
+        (_, axes) = plt.subplots()
+
+        # Get available datasets
+        data_to_plot = {
+            'train': {
+                'marker': 'o',
+                'color': 'blue',
+                's': 6,
+                'alpha': 0.5,
+            },
+        }
+        if 'test' in self.data:
+            data_to_plot['test'] = dict(data_to_plot['train'])
+            data_to_plot['test']['color'] = 'green'
+
+        # Create plot
+        for (data_type, plot_kwargs) in data_to_plot.items():
+            logger.debug("Plotting residuals of '%s' data", data_type)
+            x_data = self.get_data_frame(data_type).x
+            y_true = self.get_y_array(data_type)
+            y_pred = self._clf.predict(x_data)
+            res = self._get_residuals(y_true, y_pred)
+            axes.scatter(y_pred, res, label=f'{data_type} data', **plot_kwargs)
+
+        # Plot appearance
+        axes.axhline(0.0, linestyle='--', color='black', alpha=0.75)
+        axes.set_title(f"Residuals ({self._cfg['mlr_model_name']})")
+        axes.set_xlabel(f'Predicted {self._get_plot_label()}')
+        axes.set_ylabel(f'Residuals of {self._get_plot_label()}')
+        legend = axes.legend(loc='center left',
+                             bbox_to_anchor=[1.05, 0.5],
+                             borderaxespad=0.0)
+
+        # Save plot
+        plot_path = os.path.join(
+            self._cfg['mlr_plot_dir'],
+            filename + '.' + self._cfg['output_file_type'],
+        )
+        savefig_kwargs = {
+            **self._cfg['savefig_kwargs'],
+            'additional_artists': [legend],
+        }
+        plt.savefig(plot_path, **savefig_kwargs)
+        logger.info("Wrote %s", plot_path)
+        plt.close()
 
     def plot_scatterplots(self, filename=None):
         """Plot scatterplots label vs. feature for every feature.
@@ -789,17 +928,18 @@ class MLRModel():
                           self.get_y_array('all'), '.')
                 legend = None
             axes.set_title(feature)
-            axes.set_xlabel(f'{feature} / {self.features_units[feature]}')
-            axes.set_ylabel(f'{self.label} / {self.label_units}')
-            new_path = os.path.join(
+            axes.set_xlabel(self._get_plot_feature(feature))
+            axes.set_ylabel(self._get_plot_label())
+            plot_path = os.path.join(
                 self._cfg['mlr_plot_dir'],
                 filename.format(feature=feature) + '.' +
                 self._cfg['output_file_type'])
-            plt.savefig(new_path,
-                        orientation='landscape',
-                        bbox_inches='tight',
-                        additional_artists=[legend])
-            logger.info("Wrote %s", new_path)
+            savefig_kwargs = {
+                **self._cfg['savefig_kwargs'],
+                'additional_artists': [legend],
+            }
+            plt.savefig(plot_path, **savefig_kwargs)
+            logger.info("Wrote %s", plot_path)
             plt.close()
 
     def predict(self, **kwargs):
@@ -882,7 +1022,7 @@ class MLRModel():
             if data_type not in self.data:
                 continue
             logger.info("Evaluating regression metrics for %s data", data_type)
-            x_data = self.get_x_array(data_type)
+            x_data = self.get_data_frame(data_type).x
             y_true = self.get_y_array(data_type)
             y_pred = self._clf.predict(x_data)
             y_norm = np.std(y_true)
@@ -1108,7 +1248,7 @@ class MLRModel():
         # Test data set
         if err_type == 'test':
             if 'test' in self.data:
-                y_pred = self._clf.predict(self.get_x_array('test'))
+                y_pred = self._clf.predict(self.get_data_frame('test').x)
                 error = metrics.mean_squared_error(self.get_y_array('test'),
                                                    y_pred)
             else:
@@ -1514,10 +1654,23 @@ class MLRModel():
 
         return mask
 
+    def _get_plot_feature(self, feature):
+        """Get `str` of selected `feature` and respective units."""
+        units = self._get_plot_units(self.features_units[feature])
+        return f'{feature} / {units}'
+
+    def _get_plot_label(self):
+        """Get `str` of label and respective units."""
+        return f'{self.label} / {self._get_plot_units(self.label_units)}'
+
+    def _get_plot_units(self, units):
+        """Get plot units version of specified `units`."""
+        return self._cfg['plot_units'].get(str(units), str(units))
+
     def _get_prediction_dict(self, x_pred, x_err, y_ref, **kwargs):
         """Get prediction output in a dictionary."""
         logger.info("Predicting %i point(s)", len(x_pred.index))
-        y_preds = self._clf.predict(x_pred.values, **kwargs)
+        y_preds = self._clf.predict(x_pred, **kwargs)
         pred_dict = self._prediction_to_dict(y_preds, **kwargs)
 
         # Estimate error of MLR model itself
@@ -1540,7 +1693,7 @@ class MLRModel():
             y_ref = y_ref.values
             if y_ref.ndim == 2 and y_ref.shape[1] == 1:
                 y_ref = np.squeeze(y_ref, axis=1)
-            pred_dict['residual'] = self._get_residuals(pred_dict[None], y_ref)
+            pred_dict['residual'] = self._get_residuals(y_ref, pred_dict[None])
 
         # Return dictionary
         for pred_type in pred_dict:
@@ -2017,7 +2170,7 @@ class MLRModel():
         elif pred_type == 'residual':
             var_name += suffix
             long_name += ' (residual)'
-            attributes['residual'] = 'predicted minus true values'
+            attributes['residual'] = 'true minus predicted values'
             attributes['var_type'] = 'prediction_residual'
         else:
             logger.warning(
@@ -2281,10 +2434,10 @@ class MLRModel():
         return 'unnamed' if string is None else string
 
     @staticmethod
-    def _get_residuals(y_pred, y_true):
-        """Calculate residuals (predicted minus true values)."""
+    def _get_residuals(y_true, y_pred):
+        """Calculate residuals (true minus predicted values)."""
         logger.info("Calculating residuals")
-        return y_pred - y_true
+        return y_true - y_pred
 
     @staticmethod
     def _group_prediction_datasets(datasets):

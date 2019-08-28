@@ -21,10 +21,7 @@ DATASET_ANCHOR: &datasets
   - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
   - {dataset: CanESM2}
-  - {dataset: CCSM4}
   - {dataset: CESM1-BGC}
-  - {dataset: CESM1-CAM5}
-  - {dataset: CESM1-WACCM, ensemble: r2i1p1}
   - {dataset: GFDL-ESM2G}
   - {dataset: GFDL-ESM2M}
   - {dataset: HadGEM2-CC}
@@ -35,7 +32,6 @@ DATASET_ANCHOR: &datasets
   - {dataset: IPSL-CM5B-LR}
   - {dataset: MIROC-ESM}
   - {dataset: MIROC-ESM-CHEM}
-  - {dataset: NorESM1-M}
   - {dataset: NorESM1-ME}
 
 
@@ -285,23 +281,27 @@ diagnostics:
         coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_mlr_model_error:
           type: test
-        # grid_search_cv_kwargs:
-        #   cv: 5
-        # grid_search_cv_param_grid:
-        #   final__regressor__learning_rate:
-        #     [0.12, 0.1, 0.08, 0.05]
-        #   final__regressor__max_depth:
-        #     [4, 6, 8]
+        grid_search_cv_kwargs:
+          cv: 5
+        grid_search_cv_param_grid:
+          final__regressor__learning_rate:
+            [0.12, 0.1, 0.08, 0.06, 0.04]
+          final__regressor__max_depth:
+            [6, 8]
+        fit_kwargs:
+          final__regressor__early_stopping_rounds: 10
         group_datasets_by_attributes: ['dataset']
         imputation_strategy: constant
         mlr_model_type: gbr_xgboost
         mlr_model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
-          n_estimators: 50
+          n_estimators: 1000
           subsample: 0.5
-          learning_rate: 0.1
-          max_depth: 8
+          # learning_rate: 0.1
+          # max_depth: 8
+        plot_units:
+          't km-2 yr-1': 'tC km$^{-2}$ yr$^{-1}$'
       postprocess:
         script: mlr/postprocess.py
         ancestors: [

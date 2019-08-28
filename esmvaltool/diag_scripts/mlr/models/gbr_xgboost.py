@@ -23,12 +23,12 @@ class XGBoostGBRModel(GBRModel):
 
     _CLF_TYPE = XGBRegressor
 
-    def plot_prediction_error(self, filename=None):
-        """Plot prediction error for training and (if possible) test data.
+    def plot_training_progress(self, filename=None):
+        """Plot training progress for training and (if possible) test data.
 
         Parameters
         ----------
-        filename : str, optional (default: 'prediction_error')
+        filename : str, optional (default: 'training_progress')
             Name of the plot file.
 
         """
@@ -38,7 +38,7 @@ class XGBoostGBRModel(GBRModel):
         test_score = None
         if 'test' in self.data:
             test_score = evals_result['validation_1']['rmse']
-        self._plot_prediction_error(train_score, test_score, filename)
+        self._plot_training_progress(train_score, test_score, filename)
 
     def _update_fit_kwargs(self, fit_kwargs):
         """Add transformed training and test data as fit kwargs."""
@@ -74,5 +74,5 @@ class XGBoostGBRModel(GBRModel):
         })
         logger.debug(
             "Updated keyword arguments of fit() function with training and "
-            "(if possible) test datasets for evaluation of prediction error")
+            "(if possible) test datasets for evaluation of prediction errors")
         return fit_kwargs

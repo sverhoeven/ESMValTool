@@ -222,6 +222,8 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
         mlr_model.print_regression_metrics()
 
         # Plots
+        mlr_model.plot_residuals()
+        mlr_model.plot_prediction_errors()
         # mlr_model.plot_pairplots()
         # mlr_model.plot_scatterplots()
         # if not cfg.get('accept_only_scalar_data'):
@@ -229,7 +231,7 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
         # #     # mlr_model.plot_partial_dependences()
         # if 'gbr' in model_type:
         #     mlr_model.plot_gbr_feature_importance()
-        #     mlr_model.plot_prediction_error()
+        #     mlr_model.plot_training_progress()
         # if 'gpr' in model_type and not cfg.get('accept_only_scalar_data'):
         #     mlr_model.print_kernel_info()
 

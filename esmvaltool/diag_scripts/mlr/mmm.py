@@ -163,7 +163,7 @@ def get_residual_cube(mm_cube, ref_cube):
         return None
     res_cube = mm_cube.copy()
     res_cube.data -= ref_cube.data
-    res_cube.attributes['residuals'] = 'predicted minus true values'
+    res_cube.attributes['residuals'] = 'true minus predicted values'
     res_cube.attributes['var_type'] = 'prediction_residual'
     res_cube.var_name += '_residual'
     res_cube.long_name += ' (residual)'

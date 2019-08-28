@@ -24,12 +24,12 @@ class SklearnGBRModel(GBRModel):
 
     _CLF_TYPE = GradientBoostingRegressor
 
-    def plot_prediction_error(self, filename=None):
-        """Plot prediction error for training and (if possible) test data.
+    def plot_training_progress(self, filename=None):
+        """Plot training progress for training and (if possible) test data.
 
         Parameters
         ----------
-        filename : str, optional (default: 'prediction_error')
+        filename : str, optional (default: 'training_progress')
             Name of the plot file.
 
         """
@@ -42,4 +42,4 @@ class SklearnGBRModel(GBRModel):
             y_test = self._clf.transform_target_only(self.get_y_array('test'))
             for (idx, y_pred) in enumerate(clf.staged_predict(x_test)):
                 test_score[idx] = clf.loss_(y_test, y_pred)
-        self._plot_prediction_error(train_score, test_score, filename)
+        self._plot_training_progress(train_score, test_score, filename)

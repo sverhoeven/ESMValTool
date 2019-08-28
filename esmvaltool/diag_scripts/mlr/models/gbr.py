@@ -63,21 +63,21 @@ class GBRModel(MLRModel):
         axes.set_yticks(pos)
         axes.set_yticklabels(y_tick_labels)
         new_filename = filename + '.' + self._cfg['output_file_type']
-        new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
-        plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-        logger.info("Wrote %s", new_path)
+        plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+        plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
+        logger.info("Wrote %s", plot_path)
         plt.close()
 
-    def _plot_prediction_error(self,
-                               train_score,
-                               test_score=None,
-                               filename=None):
-        """Plot prediction error during fitting."""
+    def _plot_training_progress(self,
+                                train_score,
+                                test_score=None,
+                                filename=None):
+        """Plot training progress during fitting."""
         if not self._is_ready_for_plotting():
             return
-        logger.info("Plotting prediction error")
+        logger.info("Plotting training progress for GBR model")
         if filename is None:
-            filename = 'prediction_error'
+            filename = 'training_progress'
         (_, axes) = plt.subplots()
         x_values = np.arange(len(train_score), dtype=np.float64) + 1.0
 
@@ -94,7 +94,7 @@ class GBRModel(MLRModel):
         axes.set_xlabel('Boosting Iterations')
         axes.set_ylabel('Deviance')
         new_filename = filename + '.' + self._cfg['output_file_type']
-        new_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
-        plt.savefig(new_path, orientation='landscape', bbox_inches='tight')
-        logger.info("Wrote %s", new_path)
+        plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
+        plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
+        logger.info("Wrote %s", plot_path)
         plt.close()
