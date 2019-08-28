@@ -26,6 +26,8 @@ residual_plot : dict, optional
     Specify additional keyword arguments for the residual plot function by
     `plot_kwargs` and plot appearance options by `pyplot_kwargs` (processed as
     functions of :mod:`matplotlib.pyplot`).
+savefig_kwargs : dict, optional
+    Keyword arguments for :mod:`matplotlib.pyplot.savefig()`.
 seaborn_settings : dict, optional
     Options for seaborn's `set()` method (affects all plots), see
     <https://seaborn.pydata.org/generated/seaborn.set.html>.
@@ -97,7 +99,7 @@ def plot_boxplot(cfg, input_data):
 
     # Save plot
     plot_path = get_plot_filename('boxplot', cfg)
-    plt.savefig(plot_path, bbox_inches='tight', orientation='landscape')
+    plt.savefig(plot_path, **mlr_plot.get_savefig_kwargs(cfg))
     logger.info("Wrote %s", plot_path)
     plt.close()
 
@@ -108,8 +110,8 @@ def plot_residuals(cfg, input_data):
     input_data = select_metadata(input_data, var_type='prediction_residual')
     if not input_data:
         logger.warning(
-            "Creating box plot not possible, no 'prediction_residual' data "
-            "found")
+            "Creating residual plot not possible, no 'prediction_residual' "
+            "data found")
         return
     plot_kwargs = mlr_plot.get_plot_kwargs(cfg, 'residual_plot')
     grouped_datasets = group_metadata(input_data, 'mlr_model_name')
@@ -134,9 +136,7 @@ def plot_residuals(cfg, input_data):
             mlr_plot.process_pyplot_kwargs(cfg, 'residual_plot')
             plot_path = get_plot_filename(f'{model_name}_{pred_name}_residual',
                                           cfg)
-            plt.savefig(plot_path,
-                        bbox_inches='tight',
-                        orientation='landscape')
+            plt.savefig(plot_path, **mlr_plot.get_savefig_kwargs(cfg))
             logger.info("Wrote %s", plot_path)
             plt.close()
 
@@ -154,7 +154,7 @@ def plot_residuals(cfg, input_data):
         mlr_plot.process_pyplot_kwargs(cfg, 'residual_plot')
         plot_path = get_plot_filename(
             f'{model_name}_mean_of_predictions_residual', cfg)
-        plt.savefig(plot_path, bbox_inches='tight', orientation='landscape')
+        plt.savefig(plot_path, **mlr_plot.get_savefig_kwargs(cfg))
         logger.info("Wrote %s", plot_path)
         plt.close()
 

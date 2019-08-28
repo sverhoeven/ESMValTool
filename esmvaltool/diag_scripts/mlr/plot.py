@@ -29,6 +29,8 @@ ignore_var_types : list of str, optional
     Ignore `var_type`.
 pattern : str, optional
     Pattern matched against ancestor files.
+savefig_kwargs : dict, optional
+    Keyword arguments for :mod:`matplotlib.pyplot.savefig()`.
 seaborn_settings : dict, optional
     Options for seaborn's `set()` method (affects all plots), see
     <https://seaborn.pydata.org/generated/seaborn.set.html>.
@@ -111,6 +113,18 @@ def get_plot_kwargs(cfg, option):
     return cfg.get(option, {}).get('plot_kwargs', {})
 
 
+def get_savefig_kwargs(cfg):
+    """Get keyword arguments for :mod:`matplotlib.pyplot.savefig()`."""
+    if 'savefig_kwargs' in cfg:
+        return cfg['savefig_kwargs']
+    savefig_kwargs = {
+        'bbox_inches': 'tight',
+        'dpi': 300,
+        'orientation': 'landscape',
+    }
+    return savefig_kwargs
+
+
 def process_pyplot_kwargs(cfg, option):
     """Process functions for :mod:`matplotlib.pyplot`."""
     for (key, val) in cfg.get(option, {}).get('pyplot_kwargs', {}).items():
@@ -139,7 +153,7 @@ def plot_abs(cfg, cube_dict):
 
         # Save plot
         plot_path = get_plot_filename(f'abs_{key}', cfg)
-        plt.savefig(plot_path, bbox_inches='tight', orientation='landscape')
+        plt.savefig(plot_path, **get_savefig_kwargs(cfg))
         logger.info("Wrote %s", plot_path)
         plt.close()
 
@@ -180,7 +194,7 @@ def plot_biases(cfg, cube_dict):
 
         # Save plot
         plot_path = get_plot_filename(f'bias_{key_1}-{key_2}', cfg)
-        plt.savefig(plot_path, bbox_inches='tight', orientation='landscape')
+        plt.savefig(plot_path, **get_savefig_kwargs(cfg))
         logger.info("Wrote %s", plot_path)
         plt.close()
 
