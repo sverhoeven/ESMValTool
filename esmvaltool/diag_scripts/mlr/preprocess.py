@@ -186,15 +186,7 @@ def _get_area_weights(cfg, cube):
     """Calculate area weights."""
     area_weights = None
     if cfg.get('area_weighted', True):
-        for coord in cube.coords(dim_coords=True):
-            if not coord.has_bounds():
-                logger.debug("Guessing bounds of coordinate '%s' of cube",
-                             coord.name())
-                logger.debug(cube)
-                coord.guess_bounds()
-        if _has_valid_coords(cube, ['latitude', 'longitude']):
-            logger.debug("Calculating area weights")
-            area_weights = iris.analysis.cartography.area_weights(cube)
+        area_weights = mlr.get_area_weights(cube)
     return area_weights
 
 
@@ -226,34 +218,8 @@ def _get_time_weights(cfg, cube):
     """Calculate time weights."""
     time_weights = None
     if cfg.get('time_weighted', True):
-        for coord in cube.coords(dim_coords=True):
-            if not coord.has_bounds():
-                logger.debug("Guessing bounds of coordinate '%s' of cube",
-                             coord.name())
-                logger.debug(cube)
-                coord.guess_bounds()
-        if _has_valid_coords(cube, ['time']):
-            logger.debug("Calculating time weights")
-            time = cube.coord('time')
-            time_weights = time.bounds[:, 1] - time.bounds[:, 0]
-            new_axis_pos = np.delete(np.arange(cube.ndim),
-                                     cube.coord_dims('time'))
-            for idx in new_axis_pos:
-                time_weights = np.expand_dims(time_weights, idx)
-            time_weights = np.broadcast_to(time_weights, cube.shape)
+        time_weights = mlr.get_time_weights(cube)
     return time_weights
-
-
-def _has_valid_coords(cube, coord_names):
-    """Check if a cube has valid coordinates (length > 1)."""
-    for coord_name in coord_names:
-        try:
-            coord = cube.coord(coord_name)
-        except iris.exceptions.CoordinateNotFoundError:
-            return False
-        if coord.shape[0] <= 1:
-            return False
-    return True
 
 
 def _remove_axis(data, axis=None):

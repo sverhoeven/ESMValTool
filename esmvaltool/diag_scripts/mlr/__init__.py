@@ -6,6 +6,8 @@ import re
 from copy import deepcopy
 from pprint import pformat
 
+import iris
+import numpy as np
 from cf_units import Unit
 from sklearn.base import clone
 from sklearn.compose import TransformedTargetRegressor
@@ -304,6 +306,33 @@ def get_absolute_time_units(units):
     return units
 
 
+def get_area_weights(cube, normalize=False):
+    """Get area weights of cube if possible."""
+    cube_str = cube.summary(shorten=True)
+    logger.debug("Calculating area weights of cube %s", cube_str)
+    for coord_name in ('latitude', 'longitude'):
+        try:
+            coord = cube.coord(coord_name)
+        except iris.exceptions.CoordinateNotFoundError:
+            logger.warning(
+                "Calculation of area weights for cube %s failed, coordinate "
+                "'%s' not found", cube_str, coord_name)
+            return None
+        if coord.shape[0] <= 1:
+            logger.warning(
+                "Calculation of area weights for cube %s failed, coordinate "
+                "'%s' has length %i, needs to be > 1", cube_str, coord_name,
+                coord.shape[0])
+            return None
+        if not coord.has_bounds():
+            logger.debug("Guessing bounds of coordinate '%s' of cube %s",
+                         coord_name, cube_str)
+            coord.guess_bounds()
+    area_weights = iris.analysis.cartography.area_weights(cube,
+                                                          normalize=normalize)
+    return area_weights
+
+
 def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
     """Get input data and check MLR attributes if desired.
 
@@ -344,6 +373,36 @@ def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
     logger.debug("Found files:")
     logger.debug(pformat([d['filename'] for d in valid_datasets]))
     return valid_datasets
+
+
+def get_time_weights(cube, normalize=False):
+    """Get time weights of cube if possible."""
+    cube_str = cube.summary(shorten=True)
+    logger.debug("Calculating time weights of cube %s", cube_str)
+    try:
+        coord = cube.coord('time')
+    except iris.exceptions.CoordinateNotFoundError:
+        logger.warning(
+            "Calculation of time weights for cube %s failed, coordinate "
+            "'time' not found", cube_str)
+        return None
+    if coord.shape[0] <= 1:
+        logger.warning(
+            "Calculation of time weights for cube %s failed, coordinate "
+            "'time' has length %i, needs to be > 1", cube_str, coord.shape[0])
+        return None
+    if not coord.has_bounds():
+        logger.debug("Guessing bounds of coordinate 'time' of cube %s",
+                     cube_str)
+        coord.guess_bounds()
+    time_weights = coord.bounds[:, 1] - coord.bounds[:, 0]
+    if normalize:
+        time_weights /= np.ma.sum(time_weights)
+    new_axis_pos = np.delete(np.arange(cube.ndim), cube.coord_dims('time'))
+    for idx in new_axis_pos:
+        time_weights = np.expand_dims(time_weights, idx)
+    time_weights = np.broadcast_to(time_weights, cube.shape)
+    return time_weights
 
 
 def units_power(units, power):
