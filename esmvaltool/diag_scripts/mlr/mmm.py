@@ -33,6 +33,9 @@ import os
 from pprint import pformat
 
 import iris
+import numpy as np
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import LeaveOneOut
 
 import esmvaltool.diag_scripts.shared.iris_helpers as ih
 from esmvaltool.diag_scripts import mlr
@@ -80,6 +83,39 @@ def convert_units(cfg, cube, data):
         except ValueError:
             logger.warning("Cannot convert units from '%s' to '%s'",
                            cube.units, units_to)
+
+
+def get_error_cube(cfg, datasets):
+    """Estimate prediction error using cross-validation."""
+    loo = LeaveOneOut()
+    datasets = np.array(datasets)
+    errors = []
+    for (train_idx, test_idx) in loo.split(datasets):
+        ref_cube = get_mm_cube(cfg, datasets[test_idx])
+        mm_cube = get_mm_cube(cfg, datasets[train_idx])
+
+        # Apply mask
+        mask = np.ma.getmaskarray(ref_cube.data).ravel()
+        mask |= np.ma.getmaskarray(mm_cube.data).ravel()
+        y_true = ref_cube.data.ravel()[~mask]
+        y_pred = mm_cube.data.ravel()[~mask]
+        weights = mlr.get_area_weights(ref_cube).ravel()[~mask]
+
+        # Calculate mean squared error
+        error = mean_squared_error(y_true, y_pred, sample_weight=weights)
+        errors.append(error)
+
+    # Get error cube
+    error_cube = get_mm_cube(cfg, datasets)
+    error_array = np.empty(error_cube.shape).ravel()
+    mask = np.ma.getmaskarray(error_cube).ravel()
+    error_array[mask] = np.nan
+    error_array[~mask] = np.mean(errors)
+    error_array = np.ma.masked_invalid(error_array)
+    error_cube.data = error_array.reshape(error_cube.shape)
+    error_cube.attributes['var_type'] = 'prediction_output_error'
+    error_cube.units = mlr.units_power(error_cube.units, 2)
+    return error_cube
 
 
 def get_grouped_data(cfg, input_data=None):
@@ -154,7 +190,6 @@ def get_reference_dataset(datasets, tag):
 
 def get_residual_cube(mm_cube, ref_cube):
     """Calculate residuals."""
-    logger.info("Calculating residuals")
     if mm_cube.shape != ref_cube.shape:
         logger.warning(
             "Shapes of 'label' and 'prediction_reference' data differs, "
@@ -173,7 +208,7 @@ def get_residual_cube(mm_cube, ref_cube):
 def main(cfg, input_data=None, description=None):
     """Run the diagnostic."""
     grouped_data = get_grouped_data(cfg, input_data=input_data)
-    descr = '' if description is None else f'_for_{description}'
+    description = '' if description is None else f'_for_{description}'
     if not grouped_data:
         logger.error("No input data found")
         return
@@ -189,12 +224,30 @@ def main(cfg, input_data=None, description=None):
         logger.info("Calculating multi-model mean")
         mm_cube = get_mm_cube(cfg, datasets)
         add_general_attributes(mm_cube, tag=tag, prediction_name=pred_name)
-        mm_path = get_diagnostic_filename(f'mmm_{tag}_prediction{descr}', cfg)
+        mm_path = get_diagnostic_filename(f'mmm_{tag}_prediction{description}',
+                                          cfg)
         io.iris_save(mm_cube, mm_path)
+
+        # Estimate prediction error using cross-validation
+        if len(datasets) < 2:
+            logger.warning(
+                "Estimating prediction error using cross-validation not "
+                "possible, at least 2 datasets are needed, only %i is given",
+                len(datasets))
+        else:
+            logger.info("Estimating prediction error using cross-validation")
+            err_cube = get_error_cube(cfg, datasets)
+            add_general_attributes(err_cube,
+                                   tag=tag,
+                                   prediction_name=pred_name)
+            err_path = mm_path.replace('_prediction',
+                                       '_squared_prediction_error')
+            io.iris_save(err_cube, err_path)
 
         # Calculate residuals
         if ref_dataset is None:
             continue
+        logger.info("Calculating residuals")
         ref_cube = iris.load_cube(ref_dataset['filename'])
         res_cube = get_residual_cube(mm_cube, ref_cube)
         add_general_attributes(res_cube, tag=tag, prediction_name=pred_name)
