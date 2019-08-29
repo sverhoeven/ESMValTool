@@ -17,8 +17,6 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
-create_plots : bool, optional (default: True)
-    Create plots (Time intensive).
 group_metadata : str, optional
     Group input data by an attribute. For every group element (set of
     datasets), an individual MLR model is calculated. Only affects `feature`
@@ -27,6 +25,9 @@ group_metadata : str, optional
 model_type : str, optional (default: 'gbr_sklearn')
     MLR model type. The given model has to be defined in
     :mod:`esmvaltool.diag_scripts.mlr.models`.
+only_predict : bool, optional (default: False)
+    If `True`, only use `predict()` function of MLR model and do not create any
+    other output (CSV files, plots, etc.).
 pattern : str, optional
     Pattern matched against ancestor files.
 pseudo_reality : list of str, optional
@@ -217,15 +218,19 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
             mlr_model.fit()
         mlr_model.predict()
 
-        # Output
+        # Skip further output if desired
+        if cfg.get('only_predict'):
+            continue
+
+        # CSV export
         mlr_model.export_training_data()
         mlr_model.export_prediction_data()
+
+        # Print information
         mlr_model.print_correlation_matrices()
         mlr_model.print_regression_metrics()
 
         # Plots
-        if not cfg.get('create_plots', True):
-            continue
         mlr_model.plot_residuals()
         mlr_model.plot_prediction_errors()
         # mlr_model.plot_pairplots()
