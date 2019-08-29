@@ -233,7 +233,7 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
         # Plots
         mlr_model.plot_residuals()
         mlr_model.plot_prediction_errors()
-        # mlr_model.plot_pairplots()
+        mlr_model.plot_pairplots()
         mlr_model.plot_scatterplots()
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
