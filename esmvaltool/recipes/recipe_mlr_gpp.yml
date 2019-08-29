@@ -320,7 +320,7 @@ diagnostics:
         grid_search_cv_param_grid: false
         only_predict: true
         parameters_final_regressor:
-          n_estimators: 1000
+          n_estimators: 500
           subsample: 0.5
           learning_rate: 0.1
           max_depth: 8
@@ -345,7 +345,7 @@ diagnostics:
         mlr_model_name: GBRT (single feature)
         only_predict: true
         parameters_final_regressor:
-          n_estimators: 1000
+          n_estimators: 500
           subsample: 0.5
           learning_rate: 0.1
           max_depth: 8

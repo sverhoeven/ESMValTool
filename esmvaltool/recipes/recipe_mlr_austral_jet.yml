@@ -116,8 +116,12 @@ diagnostics:
     scripts:
       multiple_mlr_models:
         script: mlr/main.py
-        ancestors: ['feature_*', 'prediction_input_*', 'label',
-                    'diag_external_ua/*']
+        ancestors: [
+          'feature_*',
+          'prediction_input_*',
+          'label',
+          'diag_external_ua/*',
+        ]
         coords_as_features: ['air_pressure', 'latitude', 'longitude']
         group_metadata: dataset
         imputation_strategy: mean
@@ -128,15 +132,19 @@ diagnostics:
           max_depth: 4
           min_samples_split: 2
           n_estimators: 400
-      # single_mlr_model:
-      #   script: mlr/main.py
-      #   ancestors: ['feature_*', 'prediction_input_*', 'label',
-      #               'diag_external_ua/*']
-      #   coords_as_features: ['air_pressure', 'latitude', 'longitude']
-      #   mlr_model_type: gbr_sklearn
-      #   imputation_strategy: mean
-      #   group_datasets_by_attributes: ['dataset']
-      #   parameters_final_regressor: *params
+      single_mlr_model:
+        script: mlr/main.py
+        ancestors: [
+          'feature_*',
+          'prediction_input_*',
+          'label',
+          'diag_external_ua/*',
+        ]
+        coords_as_features: ['air_pressure', 'latitude', 'longitude']
+        mlr_model_type: gbr_sklearn
+        imputation_strategy: mean
+        group_datasets_by_attributes: ['dataset']
+        parameters_final_regressor: *params
 
   diag_austral_jet_position:
     description: Calculate Austral Jet position.
@@ -145,5 +153,5 @@ diagnostics:
         script: austral_jet/calc_jet_position.py
         ancestors: [
           'diag_mlr/multiple_mlr_models',
-          # 'diag_mlr/single_mlr_model',
+          'diag_mlr/single_mlr_model',
         ]
