@@ -83,6 +83,8 @@ class MLRModel():
         'group_datasets_by_attributes should be given.
     allow_missing_features : bool, optional (default: False)
         Allow missing features in the training data.
+    area_weighted_samples : bool, optional (default: True)
+        Use area weights of grid cells as sample weights during the training.
     cache_intermediate_results : bool, optional (default: True)
         Cache the intermediate results of the pipeline's transformers.
     coords_as_features : list, optional
@@ -251,6 +253,7 @@ class MLRModel():
         self._parameters = {}
 
         # Default settings
+        self._cfg.setdefault('area_weighted_samples', True)
         self._cfg.setdefault('cache_intermediate_results', True)
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('estimate_mlr_model_error', {})
@@ -411,7 +414,15 @@ class MLRModel():
             self._save_csv_file(data_type, filename)
 
     def fit(self):
-        """Fit MLR model."""
+        """Fit MLR model.
+
+        Note
+        ----
+        Specifying keyword arguments for the `fit()` function is not allowed
+        here since `self.features_after_preprocessing` might be altered by
+        that. Use the option `fit_kwargs` in the recipe instead.
+
+        """
         if not self._clf_is_valid(text='Fitting MLR model'):
             return
         logger.info(
@@ -714,8 +725,8 @@ class MLRModel():
         for data_type in ('all', 'train', 'test'):
             if data_type not in self.data:
                 continue
-            data_frame = self._impute_nans(self.data[data_type])
-            sns.pairplot(data_frame)
+            data_frame = self.get_data_frame(data_type, impute_nans=True)
+            sns.pairplot(data_frame[['x', 'y']])
             new_filename = (filename.format(data_type=data_type) + '.' +
                             self._cfg['output_file_type'])
             plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
@@ -792,7 +803,7 @@ class MLRModel():
         # Create plot
         for (data_type, plot_kwargs) in data_to_plot.items():
             logger.debug("Plotting prediction error of '%s' data", data_type)
-            x_data = self.get_data_frame(data_type).x
+            x_data = self.data[data_type].x
             y_true = self.get_y_array(data_type)
             y_pred = self._clf.predict(x_data)
             axes.scatter(y_true,
@@ -861,7 +872,7 @@ class MLRModel():
         # Create plot
         for (data_type, plot_kwargs) in data_to_plot.items():
             logger.debug("Plotting residuals of '%s' data", data_type)
-            x_data = self.get_data_frame(data_type).x
+            x_data = self.data[data_type].x
             y_true = self.get_y_array(data_type)
             y_pred = self._clf.predict(x_data)
             res = self._get_residuals(y_true, y_pred)
@@ -1002,7 +1013,7 @@ class MLRModel():
             if data_type not in self.data:
                 continue
             logger.info("Correlation matrix for %s data:\n%s", data_type,
-                        self.data[data_type].corr())
+                        self.data[data_type][['x', 'y']].corr())
 
     def print_regression_metrics(self):
         """Print all available regression metrics for training data."""
@@ -1022,7 +1033,7 @@ class MLRModel():
             if data_type not in self.data:
                 continue
             logger.info("Evaluating regression metrics for %s data", data_type)
-            x_data = self.get_data_frame(data_type).x
+            x_data = self.data[data_type].x
             y_true = self.get_y_array(data_type)
             y_pred = self._clf.predict(x_data)
             y_norm = np.std(y_true)
@@ -1066,6 +1077,27 @@ class MLRModel():
         self._parameters = self._get_clf_parameters()
         if new_params:
             logger.info("Updated pipeline with parameters %s", new_params)
+
+    def _calculate_sample_weights(self, cube, var_type, group_attr=None):
+        """Calculate sample weights (using grid cell area) if desired."""
+        if not self._cfg['area_weighted_samples']:
+            return None
+        if var_type != 'feature':
+            return None
+        msg = '' if group_attr is None else f" of '{group_attr}'"
+        weights = mlr.get_area_weights(cube)
+        if weights is None:
+            logger.warning(
+                "Calculation of area weights for training data%s failed", msg)
+            return None
+        weights *= 1e-8
+        weights = weights.astype(self._cfg['dtype'], casting='same_kind')
+        weights = pd.DataFrame({'sample_weight': weights.ravel()},
+                               dtype=self._cfg['dtype'])
+        logger.debug(
+            "Successfully calculated area-based sample weights for training "
+            "data%s", msg)
+        return weights
 
     def _check_cube_dimensions(self, cube, ref_cube, text=None):
         """Check shape and coordinates of a given cube."""
@@ -1248,9 +1280,10 @@ class MLRModel():
         # Test data set
         if err_type == 'test':
             if 'test' in self.data:
-                y_pred = self._clf.predict(self.get_data_frame('test').x)
-                error = metrics.mean_squared_error(self.get_y_array('test'),
-                                                   y_pred)
+                y_pred = self._clf.predict(self.data['test'].x)
+                error = metrics.mean_squared_error(
+                    self.get_y_array('test'), y_pred,
+                    sample_weight=self._get_sample_weights('test'))
             else:
                 logger.warning(
                     "Cannot estimate squared MLR model error using 'type: "
@@ -1268,7 +1301,7 @@ class MLRModel():
             if 'squared' not in cfg['kwargs']['scoring']:
                 error *= error
 
-        # Get correct dtype
+        # Get correct dtype and shape
         error_array = np.full(target_length, error, dtype=self._cfg['dtype'])
         units = mlr.units_power(self.label_units, 2)
         logger.info("Estimated squared MLR model error by %s %s using %s data",
@@ -1277,8 +1310,9 @@ class MLRModel():
 
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
-        (x_data, _) = self._extract_x_data(self._datasets['feature'],
-                                           'feature')
+        (x_data, _,
+         sample_weights) = self._extract_x_data(self._datasets['feature'],
+                                                'feature')
         y_data = self._extract_y_data(self._datasets['label'], 'label')
 
         # Check number of input points
@@ -1291,16 +1325,19 @@ class MLRModel():
                     len(y_data.index), self._cfg['dtype'])
 
         # Remove missing values in labels
-        (x_data, y_data) = self._remove_missing_labels(x_data, y_data)
+        (x_data, y_data,
+         sample_weights) = self._remove_missing_labels(x_data, y_data,
+                                                       sample_weights)
 
         # Remove missing values in features (if desired)
-        (x_data, y_data) = self._remove_missing_features(x_data, y_data)
+        (x_data, y_data, sample_weights) = self._remove_missing_features(
+            x_data, y_data, sample_weights)
 
-        return (x_data, y_data)
+        return (x_data, y_data, sample_weights)
 
     def _extract_prediction_input(self, prediction_name):
         """Extract prediction input data points for `prediction_name`."""
-        (x_pred, x_cube) = self._extract_x_data(
+        (x_pred, x_cube, _) = self._extract_x_data(
             self._datasets['prediction_input'][prediction_name],
             'prediction_input')
         logger.info(
@@ -1337,7 +1374,7 @@ class MLRModel():
                 "possible, no 'prediction_input_error' datasets given",
                 self._get_name(prediction_name))
         else:
-            (x_err, _) = self._extract_x_data(
+            (x_err, _, _) = self._extract_x_data(
                 self._datasets['prediction_input_error'][prediction_name],
                 'prediction_input_error')
             if len(x_pred.index) != len(x_err.index):
@@ -1371,6 +1408,8 @@ class MLRModel():
                 f"'{var_type}'")
         x_data = pd.DataFrame(columns=self.features, dtype=self._cfg['dtype'])
         x_cube = None
+        sample_weights = pd.DataFrame(columns=['sample_weight'],
+                                      dtype=self._cfg['dtype'])
 
         # Iterate over datasets
         datasets = select_metadata(datasets, var_type=var_type)
@@ -1386,12 +1425,27 @@ class MLRModel():
             msg = '' if group_attr is None else f" for '{group_attr}'"
             if not group_datasets:
                 raise ValueError(f"No '{var_type}' data{msg} found")
-            (group_data,
-             x_cube) = self._get_x_data_for_group(group_datasets, var_type,
-                                                  group_attr)
+            (group_data, x_cube,
+             weights) = self._get_x_data_for_group(group_datasets, var_type,
+                                                   group_attr)
             x_data = x_data.append(group_data, ignore_index=True)
 
-        return (x_data, x_cube)
+            # If no weights are given for at least one group discard all
+            if sample_weights is not None:
+                if weights is None:
+                    sample_weights = None
+                else:
+                    sample_weights = sample_weights.append(weights,
+                                                           ignore_index=True)
+        if sample_weights is not None:
+            logger.info(
+                "Successfully calculated area-based sample weights for "
+                "training data")
+        elif self._cfg['area_weighted_samples']:
+            logger.warning(
+                "Calculation of area-based sample weights failed, using equal "
+                "weights for all samples")
+        return (x_data, x_cube, sample_weights)
 
     def _extract_y_data(self, datasets, var_type):
         """Extract required y data of type `var_type` from `datasets`."""
@@ -1747,6 +1801,13 @@ class MLRModel():
         raise ValueError(f"No {var_type} data{msg} without the option "
                          f"'broadcast_from' found")
 
+    def _get_sample_weights(self, data_type):
+        """Get sample weights of desired data."""
+        data_frame = self.data[data_type]
+        if 'sample_weight' not in data_frame:
+            return None
+        return data_frame.sample_weight.squeeze().values
+
     def _get_verbosity_parameters(self, function, boolean=False):
         """Get verbosity parameters for class initialization."""
         verbosity_params = {
@@ -1783,6 +1844,9 @@ class MLRModel():
         ref_cube = self._get_reference_cube(datasets, var_type, msg)
         group_data = pd.DataFrame(columns=self.features,
                                   dtype=self._cfg['dtype'])
+        sample_weights = self._calculate_sample_weights(ref_cube,
+                                                        var_type,
+                                                        group_attr=group_attr)
 
         # Iterate over all features
         for tag in self.features:
@@ -1818,7 +1882,9 @@ class MLRModel():
                             "Specifying prediction input error for "
                             "categorical feature '%s'%s is not possible, "
                             "setting it to 0.0", tag, msg)
-                        new_data = np.full(cube.shape, 0.0).ravel()
+                        new_data = np.full(cube.shape,
+                                           0.0,
+                                           dtype=self._cfg['dtype']).ravel()
                     else:
                         new_data = self._get_cube_data(cube)
 
@@ -1831,7 +1897,7 @@ class MLRModel():
             group_data[tag] = new_data
 
         # Return data and reference cube
-        return (group_data, ref_cube)
+        return (group_data, ref_cube, sample_weights)
 
     def _group_by_attributes(self, datasets):
         """Group datasets by specified attributes."""
@@ -1930,8 +1996,13 @@ class MLRModel():
 
     def _load_data(self):
         """Load train/test data (features/labels)."""
-        (x_all, y_all) = self._extract_features_and_labels()
-        self._data['all'] = pd.concat([x_all, y_all], axis=1, keys=['x', 'y'])
+        (x_all, y_all, sample_weights) = self._extract_features_and_labels()
+        objs = [x_all, y_all]
+        keys = ['x', 'y']
+        if sample_weights is not None:
+            objs.append(sample_weights)
+            keys.append('sample_weight')
+        self._data['all'] = pd.concat(objs, axis=1, keys=keys)
         if len(y_all.index) < 2:
             raise ValueError(
                 f"Need at least 2 data points for MLR training, got only "
@@ -1941,8 +2012,11 @@ class MLRModel():
         # Split train/test data if desired
         test_size = self._cfg['test_size']
         if test_size:
-            (self._data['train'], self._data['test']) = self._train_test_split(
-                x_all, y_all, test_size)
+            (self._data['train'],
+             self._data['test']) = train_test_split(self._data['all'].copy(),
+                                                    test_size=test_size)
+            self._data['train'] = self._data['train'].sort_index()
+            self._data['test'] = self._data['test'].sort_index()
             for data_type in ('train', 'test'):
                 if len(self.data[data_type].index) < 2:
                     raise ValueError(
@@ -2220,11 +2294,13 @@ class MLRModel():
                                  x_err.values),
                         dtype=self._cfg['dtype'])
 
-    def _remove_missing_features(self, x_data, y_data):
+    def _remove_missing_features(self, x_data, y_data, sample_weights):
         """Remove missing values in the features data (if desired)."""
         mask = self._get_mask(x_data, 'training')
         x_data = x_data[~mask].reset_index(drop=True)
         y_data = y_data[~mask].reset_index(drop=True)
+        if sample_weights is not None:
+            sample_weights = sample_weights[~mask].reset_index(drop=True)
         diff = mask.sum()
         if diff:
             msg = ('Removed %i training point(s) where features were '
@@ -2235,7 +2311,7 @@ class MLRModel():
                 self._classes['group_attributes'] = (
                     self.group_attributes[~mask])
             logger.info(msg, diff)
-        return (x_data, y_data)
+        return (x_data, y_data, sample_weights)
 
     def _remove_missing_pred_input(self, x_pred, x_err=None, y_ref=None):
         """Remove missing values in the prediction input data."""
@@ -2331,23 +2407,11 @@ class MLRModel():
         cube.attributes['filename'] = new_path
         return new_path
 
-    def _train_test_split(self, x_data, y_data, test_size):
-        """Split data into training and test data."""
-        (x_train, x_test, y_train,
-         y_test) = train_test_split(x_data.values,
-                                    y_data.values,
-                                    test_size=test_size)
-        x_train = pd.DataFrame(x_train, columns=self.features)
-        x_test = pd.DataFrame(x_test, columns=self.features)
-        y_train = pd.DataFrame(y_train, columns=[self.label])
-        y_test = pd.DataFrame(y_test, columns=[self.label])
-        train = pd.concat([x_train, y_train], axis=1, keys=['x', 'y'])
-        test = pd.concat([x_test, y_test], axis=1, keys=['x', 'y'])
-        return (train, test)
-
     def _update_fit_kwargs(self, fit_kwargs):
         """Check and update fit kwargs."""
         new_fit_kwargs = {}
+
+        # Sort out wrong fit kwargs
         for (param_name, param_val) in fit_kwargs.items():
             step = param_name.split('__')[0]
             if step in self._clf.named_steps:
@@ -2355,6 +2419,18 @@ class MLRModel():
             else:
                 logger.warning("Got invalid parameter for fit function: '%s'",
                                param_name)
+
+        # Add sample weights if possible
+        allowed_fit_kwargs = getfullargspec(self._CLF_TYPE.fit).args
+        for kwarg in ('sample_weight', 'sample_weights'):
+            if kwarg not in allowed_fit_kwargs:
+                continue
+            long_kwarg = f'{self._clf.steps[-1][0]}__regressor__{kwarg}'
+            new_fit_kwargs[long_kwarg] = self._get_sample_weights('train')
+            logger.debug(
+                "Updated keyword arguments for final regressor's fit() "
+                "function with '%s'", kwarg)
+
         return new_fit_kwargs
 
     @staticmethod
@@ -2447,13 +2523,15 @@ class MLRModel():
         return group_metadata(datasets, 'prediction_name')
 
     @staticmethod
-    def _remove_missing_labels(x_data, y_data):
+    def _remove_missing_labels(x_data, y_data, sample_weights):
         """Remove missing values in the label data."""
         mask = y_data.isnull().values
-        new_x_data = x_data[~mask].reset_index(drop=True)
-        new_y_data = y_data[~mask].reset_index(drop=True)
+        x_data = x_data[~mask].reset_index(drop=True)
+        y_data = y_data[~mask].reset_index(drop=True)
+        if sample_weights is not None:
+            sample_weights = sample_weights[~mask].reset_index(drop=True)
         diff = mask.sum()
         if diff:
             logger.info(
                 "Removed %i training point(s) where labels were missing", diff)
-        return (new_x_data, new_y_data)
+        return (x_data, y_data, sample_weights)

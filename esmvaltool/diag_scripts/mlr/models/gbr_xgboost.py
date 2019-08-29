@@ -60,10 +60,14 @@ class XGBoostGBRModel(GBRModel):
         x_train = self._clf.transform_only(x_train)
         y_train = self._clf.transform_target_only(y_train)
         eval_set = [(x_train, y_train)]
+        sample_weights = [self._get_sample_weights('train')]
         if 'test' in self.data:
             x_test = self._clf.transform_only(self.get_x_array('test'))
             y_test = self._clf.transform_target_only(self.get_y_array('test'))
             eval_set.append((x_test, y_test))
+            sample_weights.append(self._get_sample_weights('test'))
+        if self._get_sample_weights('all') is None:
+            sample_weights = None
 
         # Update kwargs
         fit_kwargs.update({
@@ -71,8 +75,11 @@ class XGBoostGBRModel(GBRModel):
             'rmse',
             f'{self._clf.steps[-1][0]}__regressor__eval_set':
             eval_set,
+            f'{self._clf.steps[-1][0]}__regressor__sample_weight_eval_set':
+            sample_weights,
         })
         logger.debug(
-            "Updated keyword arguments of fit() function with training and "
-            "(if possible) test datasets for evaluation of prediction errors")
+            "Updated keyword arguments of final regressor's fit() function "
+            "with training and (if possible) test datasets for evaluation of "
+            "prediction errors")
         return fit_kwargs
