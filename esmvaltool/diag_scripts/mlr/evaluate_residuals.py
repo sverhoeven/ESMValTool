@@ -120,6 +120,7 @@ def plot_residuals(cfg, input_data):
     grouped_datasets = group_metadata(input_data, 'mlr_model_name')
     for (model_name, datasets) in grouped_datasets.items():
         logger.debug("Plotting residual plots for MLR model '%s'", model_name)
+        filename = model_name.lower().replace(' ', '_')
         cubes = iris.cube.CubeList()
 
         # Plot residuals for every prediction
@@ -137,7 +138,7 @@ def plot_residuals(cfg, input_data):
             # Create plot
             plot.global_contourf(cube, **plot_kwargs)
             mlr_plot.process_pyplot_kwargs(cfg, 'residual_plot')
-            plot_path = get_plot_filename(f'{model_name}_{pred_name}_residual',
+            plot_path = get_plot_filename(f'{filename}_{pred_name}_residual',
                                           cfg)
             plt.savefig(plot_path, **mlr_plot.get_savefig_kwargs(cfg))
             logger.info("Wrote %s", plot_path)
@@ -156,7 +157,7 @@ def plot_residuals(cfg, input_data):
         plot.global_contourf(mean_cube, **plot_kwargs)
         mlr_plot.process_pyplot_kwargs(cfg, 'residual_plot')
         plot_path = get_plot_filename(
-            f'{model_name}_mean_of_predictions_residual', cfg)
+            f'{filename}_mean_of_predictions_residual', cfg)
         plt.savefig(plot_path, **mlr_plot.get_savefig_kwargs(cfg))
         logger.info("Wrote %s", plot_path)
         plt.close()
