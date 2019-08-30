@@ -40,6 +40,9 @@ class SklearnGBRModel(GBRModel):
             test_score = np.zeros((len(clf.train_score_), ), dtype=np.float64)
             x_test = self._clf.transform_only(self.get_x_array('test'))
             y_test = self._clf.transform_target_only(self.get_y_array('test'))
+            sample_weights = self._get_sample_weights('test')
             for (idx, y_pred) in enumerate(clf.staged_predict(x_test)):
-                test_score[idx] = clf.loss_(y_test, y_pred)
+                test_score[idx] = clf.loss_(y_test,
+                                            y_pred,
+                                            sample_weight=sample_weights)
         self._plot_training_progress(train_score, test_score, filename)
