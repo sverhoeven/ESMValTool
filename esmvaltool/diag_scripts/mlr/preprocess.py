@@ -94,10 +94,17 @@ def _apply_aggregator(cfg, cube, data, coord_name, operation):
         cube = cube.aggregated_by(coord_name, operation)
     aux_coords = [coord.name() for coord in cube.coords(dim_coords=False)]
     if coord_name in aux_coords:
-        iris.util.promote_aux_coord_to_dim_coord(cube, coord_name)
-        stderr_cube = data.get('stderr', {}).get('cube')
-        if stderr_cube is not None:
-            iris.util.promote_aux_coord_to_dim_coord(stderr_cube, coord_name)
+        try:
+            iris.util.promote_aux_coord_to_dim_coord(cube, coord_name)
+        except ValueError as exc:
+            logger.debug(
+                "Could not promote coordinate '%s' to dimensional coordinate: "
+                "%s", coord_name, str(exc))
+        else:
+            stderr_cube = data.get('stderr', {}).get('cube')
+            if stderr_cube is not None:
+                iris.util.promote_aux_coord_to_dim_coord(
+                    stderr_cube, coord_name)
     return (cube, data)
 
 
