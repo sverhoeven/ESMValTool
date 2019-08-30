@@ -156,8 +156,8 @@ def _collapse_estimated_covariance(squared_error_cube, ref_cube, weights):
         weights = weights.reshape(weights.shape[0], -1)
 
     # Pearson coefficients (= normalized covariance) over both dimensions
-    pearson_dim0 = _corrcoef(ref)
-    pearson_dim1 = _corrcoef(ref, rowvar=False)
+    pearson_dim0 = _corrcoef(ref, weights=weights)
+    pearson_dim1 = _corrcoef(ref, rowvar=False, weights=weights)
 
     # Covariances
     cov_dim0 = (np.einsum('...i,...j->...ij', error, error) *
@@ -169,7 +169,7 @@ def _collapse_estimated_covariance(squared_error_cube, ref_cube, weights):
     error_dim0 = np.ma.sqrt(np.ma.sum(cov_dim0, axis=(1, 2)))
     error_dim1 = np.ma.sqrt(np.ma.sum(cov_dim1, axis=(1, 2)))
 
-    # Collaps further
+    # Collaps further (all weights are already included in first step)
     cov_order_0 = pearson_dim0 * np.ma.outer(error_dim0, error_dim0)
     cov_order_1 = pearson_dim1 * np.ma.outer(error_dim1, error_dim1)
     error_order_0 = np.ma.sqrt(np.ma.sum(cov_order_0))
@@ -239,11 +239,18 @@ def _estimate_real_error(cfg, squared_error_cube, ref_dataset, basepath):
                 real_error.data, real_error.units)
 
 
-def _corrcoef(array, rowvar=True):
+def _corrcoef(array, rowvar=True, weights=None):
     """Fast version of :mod:`np.ma.corrcoef`."""
     if not rowvar:
         array = array.T
-    demean = array - np.ma.mean(array, axis=1).reshape(-1, 1)
+        if weights is not None:
+            weights = weights.T
+    mean = np.ma.average(array, axis=1, weights=weights).reshape(-1, 1)
+    if weights is None:
+        sqrt_weights = 1.0
+    else:
+        sqrt_weights = np.ma.sqrt(weights)
+    demean = (array - mean) * sqrt_weights
     res = np.ma.dot(demean, demean.T)
     row_norms = np.ma.sqrt(np.ma.sum(demean**2, axis=1))
     res /= np.ma.outer(row_norms, row_norms)
@@ -477,8 +484,8 @@ def split_datasets(datasets, tag, pred_name):
             mean[0]['filename'])
     else:
         logger.debug(
-            "Found reference dataset (mean) for tag '%s' for prediction '%s': "
-            "%s", tag, pred_name, mean[0]['filename'])
+            "Found reference dataset ('prediction_output') for tag '%s' for "
+            "prediction '%s': %s", tag, pred_name, mean[0]['filename'])
 
     # Errors
     error = grouped_data.get('prediction_output_error', [])
@@ -497,8 +504,8 @@ def split_datasets(datasets, tag, pred_name):
         cov_estimation = [cov_estimation[0]]
     else:
         logger.debug(
-            "Found reference dataset for covariance estimation tag '%s' for "
-            "prediction '%s': %s", tag, pred_name,
+            "Found reference dataset ('prediction_input') for covariance "
+            "estimation of tag '%s' for prediction '%s': %s", tag, pred_name,
             [d['filename'] for d in cov_estimation])
 
     return (mean[0], error, cov_estimation)
