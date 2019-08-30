@@ -253,7 +253,8 @@ class MLRModel():
         self._parameters = {}
 
         # Default settings
-        self._cfg.setdefault('area_weighted_samples', True)
+        self._cfg.setdefault('area_weighted_samples',
+                             not self._cfg.get('accept_only_scalar_data'))
         self._cfg.setdefault('cache_intermediate_results', True)
         self._cfg.setdefault('dtype', 'float64')
         self._cfg.setdefault('estimate_mlr_model_error', {})
@@ -1095,8 +1096,8 @@ class MLRModel():
         weights = pd.DataFrame({'sample_weight': weights.ravel()},
                                dtype=self._cfg['dtype'])
         logger.debug(
-            "Successfully calculated area-based sample weights for training "
-            "data%s", msg)
+            "Successfully calculated %i area-based sample weights for "
+            "training data%s", len(weights.index), msg)
         return weights
 
     def _check_cube_dimensions(self, cube, ref_cube, text=None):
@@ -1282,7 +1283,8 @@ class MLRModel():
             if 'test' in self.data:
                 y_pred = self._clf.predict(self.data['test'].x)
                 error = metrics.mean_squared_error(
-                    self.get_y_array('test'), y_pred,
+                    self.get_y_array('test'),
+                    y_pred,
                     sample_weight=self._get_sample_weights('test'))
             else:
                 logger.warning(
@@ -1441,7 +1443,7 @@ class MLRModel():
             logger.info(
                 "Successfully calculated area-based sample weights for "
                 "training data")
-        elif self._cfg['area_weighted_samples']:
+        elif self._cfg['area_weighted_samples'] and var_type == 'feature':
             logger.warning(
                 "Calculation of area-based sample weights failed, using equal "
                 "weights for all samples")
@@ -1897,6 +1899,8 @@ class MLRModel():
             group_data[tag] = new_data
 
         # Return data and reference cube
+        logger.debug("Found %i raw '%s' input data points%s",
+                     len(group_data.index), var_type, msg)
         return (group_data, ref_cube, sample_weights)
 
     def _group_by_attributes(self, datasets):
@@ -2426,10 +2430,13 @@ class MLRModel():
             if kwarg not in allowed_fit_kwargs:
                 continue
             long_kwarg = f'{self._clf.steps[-1][0]}__regressor__{kwarg}'
-            new_fit_kwargs[long_kwarg] = self._get_sample_weights('train')
-            logger.debug(
-                "Updated keyword arguments for final regressor's fit() "
-                "function with '%s'", kwarg)
+            sample_weights = self._get_sample_weights('train')
+            new_fit_kwargs[long_kwarg] = sample_weights
+            if sample_weights is not None:
+                logger.debug(
+                    "Updated keyword arguments for final regressor's fit() "
+                    "function with '%s'", kwarg)
+            break
 
         return new_fit_kwargs
 
