@@ -24,8 +24,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import NotFittedError
 from sklearn.impute import SimpleImputer
 from sklearn.inspection import plot_partial_dependence
-from sklearn.model_selection import (GridSearchCV, LeaveOneOut,
-                                     cross_val_score, train_test_split)
+from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from esmvaltool.diag_scripts import mlr
@@ -94,17 +93,14 @@ class MLRModel():
         Internal data type which is used for all calculations, see
         <https://docs.scipy.org/doc/numpy/user/basics.types.html> for a list
         of allowed values.
-    estimate_mlr_model_error : dict, optional
-        Estimate (constant) squared MLR model error using RMSE (or different
-        measured if desired). This error represents the uncertainty of the
-        prediction caused by the MLR model itself and not by errors in the
-        prediction input data (errors in that will be automatically considered
-        by including datasets with `var_type` `'prediction_input_error'`. It
-        is calculated by a (holdout) test data set (`type: test`) or by cross-
-        validation from the training data (`type: cv'). The latter uses
-        :mod:`sklearn.model_selection.cross_val_score` (see
-        <https://scikit-learn.org/stable/modules/cross_validation.html>),
-        additional keyword arguments can be passed via the `kwargs` key.
+    estimate_mlr_model_error : bool, optional (default: False)
+        Estimate (constant) squared MLR model error using RMSE. This error
+        represents the uncertainty of the prediction caused by the MLR model
+        itself and not by errors in the prediction input data (errors in that
+        will be automatically considered by including datasets with `var_type`
+        `'prediction_input_error'`. It is calculated by a (hold-out) test data
+        set. If the option `test_size` is equivalent to `False`, automatically
+        set it to 0.25.
     fit_kwargs : dict, optional
         Optional keyword arguments for the pipeline's `fit()` function. These
         arguments have to be given for each step of the pipeline seperated by
@@ -252,27 +248,8 @@ class MLRModel():
         self._classes = {}
         self._parameters = {}
 
-        # Default settings
-        self._cfg.setdefault('area_weighted_samples',
-                             not self._cfg.get('accept_only_scalar_data'))
-        self._cfg.setdefault('cache_intermediate_results', True)
-        self._cfg.setdefault('dtype', 'float64')
-        self._cfg.setdefault('estimate_mlr_model_error', {})
-        self._cfg.setdefault('imputation_strategy', 'remove')
-        self._cfg.setdefault('mlr_model_name', f'{self._CLF_TYPE} model')
-        self._cfg.setdefault('n_jobs', 1)
-        self._cfg.setdefault('parameters', {})
-        self._cfg.setdefault('pca', False)
-        self._cfg.setdefault('plot_units', {})
-        self._cfg.setdefault('savefig_kwargs', {
-            'bbox_inches': 'tight',
-            'dpi': 300,
-            'orientation': 'landscape',
-        })
-        self._cfg.setdefault('standardize_data', True)
-        self._cfg.setdefault('test_size', 0.25)
-        logger.info("Using imputation strategy '%s'",
-                    self._cfg['imputation_strategy'])
+        # Set default settings
+        self._set_default_settings()
 
         # Seaborn
         sns.set(**self._cfg.get('seaborn_settings', {}))
@@ -1027,7 +1004,6 @@ class MLRModel():
             'explained_variance_score',
             'mean_absolute_error',
             'mean_squared_error',
-            'median_absolute_error',
             'r2_score',
         ]
         for data_type in ('all', 'train', 'test'):
@@ -1040,7 +1016,10 @@ class MLRModel():
             y_norm = np.std(y_true)
             for metric in regression_metrics:
                 metric_function = getattr(metrics, metric)
-                value = metric_function(y_true, y_pred)
+                value = metric_function(
+                    y_true,
+                    y_pred,
+                    sample_weight=self._get_sample_weights(data_type))
                 if 'squared' in metric:
                     value = np.sqrt(value)
                     metric = f'root_{metric}'
@@ -1222,7 +1201,7 @@ class MLRModel():
             steps.append(('x_scaler', x_scaler))
 
         # PCA for numerical features
-        if self._cfg['pca']:
+        if self._cfg.get('pca'):
             pca = ColumnTransformer(
                 [('', PCA(), numerical_features_idx)],
                 remainder='passthrough',
@@ -1260,55 +1239,19 @@ class MLRModel():
 
     def _estimate_mlr_model_error(self, target_length):
         """Estimate squared error of MLR model (using CV or test data)."""
-        cfg = deepcopy(self._cfg['estimate_mlr_model_error'])
-        cfg.setdefault('type', 'cv')
-        cfg.setdefault('kwargs', {})
-        cfg['kwargs'].setdefault('cv', 5)
-        cfg['kwargs'].setdefault('scoring', 'neg_mean_squared_error')
-        logger.debug("Estimating squared error of MLR model using %s", cfg)
-
-        # Check type
-        err_type = cfg['type']
-        allowed_types = ('test', 'cv')
-        if err_type not in allowed_types:
-            default = 'cv'
-            logger.warning(
-                "Got invalid type '%s' for MLR model error estimation, "
-                "expected one of %s, defaulting to '%s'", err_type,
-                allowed_types, default)
-            err_type = default
-
-        # Test data set
-        if err_type == 'test':
-            if 'test' in self.data:
-                y_pred = self._clf.predict(self.data['test'].x)
-                error = metrics.mean_squared_error(
-                    self.get_y_array('test'),
-                    y_pred,
-                    sample_weight=self._get_sample_weights('test'))
-            else:
-                logger.warning(
-                    "Cannot estimate squared MLR model error using 'type: "
-                    "test', no test data set given (use 'test_size' option), "
-                    "using cross-validation instead")
-                err_type = 'cv'
-
-        # CV
-        if err_type == 'cv':
-            error = cross_val_score(self._clf, self.get_x_array('train'),
-                                    self.get_y_array('train'), **cfg['kwargs'])
-            error = np.mean(error)
-            if cfg['kwargs']['scoring'].startswith('neg_'):
-                error = -error
-            if 'squared' not in cfg['kwargs']['scoring']:
-                error *= error
-
-        # Get correct dtype and shape
+        logger.debug("Estimating squared error of MLR model")
+        y_pred = self._clf.predict(self.data['test'].x)
+        error = metrics.mean_squared_error(
+            self.get_y_array('test'),
+            y_pred,
+            sample_weight=self._get_sample_weights('test'),
+        )
         error_array = np.full(target_length, error, dtype=self._cfg['dtype'])
         units = mlr.units_power(self.label_units, 2)
-        logger.info("Estimated squared MLR model error by %s %s using %s data",
-                    error, units, err_type)
-        return (error_array, err_type)
+        logger.info(
+            "Estimated squared MLR model error by %s %s using (hold-out) test "
+            "data", error, units)
+        return error_array
 
     def _extract_features_and_labels(self):
         """Extract feature and label data points from training data."""
@@ -1730,10 +1673,9 @@ class MLRModel():
         pred_dict = self._prediction_to_dict(y_preds, **kwargs)
 
         # Estimate error of MLR model itself
-        if self._cfg['estimate_mlr_model_error']:
-            (pred_error,
-             err_type) = self._estimate_mlr_model_error(len(x_pred.index))
-            pred_dict[f"squared_mlr_model_error_estim_{err_type}"] = pred_error
+        if self._cfg.get('estimate_mlr_model_error'):
+            mlr_model_error = self._estimate_mlr_model_error(len(x_pred.index))
+            pred_dict['squared_mlr_model_error_estim'] = mlr_model_error
 
         # Propagate prediction input errors if possible
         if self._cfg.get('propagate_input_errors', True) and x_err is not None:
@@ -2207,6 +2149,19 @@ class MLRModel():
         units = cube.units
         attributes = cube.attributes
         suffix = '' if pred_type is None else f'_{pred_type}'
+        error_types = {
+            'var':
+            ' (variance)',
+            'cov':
+            ' (covariance)',
+            'squared_mlr_model_error_estim': (' (squared MLR model error '
+                                              'estimation using hold-out test '
+                                              'data set)'),
+            'squared_propagated_input_error': (' (squared propagated error of '
+                                               'prediction input estimated by '
+                                               'LIME)'),
+        }
+
         if pred_type is None:
             attributes['var_type'] = 'prediction_output'
         elif isinstance(pred_type, int):
@@ -2215,27 +2170,9 @@ class MLRModel():
             logger.warning("Got unknown prediction type with index %i",
                            pred_type)
             attributes['var_type'] = 'prediction_output_misc'
-        elif pred_type == 'var':
+        elif pred_type in error_types:
             var_name += suffix
-            long_name += ' (variance)'
-            units = mlr.units_power(cube.units, 2)
-            attributes['var_type'] = 'prediction_output_error'
-        elif pred_type == 'cov':
-            var_name += suffix
-            long_name += ' (covariance)'
-            units = mlr.units_power(cube.units, 2)
-            attributes['var_type'] = 'prediction_output_error'
-        elif 'squared_mlr_model_error_estim' in pred_type:
-            var_name += suffix
-            long_name += (' (squared MLR model error estimation using {})'.
-                          format('cross-validation' if 'cv' in
-                                 pred_type else 'holdout test data set'))
-            units = mlr.units_power(cube.units, 2)
-            attributes['var_type'] = 'prediction_output_error'
-        elif pred_type == 'squared_propagated_input_error':
-            var_name += suffix
-            long_name += (' (squared propagated error of prediction input '
-                          'estimated by LIME)')
+            long_name += error_types[pred_type]
             units = mlr.units_power(cube.units, 2)
             attributes['var_type'] = 'prediction_output_error'
         elif pred_type == 'lime':
@@ -2378,6 +2315,34 @@ class MLRModel():
         # Save file
         csv_data.to_csv(path, na_rep='nan')
         logger.info("Wrote %s", path)
+
+    def _set_default_settings(self):
+        """Set default (non-`False`) configuration settings."""
+        self._cfg.setdefault('area_weighted_samples',
+                             not self._cfg.get('accept_only_scalar_data'))
+        self._cfg.setdefault('cache_intermediate_results', True)
+        self._cfg.setdefault('dtype', 'float64')
+        self._cfg.setdefault('imputation_strategy', 'remove')
+        self._cfg.setdefault('mlr_model_name', f'{self._CLF_TYPE} model')
+        self._cfg.setdefault('n_jobs', 1)
+        self._cfg.setdefault('parameters', {})
+        self._cfg.setdefault('plot_units', {})
+        self._cfg.setdefault('savefig_kwargs', {
+            'bbox_inches': 'tight',
+            'dpi': 300,
+            'orientation': 'landscape',
+        })
+        self._cfg.setdefault('standardize_data', True)
+        self._cfg.setdefault('test_size', 0.25)
+        if (not self._cfg['test_size']
+                and self._cfg.get('estimate_mlr_model_error')):
+            logger.warning(
+                "The option 'estimate_mlr_model_error' is given, but "
+                "'test_size' is set to '%s', setting 'test_size' to '0.25'",
+                self._cfg['test_size'])
+            self._cfg['test_size'] = 0.25
+        logger.info("Using imputation strategy '%s'",
+                    self._cfg['imputation_strategy'])
 
     def _set_prediction_cube_attributes(self, cube, pred_type, pred_name=None):
         """Set the attributes of the prediction cube."""
