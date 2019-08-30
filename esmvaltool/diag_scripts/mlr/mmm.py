@@ -25,6 +25,9 @@ mlr_model_name : str, optional
     Human-readable name of the MLR model instance (e.g used for labels).
 pattern : str, optional
     Pattern matched against ancestor files.
+prediction_name : str, optional
+    Default `prediction_name` of output cubes if no 'prediction_reference'
+    dataset is given.
 
 """
 
@@ -97,6 +100,7 @@ def get_error_cube(cfg, datasets):
         # Apply mask
         mask = np.ma.getmaskarray(ref_cube.data).ravel()
         mask |= np.ma.getmaskarray(mm_cube.data).ravel()
+
         y_true = ref_cube.data.ravel()[~mask]
         y_pred = mm_cube.data.ravel()[~mask]
         weights = mlr.get_area_weights(ref_cube).ravel()[~mask]
@@ -108,12 +112,16 @@ def get_error_cube(cfg, datasets):
     # Get error cube
     error_cube = get_mm_cube(cfg, datasets)
     error_array = np.empty(error_cube.shape).ravel()
-    mask = np.ma.getmaskarray(error_cube).ravel()
+    mask = np.ma.getmaskarray(error_cube.data).ravel()
     error_array[mask] = np.nan
     error_array[~mask] = np.mean(errors)
     error_array = np.ma.masked_invalid(error_array)
     error_cube.data = error_array.reshape(error_cube.shape)
+
+    # Cube metadata
     error_cube.attributes['var_type'] = 'prediction_output_error'
+    error_cube.var_name += '_squared_mmm_error_estim'
+    error_cube.long_name += ' (squared MMM error estimation using CV)'
     error_cube.units = mlr.units_power(error_cube.units, 2)
     return error_cube
 
@@ -160,7 +168,6 @@ def get_mm_cube(cfg, datasets):
     for dataset in select_metadata(datasets, var_type='label'):
         path = dataset['filename']
         cube_label = dataset[cfg.get('collapse_over', 'dataset')]
-        logger.info("Processing '%s'", path)
         cube = iris.load_cube(path)
         convert_units(cfg, cube, dataset)
         ih.preprocess_cube_before_merging(cube, cube_label)
@@ -219,6 +226,8 @@ def main(cfg, input_data=None, description=None):
 
         # Get reference dataset if possible
         (ref_dataset, pred_name) = get_reference_dataset(datasets, tag)
+        if pred_name is None:
+            pred_name = cfg.get('prediction_name')
 
         # Calculate multi-model mean
         logger.info("Calculating multi-model mean")
