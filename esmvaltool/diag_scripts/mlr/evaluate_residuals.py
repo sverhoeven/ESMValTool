@@ -45,6 +45,7 @@ import seaborn as sns
 
 import esmvaltool.diag_scripts.mlr.plot as mlr_plot
 import esmvaltool.diag_scripts.shared.iris_helpers as ih
+from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (get_plot_filename, group_metadata,
                                             plot, run_diagnostic,
                                             select_metadata)
@@ -69,7 +70,9 @@ def plot_boxplot(cfg, input_data):
         rmse_data = []
         for dataset in datasets:
             cube = iris.load_cube(dataset['filename'])
-            rmse_data.append(np.ma.sqrt(np.ma.mean(cube.data**2)))
+            weights = mlr.get_area_weights(cube)
+            mse = np.ma.average(cube.data**2, weights=weights)
+            rmse_data.append(np.ma.sqrt(mse))
         data_frame = pd.DataFrame(rmse_data, columns=[model_name])
         mlr_models_rmse.append(data_frame)
     boxplot_data = pd.concat(mlr_models_rmse, axis=1)
