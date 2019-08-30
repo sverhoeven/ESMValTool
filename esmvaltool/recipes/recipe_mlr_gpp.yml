@@ -295,10 +295,10 @@ diagnostics:
         mlr_model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
-          # n_estimators: 1000
-          subsample: 0.5
           # learning_rate: 0.1
           max_depth: 8
+          # n_estimators: 50
+          subsample: 0.5
         plot_units:
           't km-2 yr-1': 'tC km$^{-2}$ yr$^{-1}$'
       postprocess:
@@ -385,6 +385,7 @@ diagnostics:
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
         mlr_model_name: MMM
         mlr_model_type: mmm
+        prediction_name: OBS
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
@@ -431,7 +432,7 @@ diagnostics:
         aliases:
           label: CMIP5
           feature: CMIP5
-          prediction_output: GBRT
+          prediction_output_GBRT: GBRT
           prediction_input: MTE
         ignore_var_types: [
           'prediction_input_error',
