@@ -91,6 +91,7 @@ def convert_units(cfg, cube, data):
 def get_error_cube(cfg, datasets):
     """Estimate prediction error using cross-validation."""
     loo = LeaveOneOut()
+    datasets = select_metadata(datasets, var_type='label')
     datasets = np.array(datasets)
     errors = []
     for (train_idx, test_idx) in loo.split(datasets):
