@@ -283,10 +283,12 @@ diagnostics:
         grid_search_cv_kwargs:
           cv: 5
         grid_search_cv_param_grid:
+          final__regressor__max_depth:
+            [4, 6, 8]
           final__regressor__n_estimators:
-            [500, 1000, 1500, 2000]
+            [250, 500, 750, 1000, 1250]
           final__regressor__learning_rate:
-            [0.2, 0.15, 0.1, 0.05]
+            [0.125, 0.1, 0.075, 0.05, 0.025]
         fit_kwargs:
           final__regressor__early_stopping_rounds: 10
         group_datasets_by_attributes: ['dataset']
@@ -296,7 +298,7 @@ diagnostics:
         n_jobs: 24
         parameters_final_regressor:
           # learning_rate: 0.1
-          max_depth: 8
+          # max_depth: 8
           # n_estimators: 50
           subsample: 0.5
         plot_units:
@@ -314,14 +316,14 @@ diagnostics:
   diag_gbrt_gpp_pseudo_reality:
     description: Validate GBRT model using pseudo-reality approach.
     scripts:
-      gbrt:
+      gbrt: &gbrt_pr
         <<: *gbrt
         grid_search_cv_param_grid: false
         only_predict: true
         parameters_final_regressor:
           n_estimators: 500
           subsample: 0.5
-          learning_rate: 0.1
+          learning_rate: 0.05
           max_depth: 8
         pseudo_reality: ['dataset']
       postprocess:
@@ -338,17 +340,10 @@ diagnostics:
     description: Validate GBRT model (with single predictor) using pseudo-reality approach.
     scripts:
       gbrt:
-        <<: *gbrt
+        <<: *gbrt_pr
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
-        grid_search_cv_param_grid: false
-        mlr_model_name: GBRT (single feature)
-        only_predict: true
-        parameters_final_regressor:
-          n_estimators: 500
-          subsample: 0.5
-          learning_rate: 0.1
-          max_depth: 8
-        pseudo_reality: ['dataset']
+        coords_as_features: []
+        mlr_model_name: GBRT (one feature)
       postprocess:
         script: mlr/postprocess.py
         ancestors: [
