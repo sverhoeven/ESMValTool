@@ -79,6 +79,7 @@ def plot_boxplot(cfg, input_data):
 
     # Plot
     boxplot_kwargs = {
+        'color': 'b',
         'data': boxplot_data,
         'showfliers': False,
         'showmeans': True,
@@ -92,7 +93,6 @@ def plot_boxplot(cfg, input_data):
     }
     boxplot_kwargs.update(mlr_plot.get_plot_kwargs(cfg, 'box_plot'))
     sns.boxplot(**boxplot_kwargs)
-    sns.stripplot(data=boxplot_data, color='black')
 
     # Plot appearance
     plt.title('RMSE for different statistical models')

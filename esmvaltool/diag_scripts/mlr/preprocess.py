@@ -300,6 +300,8 @@ def cache_cube(cfg, cube, data):
     basename = os.path.splitext(os.path.basename(path))[0]
     if cube.var_name is not None:
         basename = basename.replace(cube.var_name, data['short_name'])
+    if 'var_type' in data:
+        basename += f"_{data['var_type']}"
     new_path = get_diagnostic_filename(basename, cfg)
     data['filename'] = new_path
     data['cube'] = cube
