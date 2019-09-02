@@ -271,6 +271,77 @@ diagnostics:
         tag: LAI_trend
         convert_units_to: yr-1
 
+  diag_postprocess_mte:
+    description: Calculate mean and errors of MTE dataset.
+    variables:
+      ref:
+        <<: *variable_settings_prediction_input
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
+      mean:
+        <<: *variable_settings_prediction_input
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        var_type: prediction_output
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
+      error:
+        <<: *variable_settings_prediction_input
+        short_name: gppStderr
+        mip: Lmon
+        var_type: prediction_output_error
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: GPP
+        convert_units_to: t km-2 yr-1
+      postprocess: &postprocess
+        script: mlr/postprocess.py
+        ancestors: ['diag_postprocess_mte/monthly_clim']
+        convert_units_to: Gt yr-1
+        mean: ['month_number']
+        sum: ['latitude', 'longitude']
+
+  diag_postprocess_historical_gpp:
+    description: Calculate mean and errors of historical CMIP5 GPP.
+    variables:
+      ref:
+        <<: *variable_settings_prediction_input
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        additional_datasets:
+          - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
+      mean:
+        <<: *variable_settings_features
+        short_name: gpp_grid
+        mip: Lmon
+        derive: true
+        var_type: label
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: GPP
+        convert_units_to: t km-2 yr-1
+      mmm: &mmm
+        script: mlr/main.py
+        ancestors: ['diag_postprocess_historical_gpp/monthly_clim']
+        mlr_model_name: MMM
+        mlr_model_type: mmm
+        prediction_name: OBS
+      postprocess:
+        <<: *postprocess
+        ancestors: [
+          'diag_postprocess_historical_gpp/monthly_clim',
+          'diag_postprocess_historical_gpp/mmm',
+        ]
+
   diag_gbrt_gpp:
     description: Use GBRT model to predict GPP.
     scripts:
@@ -280,15 +351,15 @@ diagnostics:
         categorical_features: ['longitude', 'month_number']
         coords_as_features: ['month_number', 'latitude', 'longitude']
         estimate_mlr_model_error: true
-        grid_search_cv_kwargs:
-          cv: 5
-        grid_search_cv_param_grid:
-          final__regressor__max_depth:
-            [4, 6, 8]
-          final__regressor__n_estimators:
-            [250, 500, 750, 1000, 1250]
-          final__regressor__learning_rate:
-            [0.125, 0.1, 0.075, 0.05, 0.025]
+        # grid_search_cv_kwargs:
+        #   cv: 5
+        # grid_search_cv_param_grid:
+        #   final__regressor__max_depth:
+        #     [6, 8, 10, 12]
+        #   final__regressor__n_estimators:
+        #     [150, 200, 250, 300, 350]
+        #   final__regressor__learning_rate:
+        #     [0.05, 0.04, 0.03, 0.02, 0.01]
         fit_kwargs:
           final__regressor__early_stopping_rounds: 10
         group_datasets_by_attributes: ['dataset']
@@ -297,21 +368,18 @@ diagnostics:
         mlr_model_name: GBRT
         n_jobs: 24
         parameters_final_regressor:
-          # learning_rate: 0.1
-          # max_depth: 8
-          # n_estimators: 50
+          learning_rate: 0.02
+          max_depth: 10
+          n_estimators: 250
           subsample: 0.5
         plot_units:
           't km-2 yr-1': 'tC km$^{-2}$ yr$^{-1}$'
       postprocess:
-        script: mlr/postprocess.py
+        <<: *postprocess
         ancestors: [
           'diag_gbrt_gpp/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['month_number']
-        sum: ['latitude', 'longitude']
-        convert_units_to: Gt yr-1
 
   diag_gbrt_gpp_pseudo_reality:
     description: Validate GBRT model using pseudo-reality approach.
@@ -321,20 +389,17 @@ diagnostics:
         grid_search_cv_param_grid: false
         only_predict: true
         parameters_final_regressor:
-          n_estimators: 500
+          learning_rate: 0.02
+          max_depth: 10
+          n_estimators: 250
           subsample: 0.5
-          learning_rate: 0.05
-          max_depth: 8
         pseudo_reality: ['dataset']
       postprocess:
-        script: mlr/postprocess.py
+        <<: *postprocess
         ancestors: [
           'diag_gbrt_gpp_pseudo_reality/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['month_number']
-        sum: ['latitude', 'longitude']
-        convert_units_to: Gt yr-1
 
   diag_gbrt_single_pred_gpp_pseudo_reality:
     description: Validate GBRT model (with single predictor) using pseudo-reality approach.
@@ -345,14 +410,11 @@ diagnostics:
         coords_as_features: []
         mlr_model_name: GBRT (one feature)
       postprocess:
-        script: mlr/postprocess.py
+        <<: *postprocess
         ancestors: [
           'diag_gbrt_single_pred_gpp_pseudo_reality/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['month_number']
-        sum: ['latitude', 'longitude']
-        convert_units_to: Gt yr-1
 
   diag_lasso_gpp_pseudo_reality:
     description: Validate Lasso model using pseudo-reality approach.
@@ -375,21 +437,15 @@ diagnostics:
   diag_mmm_gpp:
     description: Use simple multi-model mean to predict GPP.
     scripts:
-      mmm: &mmm
-        script: mlr/main.py
+      mmm:
+        <<: *mmm
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
-        mlr_model_name: MMM
-        mlr_model_type: mmm
-        prediction_name: OBS
       postprocess:
-        script: mlr/postprocess.py
+        <<: *postprocess
         ancestors: [
           'diag_mmm_gpp/mmm',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['month_number']
-        sum: ['latitude', 'longitude']
-        convert_units_to: Gt yr-1
 
   diag_mmm_gpp_pseudo_reality:
     description: Validate MMM model using pseudo-reality approach.
@@ -398,14 +454,11 @@ diagnostics:
         <<: *mmm
         pseudo_reality: ['dataset']
       postprocess:
-        script: mlr/postprocess.py
+        <<: *postprocess
         ancestors: [
           'diag_mmm_gpp_pseudo_reality/mmm',
           'diag_mlr_input_gpp/monthly_clim',
         ]
-        mean: ['month_number']
-        sum: ['latitude', 'longitude']
-        convert_units_to: Gt yr-1
 
   diag_plots:
     description: Create plots.
