@@ -613,14 +613,22 @@ class MLRModel():
         # Plot
         for method in ('model-scoring', 'prediction-variance'):
             logger.debug("Plotting feature importance for method '%s'", method)
-            (_, axes) = (self._skater['global_interpreter'].feature_importance.
-                         plot_feature_importance(self._skater['model'],
-                                                 method=method,
-                                                 n_jobs=self._cfg['n_jobs'],
-                                                 progressbar=progressbar))
+            (_, axes) = plt.subplots()
+            feature_importance = (self._skater['global_interpreter'].
+                                  feature_importance.feature_importance(
+                                      self._skater['model'],
+                                      method=method,
+                                      n_jobs=self._cfg['n_jobs'],
+                                      progressbar=progressbar))
+            pos = np.arange(len(feature_importance)) + 0.5
+            axes.barh(pos, feature_importance, align='center')
+
+            # Plot appearance
             axes.set_title(
                 f"Variable Importance ({self._cfg['mlr_model_name']})")
             axes.set_xlabel('Relative Importance')
+            axes.set_yticks(pos)
+            axes.set_yticklabels(feature_importance.index)
             new_filename = (filename.format(method=method) + '.' +
                             self._cfg['output_file_type'])
             plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
@@ -737,6 +745,7 @@ class MLRModel():
                 x_train,
                 features=[feature_name],
                 feature_names=self.features,
+                line_kw={'color': 'b'},
                 **verbosity,
             )
             plt.title(f"Partial dependence ({self._cfg['mlr_model_name']})")
@@ -769,14 +778,14 @@ class MLRModel():
         data_to_plot = {
             'train': {
                 'marker': 'o',
-                'color': 'blue',
+                'color': 'b',
                 's': 6,
                 'alpha': 0.5,
             },
         }
         if 'test' in self.data:
             data_to_plot['test'] = dict(data_to_plot['train'])
-            data_to_plot['test']['color'] = 'green'
+            data_to_plot['test']['color'] = 'g'
 
         # Create plot
         for (data_type, plot_kwargs) in data_to_plot.items():
@@ -794,7 +803,7 @@ class MLRModel():
             np.min([axes.get_xlim(), axes.get_ylim()]),
             np.max([axes.get_xlim(), axes.get_ylim()]),
         ]
-        axes.plot(lims, lims, linestyle='--', color='black', alpha=0.75)
+        axes.plot(lims, lims, linestyle='--', color='k', alpha=0.75)
         axes.set_aspect('equal')
         axes.set_xlim(lims)
         axes.set_ylim(lims)
@@ -838,14 +847,14 @@ class MLRModel():
         data_to_plot = {
             'train': {
                 'marker': 'o',
-                'color': 'blue',
+                'color': 'b',
                 's': 6,
                 'alpha': 0.5,
             },
         }
         if 'test' in self.data:
             data_to_plot['test'] = dict(data_to_plot['train'])
-            data_to_plot['test']['color'] = 'green'
+            data_to_plot['test']['color'] = 'g'
 
         # Create plot
         for (data_type, plot_kwargs) in data_to_plot.items():
@@ -857,7 +866,7 @@ class MLRModel():
             axes.scatter(y_pred, res, label=f'{data_type} data', **plot_kwargs)
 
         # Plot appearance
-        axes.axhline(0.0, linestyle='--', color='black', alpha=0.75)
+        axes.axhline(0.0, linestyle='--', color='k', alpha=0.75)
         axes.set_title(f"Residuals ({self._cfg['mlr_model_name']})")
         axes.set_xlabel(f'Predicted {self._get_plot_label()}')
         axes.set_ylabel(f'Residuals of {self._get_plot_label()}')
@@ -905,7 +914,7 @@ class MLRModel():
                 for (pred_name, pred) in self.data['pred'].items():
                     axes.axvline(pred.x.loc[0, feature],
                                  linestyle='--',
-                                 color='black',
+                                 color='k',
                                  label=('Observation'
                                         if pred_name is None else pred_name))
                 legend = axes.legend(loc='center left',
