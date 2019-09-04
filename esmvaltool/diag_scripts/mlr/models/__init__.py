@@ -810,20 +810,14 @@ class MLRModel():
         axes.set_title(f"Prediction errors ({self._cfg['mlr_model_name']})")
         axes.set_xlabel(f'True {self._get_plot_label()}')
         axes.set_ylabel(f'Predicted {self._get_plot_label()}')
-        legend = axes.legend(loc='center left',
-                             bbox_to_anchor=[1.05, 0.5],
-                             borderaxespad=0.0)
+        axes.legend(loc='upper left')
 
         # Save plot
         plot_path = os.path.join(
             self._cfg['mlr_plot_dir'],
             filename + '.' + self._cfg['output_file_type'],
         )
-        savefig_kwargs = {
-            **self._cfg['savefig_kwargs'],
-            'additional_artists': [legend],
-        }
-        plt.savefig(plot_path, **savefig_kwargs)
+        plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
         logger.info("Wrote %s", plot_path)
         plt.close()
 
@@ -866,24 +860,19 @@ class MLRModel():
             axes.scatter(y_pred, res, label=f'{data_type} data', **plot_kwargs)
 
         # Plot appearance
+        axes.set_aspect('equal')
         axes.axhline(0.0, linestyle='--', color='k', alpha=0.75)
         axes.set_title(f"Residuals ({self._cfg['mlr_model_name']})")
         axes.set_xlabel(f'Predicted {self._get_plot_label()}')
         axes.set_ylabel(f'Residuals of {self._get_plot_label()}')
-        legend = axes.legend(loc='center left',
-                             bbox_to_anchor=[1.05, 0.5],
-                             borderaxespad=0.0)
+        axes.legend(loc='best')
 
         # Save plot
         plot_path = os.path.join(
             self._cfg['mlr_plot_dir'],
             filename + '.' + self._cfg['output_file_type'],
         )
-        savefig_kwargs = {
-            **self._cfg['savefig_kwargs'],
-            'additional_artists': [legend],
-        }
-        plt.savefig(plot_path, **savefig_kwargs)
+        plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
         logger.info("Wrote %s", plot_path)
         plt.close()
 

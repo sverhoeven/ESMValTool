@@ -82,17 +82,27 @@ class GBRModel(MLRModel):
         x_values = np.arange(len(train_score), dtype=np.float64) + 1.0
 
         # Plot train score
-        axes.plot(x_values, train_score, 'b-', label='Training Set Deviance')
+        axes.plot(x_values,
+                  train_score,
+                  color='b',
+                  linestyle='-',
+                  label='train data')
 
         # Plot test score if possible
         if test_score is not None:
-            axes.plot(x_values, test_score, 'r-', label='Test Set Deviance')
+            axes.plot(x_values,
+                      test_score,
+                      color='g',
+                      linestyle='-',
+                      label='test data')
 
         # Appearance
+        ylim = axes.get_ylim()
+        axes.set_ylim(0.0, ylim[1])
+        axes.set_title(f"Training progress ({self._cfg['mlr_model_name']})")
+        axes.set_xlabel('Boosting iterations')
+        axes.set_ylabel('Normalized RMSE')
         axes.legend(loc='upper right')
-        axes.set_title(f"Deviance ({self._cfg['mlr_model_name']})")
-        axes.set_xlabel('Boosting Iterations')
-        axes.set_ylabel('Deviance')
         new_filename = filename + '.' + self._cfg['output_file_type']
         plot_path = os.path.join(self._cfg['mlr_plot_dir'], new_filename)
         plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
