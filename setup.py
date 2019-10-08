@@ -1,20 +1,13 @@
 #!/usr/bin/env python
-"""ESMValTool installation script"""
-# This script only installs dependencies available on PyPI
-#
-# Dependencies that need to be installed some other way (e.g. conda):
-# - ncl
-# - iris
-# - python-stratify
-# - basemap
-
+"""ESMValTool installation script."""
 import os
 import re
 import sys
+from pathlib import Path
 
 from setuptools import Command, setup
 
-from esmvaltool._version import __version__
+from esmvaltool import __version__
 
 PACKAGES = [
     'esmvaltool',
@@ -23,39 +16,44 @@ PACKAGES = [
 REQUIREMENTS = {
     # Installation script (this file) dependencies
     'setup': [
+        'pytest-runner',
         'setuptools_scm',
     ],
     # Installation dependencies
     # Use with pip install . to install from source
     'install': [
-        'basemap',
         'cartopy',
         'cdo',
-        'cf_units',
+        'cf-units',
         'cython',
-        # 'scitools-iris',  # Only iris 2 is on PyPI
-        'matplotlib',
+        'jinja2',
+        'eofs',
+        'esmvalcore>=2.0.0b2,<2.1',
+        'fiona',
+        'matplotlib<3',
+        'nc-time-axis',  # needed by iris.plot
         'netCDF4',
-        'numba',
         'numpy',
-        'pillow',
-        'psutil',
+        'pandas',
         'pyyaml',
+        'scitools-iris>=2.2',
+        'scikit-learn',
         'shapely',
-        'six',
         'stratify',
-        'yamale',
+        'xarray>=0.12',
+        'xlsxwriter',
     ],
     # Test dependencies
     # Execute 'python setup.py test' to run tests
     'test': [
         'easytest',
-        # TODO: add dummydata package, see environment.yml
         'mock',
         'nose',
         'pycodestyle',
-        'pytest',
+        'pytest>=3.9',
         'pytest-cov',
+        'pytest-env',
+        'pytest-flake8',
         'pytest-html',
         'pytest-metadata>=1.5.1',
     ],
@@ -63,20 +61,28 @@ REQUIREMENTS = {
     # Use pip install -e .[develop] to install in development mode
     'develop': [
         'isort',
-        'prospector[with_pyroma]',
-        'pycodestyle',
-        'pydocstyle',
-        'pylint',
+        'prospector[with_pyroma]!=1.1.6.3,!=1.1.6.4',
         'sphinx',
+        'sphinx_rtd_theme',
+        'vmprof',
         'yamllint',
         'yapf',
     ],
 }
 
 
-def discover_python_files(paths, ignore):
-    """Discover Python files"""
+def read_authors(citation_file):
+    """Read the list of authors from .cff file."""
+    authors = re.findall(
+        r'family-names: (.*)$\s*given-names: (.*)',
+        Path(citation_file).read_text(),
+        re.MULTILINE,
+    )
+    return ', '.join(' '.join(author[::-1]) for author in authors)
 
+
+def discover_python_files(paths, ignore):
+    """Discover Python files."""
     def _ignore(path):
         """Return True if `path` should be ignored, False otherwise."""
         return any(re.match(pattern, path) for pattern in ignore)
@@ -93,8 +99,7 @@ def discover_python_files(paths, ignore):
 
 
 class CustomCommand(Command):
-    """Custom Command class"""
-
+    """Custom Command class."""
     def install_deps_temp(self):
         """Try to temporarily install packages needed to run the command."""
         if self.distribution.install_requires:
@@ -107,23 +112,23 @@ class CustomCommand(Command):
 class RunTests(CustomCommand):
     """Class to run tests and generate reports."""
 
-    user_options = []
+    user_options = [('installation', None,
+                     'Run tests that require installation.')]
 
     def initialize_options(self):
-        """Do nothing"""
+        """Initialize custom options."""
+        self.installation = False
 
     def finalize_options(self):
-        """Do nothing"""
-
+        """Do nothing."""
     def run(self):
         """Run tests and generate a coverage report."""
         self.install_deps_temp()
 
         import pytest
 
-        version = sys.version_info[0]
-        report_dir = 'test-reports/python{}'.format(version)
-        errno = pytest.main([
+        report_dir = 'test-reports'
+        args = [
             'tests',
             'esmvaltool',  # for doctests
             '--doctest-modules',
@@ -133,7 +138,10 @@ class RunTests(CustomCommand):
             '--cov-report=xml:{}/coverage.xml'.format(report_dir),
             '--junit-xml={}/report.xml'.format(report_dir),
             '--html={}/report.html'.format(report_dir),
-        ])
+        ]
+        if self.installation:
+            args.append('--installation')
+        errno = pytest.main(args)
 
         sys.exit(errno)
 
@@ -144,11 +152,9 @@ class RunLinter(CustomCommand):
     user_options = []
 
     def initialize_options(self):
-        """Do nothing"""
-
+        """Do nothing."""
     def finalize_options(self):
-        """Do nothing"""
-
+        """Do nothing."""
     def run(self):
         """Run prospector and generate a report."""
         check_paths = PACKAGES + [
@@ -187,40 +193,54 @@ class RunLinter(CustomCommand):
         sys.exit(errno)
 
 
-with open('README.md') as readme:
-    setup(
-        name='ESMValTool',
-        version=__version__,
-        description='Earth System Models eValuation Tool',
-        long_description=readme.read(),
-        url='https://www.esmvaltool.org',
-        download_url='https://github.com/ESMValGroup/ESMValTool',
-        license='Apache License, Version 2.0',
-        classifiers=[
-            'Environment :: Console',
-            'License :: OSI Approved :: Apache Software License',
-            'Programming Language :: Python',
-            'Programming Language :: Python :: 2.7',
-            'Programming Language :: Python :: 3.6',
+setup(
+    name='ESMValTool',
+    version=__version__,
+    author=read_authors('CITATION.cff'),
+    description='Earth System Models eValuation Tool',
+    long_description=Path('README.md').read_text(),
+    url='https://www.esmvaltool.org',
+    download_url='https://github.com/ESMValGroup/ESMValTool',
+    license='Apache License, Version 2.0',
+    classifiers=[
+        'Development Status :: 4 - Beta', 'Environment :: Console',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: Apache Software License',
+        'Natural Language :: English', 'Operating System :: POSIX :: Linux',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Atmospheric Science',
+        'Topic :: Scientific/Engineering :: GIS',
+        'Topic :: Scientific/Engineering :: Hydrology',
+        'Topic :: Scientific/Engineering :: Physics'
+    ],
+    packages=PACKAGES,
+    # Include all version controlled files
+    include_package_data=True,
+    setup_requires=REQUIREMENTS['setup'],
+    install_requires=REQUIREMENTS['install'],
+    tests_require=REQUIREMENTS['test'],
+    extras_require={
+        'develop': (set(REQUIREMENTS['develop'] + REQUIREMENTS['test']) -
+                    {'pycodestyle'}),
+    },
+    entry_points={
+        'console_scripts': [
+            'cmorize_obs = esmvaltool.cmorizers.obs.cmorize_obs:main',
+            'mip_convert_setup = '
+            'esmvaltool.cmorizers.mip_convert.esmvt_mipconv_setup:main',
+            'nclcodestyle = esmvaltool.utils.nclcodestyle.nclcodestyle:_main',
+            'showcolortables = '
+            'esmvaltool.utils.color_tables.show_color_tables:run',
+            'test_recipe = '
+            'esmvaltool.utils.testing.recipe_settings.install_expand_run:main'
         ],
-        packages=PACKAGES,
-        # Include all version controlled files
-        include_package_data=True,
-        setup_requires=REQUIREMENTS['setup'],
-        install_requires=REQUIREMENTS['install'],
-        tests_require=REQUIREMENTS['test'],
-        extras_require={
-            'develop': REQUIREMENTS['develop'] + REQUIREMENTS['test']
-        },
-        entry_points={
-            'console_scripts': [
-                'esmvaltool = esmvaltool._main:run',
-                'nclcodestyle = esmvaltool.utils.nclcodestyle.nclcodestyle:_main',
-            ],
-        },
-        cmdclass={
-            'test': RunTests,
-            'lint': RunLinter,
-        },
-        zip_safe=False,
-    )
+    },
+    cmdclass={
+        'test': RunTests,
+        'lint': RunLinter,
+    },
+    zip_safe=False,
+)

@@ -1,10 +1,27 @@
+# ESMValTool
+# recipe_python.yml
 ---
+documentation:
+  description: |
+    Example recipe that plots the mean precipitation and temperature.
+
+  authors:
+    - andela_bouwe
+    - righi_mattia
+
+  maintainer:
+    - schlund_manuel
+
+  references:
+    - acknow_project
+
+  projects:
+    - esmval
+    - c3s-magic
 
 datasets:
-  - {dataset: bcc-csm1-1,  project: CMIP5,  mip: Amon,  exp: historical,  ensemble: r1i1p1,  start_year: 2000,  end_year: 2002}
-  - {dataset: GFDL-ESM2G,  project: CMIP5,  mip: Amon,  exp: historical,  ensemble: r1i1p1,  start_year: 2000,  end_year: 2002}
+  - {dataset: CanESM2,  project: CMIP5,  mip: Amon,  exp: historical,  ensemble: r1i1p1,  start_year: 2000,  end_year: 2002}
   - {dataset: MPI-ESM-LR,  project: CMIP5,  mip: Amon,  exp: historical,  ensemble: r1i1p1,  start_year: 2000,  end_year: 2002}
-  - {dataset: ERA-Interim, project: OBS,    tier: 3,    type: reanaly,    version: 1,        start_year: 2000,  end_year: 2002}
 
 preprocessors:
 
@@ -13,7 +30,7 @@ preprocessors:
       levels: 85000
       scheme: nearest
     regrid:
-      target_grid: reference_dataset
+      target_grid: 1x1
       scheme: linear
     multi_model_statistics:
       span: overlap
@@ -23,16 +40,14 @@ diagnostics:
 
   diagnostic1:
     description: Air temperature and precipitation Python tutorial diagnostic.
+    themes:
+      - phys
+    realms:
+      - atmos
     variables:
       ta:
         preprocessor: preprocessor1
-        field: T3M
-        reference_dataset: ERA-Interim
-        additional_datasets:
-          - {dataset: NCEP,        project: OBS,    tier: 2,    type: reanaly,    version: 1,        start_year: 2000,  end_year: 2002}
       pr:
-        field: T2Ms
-        reference_dataset: ERA-Interim
     scripts:
       script1:
         script: examples/diagnostic.py
