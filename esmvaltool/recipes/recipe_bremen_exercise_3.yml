@@ -1,4 +1,8 @@
 ---
+documentation:
+  description: Climate Modelling Part 2 (Bremen, 2019), recipe for exercise 3.
+  authors:
+    - schlund_manuel
 
 datasets:
   - {dataset: CanESM2,     project: CMIP5, mip: Amon, exp: historical, ensemble: r1i1p1, start_year: 1961, end_year: 1990}
@@ -15,19 +19,17 @@ datasets:
 preprocessors:
 
   global_mean:
-    average_region:
-      coord1: latitude
-      coord2: longitude
+    area_statistics:
+      operator: mean
 
 
 diagnostics:
 
   exercise_3:
-    description: Climate Modelling Part 2 (Bremen, 2018), recipe for exercise 3.
+    description: Climate Modelling Part 2 (Bremen, 2019), recipe for exercise 3.
     variables:
       tas:
         preprocessor: global_mean
-        field: T2Ms
     scripts:
       exercise_script_3:
         script: bremen_practicals/exercise_3.py
