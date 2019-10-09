@@ -1,4 +1,4 @@
-"""Climate Modelling Part 2 (Bremen, 2018): Diagnostic for exercise 1.
+"""Climate Modelling Part 2 (Bremen, 2019): Diagnostic for exercise 1.
 
 Please only modify the marked sections of the code.
 
@@ -37,6 +37,8 @@ def main(cfg):
     plot_type = cfg['output_file_type']
     plot_path_1 = os.path.join(cfg['plot_dir'], 'exercise_1a.' + plot_type)
 
+    from IPython import embed; embed()
+
     # Read dataset into cube
     input_data = cfg['input_data'].values()
     mmm_data = select_metadata(input_data, dataset='MultiModelMean')[0]
@@ -59,25 +61,7 @@ def main(cfg):
     # Please do not modify anything above this line
     ###########################################################################
 
-    # Set path of second plot
-    plot_path_2 = os.path.join(cfg['plot_dir'], 'exercise_1b.' + plot_type)
-
-    # Exctract observations
-    obs_data = select_metadata(input_data, project='OBS')[0]
-    obs_file = obs_data['filename']
-    logger.info("Reading %s", obs_file)
-    obs_cube = iris.load_cube(obs_file)
-
-    # Calculate temporal mean and bias
-    obs_cube = obs_cube.collapsed('time', iris.analysis.MEAN)
-    bias_cube = mmm_cube - obs_cube
-    bias_cube.rename("Bias in surface air temperature")
-
-    # Plot the data
-    iris.quickplot.contourf(bias_cube, cmap='rainbow')
-    plt.gca().coastlines()
-    plt.savefig(plot_path_2)
-    logger.info("Writing %s", plot_path_2)
+    # Add your code here
 
     ###########################################################################
     # Please do not modify anything below this line
