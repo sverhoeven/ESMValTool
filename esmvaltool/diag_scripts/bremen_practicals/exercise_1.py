@@ -37,8 +37,6 @@ def main(cfg):
     plot_type = cfg['output_file_type']
     plot_path_1 = os.path.join(cfg['plot_dir'], 'exercise_1a.' + plot_type)
 
-    from IPython import embed; embed()
-
     # Read dataset into cube
     input_data = cfg['input_data'].values()
     mmm_data = select_metadata(input_data, dataset='MultiModelMean')[0]
