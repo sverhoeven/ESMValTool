@@ -608,7 +608,7 @@ class MLRModel():
         logger.info("Plotting feature importance")
         if filename is None:
             filename = 'feature_importance_{method}'
-        progressbar = True if self._cfg['log_level'] == 'debug' else False
+        progressbar = self._cfg['log_level'] == 'debug'
 
         # Plot
         for method in ('model-scoring', 'prediction-variance'):
@@ -1304,10 +1304,9 @@ class MLRModel():
                         "not match, got {:d} point(s) for the prediction "
                         "input and {:d} point(s) for the prediction "
                         "output".format(len(x_pred.index), len(y_ref.index)))
-                else:
-                    logger.info(
-                        "Found %i raw prediction output data point(s) with "
-                        "data type '%s'", len(y_ref.index), self._cfg['dtype'])
+                logger.info(
+                    "Found %i raw prediction output data point(s) with data "
+                    "type '%s'", len(y_ref.index), self._cfg['dtype'])
 
         # Error
         if prediction_name not in self._datasets['prediction_input_error']:
@@ -1478,11 +1477,11 @@ class MLRModel():
         """Extract all features from the `prediction_input` datasets."""
         logger.debug("Extracting features from 'prediction_input' datasets")
         pred_name = list(self._datasets['prediction_input'].keys())[0]
+        pred_name_str = self._get_name(pred_name)
         datasets = self._datasets['prediction_input'][pred_name]
-        msg = f"for prediction '{self._get_name(pred_name)}'"
         (units,
          types) = self._get_features_of_datasets(datasets, 'prediction_input',
-                                                 msg)
+                                                 pred_name)
 
         # Mark categorical variables
         categorical = {feature: False for feature in types}
@@ -1498,7 +1497,8 @@ class MLRModel():
         # Check if features were found
         if not units:
             raise ValueError(
-                f"No features for 'prediction_input' data{msg} found")
+                f"No features for 'prediction_input' data for prediction "
+                f"'{pred_name_str}' found")
 
         # Check for wrong options
         if self._cfg.get('accept_only_scalar_data'):
@@ -1525,16 +1525,17 @@ class MLRModel():
 
         # Return features
         logger.info(
-            "Found %i feature(s) (defined in 'prediction_input' data%s)",
-            len(features.index), msg)
+            "Found %i feature(s) (defined in 'prediction_input' data for "
+            "prediction '%s')", len(features.index), pred_name_str)
         for feature in features.index:
             logger.debug("'%s' with units '%s' and type '%s'", feature,
                          features.units.loc[feature],
                          features.types.loc[feature])
         return features
 
-    def _get_features_of_datasets(self, datasets, var_type, msg):
+    def _get_features_of_datasets(self, datasets, var_type, pred_name):
         """Extract all features (with units and types) of given datasets."""
+        pred_name_str = self._get_name(pred_name)
         units = {}
         types = {}
         cube = None
@@ -1543,7 +1544,6 @@ class MLRModel():
             dataset = datasets_[0]
             cube = self._load_cube(dataset)
             if 'broadcast_from' not in dataset:
-
                 ref_cube = cube
             units[tag] = Unit(dataset['units'])
             if 'broadcast_from' in dataset:
@@ -1555,11 +1555,11 @@ class MLRModel():
         if ref_cube is None:
             if cube is None:
                 raise ValueError(
-                    f"Expected at least one '{var_type}' dataset{msg}")
-            else:
-                raise ValueError(
-                    f"Expected at least one '{var_type}' dataset{msg} without "
-                    f"the option 'broadcast_from'")
+                    f"Expected at least one '{var_type}' dataset for "
+                    f" prediction '{pred_name_str}'")
+            raise ValueError(
+                f"Expected at least one '{var_type}' dataset for prediction "
+                f"'{pred_name_str}' without the option 'broadcast_from'")
 
         # Coordinate features
         for coord_name in self._cfg.get('coords_as_features', []):
@@ -1568,7 +1568,8 @@ class MLRModel():
             except iris.exceptions.CoordinateNotFoundError:
                 raise iris.exceptions.CoordinateNotFoundError(
                     f"Coordinate '{coord_name}' given in 'coords_as_features' "
-                    f"not found in '{var_type}' data{msg}")
+                    f"not found in '{var_type}' data for prediction "
+                    f"'{pred_name_str}'")
             units[coord_name] = coord.units
             types[coord_name] = 'coordinate'
 
