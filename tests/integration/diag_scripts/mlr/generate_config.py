@@ -27,7 +27,6 @@ DATASET = {
     'tag': ['tag_1', 'tag_2', 'tag_3'],
     'prediction_name': [None, 'pred_name_1', 'pred_name_2'],
     'broadcast_from': [None, None, None, None, 0, [0], [0, 1], [4, 5]],
-    'metadata': [None, None, None, 'dataset', 'project'],
 }
 CFG = {
     'input_files': [[], ['/ancestor/1'], ['/ancestor/1', '/ancestor/2']],
@@ -111,6 +110,7 @@ if __name__ == '__main__':
             dataset = generate_random_dict(DATASET, remove_prob=0.1)
             datasets[key_data] = dataset
         cfg['input_data'] = datasets
+        input_datasets = list(datasets.values())
 
         # Output
         mlr_model = SimplifiedMLRModel(cfg)
@@ -120,7 +120,7 @@ if __name__ == '__main__':
             with mock.patch('esmvaltool.diag_scripts.mlr.models.logger',
                             autospec=True) as models_logger:
                 try:
-                    getattr(mlr_model, FUNCTION)(**cfg.get('metadata', {}))
+                    getattr(mlr_model, FUNCTION)(input_datasets)
                 except Exception as exc:
                     output = {'EXCEPTION': {}}
                     output['EXCEPTION']['type'] = type(exc).__name__

@@ -6,36 +6,6 @@ import pytest
 
 import esmvaltool.diag_scripts.mlr.preprocess as preprocess
 
-LONG_NAME_1 = 'loooong name'
-LONG_NAME_2 = ':)'
-COORD_1 = iris.coords.DimCoord([-2.0, -1.0, 20.0], long_name=LONG_NAME_1)
-COORD_2 = iris.coords.DimCoord([-2.0, -1.0, 20.0], long_name=LONG_NAME_2)
-COORD_3 = iris.coords.DimCoord([-42.0], long_name=LONG_NAME_1)
-COORD_AUX = iris.coords.AuxCoord(['a', 'b', 'c'], long_name=LONG_NAME_2)
-CUBE_1 = iris.cube.Cube(np.arange(3.0), dim_coords_and_dims=[(COORD_1, 0)])
-CUBE_2 = iris.cube.Cube(np.arange(3.0), dim_coords_and_dims=[(COORD_2, 0)])
-CUBE_3 = iris.cube.Cube(np.arange(1.0), dim_coords_and_dims=[(COORD_3, 0)])
-CUBE_4 = iris.cube.Cube(np.arange(3.0),
-                        dim_coords_and_dims=[(COORD_1, 0)],
-                        aux_coords_and_dims=[(COORD_AUX, 0)])
-TEST_CHECK_COORDS = [
-    (CUBE_1, [LONG_NAME_1], True),
-    (CUBE_2, [LONG_NAME_1], False),
-    (CUBE_3, [LONG_NAME_1], False),
-    (CUBE_4, [LONG_NAME_1], True),
-    (CUBE_1, [LONG_NAME_1, LONG_NAME_2], False),
-    (CUBE_2, [LONG_NAME_1, LONG_NAME_2], False),
-    (CUBE_3, [LONG_NAME_1, LONG_NAME_2], False),
-    (CUBE_4, [LONG_NAME_1, LONG_NAME_2], True),
-]
-
-
-@pytest.mark.parametrize('cube,coords,output', TEST_CHECK_COORDS)
-def test_has_valid_coords(cube, coords, output):
-    """Test check for valid coords."""
-    out = preprocess._has_valid_coords(cube, coords)
-    assert out == output
-
 
 X_ARR = np.arange(5)
 Y_ARR_1 = np.ma.masked_invalid([np.nan, 1.0, 0.0, np.nan, -0.5])

@@ -42,12 +42,18 @@ DF_2_OUT = pd.DataFrame({'b': [1.0, 42.0, 3.14]})
 DF_3 = pd.DataFrame({'c': np.arange(5.0) + 1.0, 'd': np.arange(5.0) - 2.0})
 DF_3_OUT = pd.DataFrame({'c': [1.0, 3.0, 5.0], 'd': [-2.0, 0.0, 2.0]})
 TEST_REMOVE_MISSING_LABELS = [
-    ([DF_1, DF_1], [DF_1, DF_1], 0),
-    ([DF_1, DF_2], [DF_1_OUT, DF_2_OUT], 2),
-    ([DF_2, DF_1], [DF_2, DF_1], 0),
-    ([DF_2, DF_2], [DF_2_OUT, DF_2_OUT], 2),
-    ([DF_3, DF_1], [DF_3, DF_1], 0),
-    ([DF_3, DF_2], [DF_3_OUT, DF_2_OUT], 2),
+    ([DF_1, DF_1, None], [DF_1, DF_1, None], 0),
+    ([DF_1, DF_2, None], [DF_1_OUT, DF_2_OUT, None], 2),
+    ([DF_2, DF_1, None], [DF_2, DF_1, None], 0),
+    ([DF_2, DF_2, None], [DF_2_OUT, DF_2_OUT, None], 2),
+    ([DF_3, DF_1, None], [DF_3, DF_1, None], 0),
+    ([DF_3, DF_2, None], [DF_3_OUT, DF_2_OUT, None], 2),
+    ([DF_1, DF_1, DF_1], [DF_1, DF_1, DF_1], 0),
+    ([DF_1, DF_2, DF_1], [DF_1_OUT, DF_2_OUT, DF_1_OUT], 2),
+    ([DF_2, DF_1, DF_2], [DF_2, DF_1, DF_2], 0),
+    ([DF_2, DF_2, DF_2], [DF_2_OUT, DF_2_OUT, DF_2_OUT], 2),
+    ([DF_3, DF_1, DF_1], [DF_3, DF_1, DF_1], 0),
+    ([DF_3, DF_2, DF_1], [DF_3_OUT, DF_2_OUT, DF_1_OUT], 2),
 ]
 
 
@@ -58,7 +64,10 @@ def test_remove_missing_labels(mock_logger, df_in, df_out, logger):
     out = MLRModel._remove_missing_labels(*df_in)
     assert out is not df_in
     for (idx, df) in enumerate(df_out):
-        assert df.equals(out[idx])
+        if df is None:
+            assert out[idx] is None
+        else:
+            assert df.equals(out[idx])
     if logger:
         assert logger in mock_logger.info.call_args[0]
     else:

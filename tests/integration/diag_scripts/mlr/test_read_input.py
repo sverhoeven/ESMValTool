@@ -52,6 +52,7 @@ with open(
 def test_load_input_datasets(mock_models_logger, mock_mlr_logger, data):
     """Test loading of input datasets."""
     cfg = data['cfg']
+    input_datasets = list(cfg['input_data'].values())
     output = data['output']
     mlr_model = SimplifiedMLRModel(cfg)
 
@@ -59,10 +60,10 @@ def test_load_input_datasets(mock_models_logger, mock_mlr_logger, data):
     if 'EXCEPTION' in output:
         exc = output['EXCEPTION']
         with pytest.raises(EXCEPTIONS[exc['type']]) as exc_info:
-            mlr_model._load_input_datasets(**cfg.get('metadata', {}))
+            mlr_model._load_input_datasets(input_datasets)
             assert exc.get('value', '') in str(exc_info.value)
     else:
-        mlr_model._load_input_datasets(**cfg.get('metadata', {}))
+        mlr_model._load_input_datasets(input_datasets)
         assert mlr_model._datasets == output
 
     # Logger calls
