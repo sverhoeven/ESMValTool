@@ -19,19 +19,20 @@ Configuration options in recipe
 -------------------------------
 aggregate_by : dict, optional
     Aggregate over given coordinates (dict keys) using a desired aggregator
-    (dict values). Allowed aggregators are `mean`, `median`, `sum`, `std`,
-    `var`, and `trend`.
+    (dict values). Allowed aggregators are ``'mean'``, ``'median'``, ``'sum'``,
+    ``'std'``, ``'var'``, and ``'trend'``.
 anomaly : dict, optional
-    Calculate anomalies using reference datasets indicated by `ref: true`. Two
-    datasets are matched using the list of metadata attributes given by the
-    `matched_by` key. Additionally, the anomaly can be calculated relative to
-    the (total) mean of the reference dataset if `mean: true` is specified.
+    Calculate anomalies using reference datasets indicated by ``ref: true`` in
+    the recipe. Two datasets are matched using the list of metadata attributes
+    given by the ``matched_by`` key. Additionally, the anomaly can be
+    calculated relative to the (total) mean of the reference dataset if
+    ``mean: true`` is specified.
 area_weighted : bool, optional (default: True)
     Calculate weighted averages/sums for area (using grid cell boundaries).
 argsort : dict, optional
-    Calculate :mod:`numpy.ma.argsort` along given coordinate to get ranking.
-    The coordinate can be specified by the `coord` key. If `descending: true`
-    is given, use descending order insted of ascending.
+    Calculate :func:`numpy.ma.argsort` along given coordinate to get ranking.
+    The coordinate can be specified by the ``coord`` key. If
+    ``descending: true`` is given, use descending order insted of ascending.
 convert_units_to : str, optional
     Convert units of the input data. Can also be given as dataset option.
 mean : list of str, optional
@@ -45,10 +46,10 @@ normalize_std : bool, optional (default: false)
 pattern : str, optional
     Pattern matched against ancestor files.
 return_trend_stderr : bool, optional
-    Return standard error of slope in case of trend calculations (as `var_type`
-    `prediction_input_error`).
+    Return standard error of slope in case of trend calculations (as
+    ``var_type`` ``prediction_input_error``).
 save_ref_data : bool, optional (default: False)
-    Save data marked as `ref: true`.
+    Save data marked as ``ref: true``.
 sum : list of str, optional
     Calculate the sum of over the specified coordinates.
 tag : str, optional
@@ -109,7 +110,7 @@ def _apply_aggregator(cfg, cube, data, coord_name, operation):
 
 
 def _apply_trend_aggregator(cfg, cube, data, coord_name):
-    """Apply aggregator `trend` to cube."""
+    """Apply aggregator ``trend`` to cube."""
     coord_values = np.unique(cube.coord(coord_name).points)
     cubes = iris.cube.CubeList()
     cubes_stderr = iris.cube.CubeList()
@@ -230,7 +231,7 @@ def _get_time_weights(cfg, cube):
 
 
 def _remove_axis(data, axis=None):
-    """Remove given axis of arrays by using index `0`."""
+    """Remove given axis of arrays by the first index of a given axis."""
     return np.take(data, 0, axis=axis)
 
 
@@ -353,7 +354,7 @@ def calculate_anomalies(cfg, input_data):
 
 
 def calculate_argsort(cfg, cube, data):
-    """Calculate :mod:`numpy.ma.argsort` along given axis (= Ranking)."""
+    """Calculate :func:`numpy.ma.argsort` along given axis (= Ranking)."""
     argsort = cfg.get('argsort')
     if not argsort:
         return (cube, data)

@@ -17,19 +17,19 @@ CRESCENDO
 Configuration options in recipe
 -------------------------------
 box_plot : dict, optional
-    Specify additional keyword arguments for :mod:`seaborn.boxplot()` by
-    `plot_kwargs` and plot appearance options by `pyplot_kwargs` (processed as
-    functions of :mod:`matplotlib.pyplot`).
+    Specify additional keyword arguments for :func:`seaborn.boxplot` by
+    ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
+    as functions of :mod:`matplotlib.pyplot`).
 pattern : str, optional
     Pattern matched against ancestor files.
 residual_plot : dict, optional
     Specify additional keyword arguments for the residual plot function by
-    `plot_kwargs` and plot appearance options by `pyplot_kwargs` (processed as
-    functions of :mod:`matplotlib.pyplot`).
+    ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
+    as functions of :mod:`matplotlib.pyplot`).
 savefig_kwargs : dict, optional
-    Keyword arguments for :mod:`matplotlib.pyplot.savefig()`.
+    Keyword arguments for :func:`matplotlib.pyplot.savefig`.
 seaborn_settings : dict, optional
-    Options for seaborn's `set()` method (affects all plots), see
+    Options for :func:`seaborn.set` (affects all plots), see
     <https://seaborn.pydata.org/generated/seaborn.set.html>.
 
 """

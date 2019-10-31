@@ -19,20 +19,20 @@ Configuration options in recipe
 -------------------------------
 abs_plot : dict, optional
     Specify additional keyword arguments for the absolute plotting function by
-    `plot_kwargs` and plot appearance options by `pyplot_kwargs` (processed as
-    functions of :mod:`matplotlib.pyplot`).
+    ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
+    as functions of :mod:`matplotlib.pyplot`).
 bias_plot : dict, optional
     Specify additional keyword arguments for the absolute plotting function by
-    `plot_kwargs` and plot appearance options by `pyplot_kwargs` (processed as
-    functions of :mod:`matplotlib.pyplot`).
+    ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
+    as functions of :mod:`matplotlib.pyplot`).
 ignore_var_types : list of str, optional
-    Ignore `var_type`.
+    Ignore specific ``var_type``s.
 pattern : str, optional
     Pattern matched against ancestor files.
 savefig_kwargs : dict, optional
-    Keyword arguments for :mod:`matplotlib.pyplot.savefig()`.
+    Keyword arguments for :func:`matplotlib.pyplot.savefig`.
 seaborn_settings : dict, optional
-    Options for seaborn's `set()` method (affects all plots), see
+    Options for :func:`seaborn.set` (affects all plots), see
     <https://seaborn.pydata.org/generated/seaborn.set.html>.
 
 """
@@ -55,12 +55,12 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 
 def _get_alias(cfg, name):
-    """Get alias for given `name`."""
+    """Get alias for given ``name``."""
     return cfg.get('aliases', {}).get(name, name)
 
 
 def get_cube_dict(cfg, input_data):
-    """Get dictionary of mean cubes (values) with `var_type` (keys)."""
+    """Get dictionary of mean cubes (values) with ``var_type`` (keys)."""
     cube_dict = {}
     for (var_type, datasets) in group_metadata(input_data, 'var_type').items():
         if var_type in cfg.get('ignore_var_types', []):
@@ -114,7 +114,7 @@ def get_plot_kwargs(cfg, option):
 
 
 def get_savefig_kwargs(cfg):
-    """Get keyword arguments for :mod:`matplotlib.pyplot.savefig()`."""
+    """Get keyword arguments for :func:`matplotlib.pyplot.savefig`."""
     if 'savefig_kwargs' in cfg:
         return cfg['savefig_kwargs']
     savefig_kwargs = {

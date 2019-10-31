@@ -38,10 +38,10 @@ VAR_TYPES = [
 
 
 class AdvancedPipeline(Pipeline):
-    """Expand `sklearn.pipeline.Pipeline` class."""
+    """Expand :class:`sklearn.pipeline.Pipeline`."""
 
     def fit_transformers_only(self, x_data, y_data, **fit_kwargs):
-        """Fit only `transform` steps of Pipeline."""
+        """Fit only ``transform`` steps of Pipeline."""
         transformer_steps = [s[0] for s in self.steps[:-1]]
         transformers_kwargs = {}
         for (param_name, param_val) in fit_kwargs.items():
@@ -54,13 +54,13 @@ class AdvancedPipeline(Pipeline):
         return self._fit(x_data, y_data, **transformers_kwargs)
 
     def transform_only(self, x_data):
-        """Only perform `transform` steps of Pipeline."""
+        """Only perform ``transform`` steps of Pipeline."""
         for (_, transformer) in self.steps[:-1]:
             x_data = transformer.transform(x_data)
         return x_data
 
     def transform_target_only(self, y_data):
-        """Only perform `transform` steps of `TransformedTargetRegressor`."""
+        """Only perform ``transform`` steps of target regressor."""
         reg = self.steps[-1][1]
         if not hasattr(reg, 'transformer_'):
             raise ValueError(
@@ -75,10 +75,10 @@ class AdvancedPipeline(Pipeline):
 
 
 class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
-    """Expand `sklearn.compose.TransformedTargetRegressor` class."""
+    """Expand :class:`sklearn.compose.TransformedTargetRegressor`."""
 
     def fit(self, x_data, y_data, **fit_kwargs):
-        """Expand `fit()` method to accept kwargs."""
+        """Expand :meth:`fit` to accept kwargs."""
         y_data = check_array(y_data,
                              accept_sparse=False,
                              force_all_finite=True,
@@ -113,7 +113,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
         return self
 
     def fit_transformer_only(self, y_data, **fit_kwargs):
-        """Fit only `transformer` step."""
+        """Fit only ``transformer`` step."""
         y_data = check_array(y_data,
                              accept_sparse=False,
                              force_all_finite=True,
@@ -133,7 +133,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
         self._fit_transformer(y_2d)
 
     def predict(self, x_data, always_return_1d=True, **predict_kwargs):
-        """Expand `predict()` method to accept kwargs."""
+        """Expand :meth:`predict()` to accept kwargs."""
         predict_kwargs = dict(predict_kwargs)
         check_is_fitted(self, "regressor_")
 
@@ -177,7 +177,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
         return (pred_trans, y_err)
 
     def _get_fit_kwargs(self, fit_kwargs):
-        """Separate `transformer` and `regressor` kwargs."""
+        """Separate ``transformer`` and ``regressor`` kwargs."""
         transformer_kwargs = {}
         regressor_kwargs = {}
         for (param_name, param_val) in fit_kwargs.items():
@@ -215,8 +215,8 @@ def create_alias(dataset, attributes, default='dataset', delimiter='-'):
     attributes : list of str
         List of attributes used to create the alias.
     default : str, optional (default: 'dataset')
-        Default alias `dataset` does not contain any of the given attributes.
-    delimiter : str, optional (default : '-')
+        Default alias ``dataset`` does not contain any of the given attributes.
+    delimiter : str, optional (default: '-')
         Delimiter used to separate different attributes in the alias.
 
     Returns
@@ -239,7 +239,7 @@ def create_alias(dataset, attributes, default='dataset', delimiter='-'):
 
 
 def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
-    """Check (MLR) attributes of `datasets`.
+    """Check (MLR) attributes of ``datasets``.
 
     Parameters
     ----------
@@ -248,30 +248,29 @@ def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
     log_level : str, optional (default: 'debug')
         Verbosity level of the logger.
     mode : str, optional (default: None)
-        Checking mode, possible values: `'only_missing'` (only check if
-        attributes are missing), `'only_var_type'` (check only `var_type`) or
-        `None` (check both).
+        Checking mode. Must be one of ``'only_missing'`` (only check if
+        attributes are missing), ``'only_var_type'`` (check only `var_type`) or
+        ``None`` (check both).
 
     Returns
     -------
     bool
-        `True` if all required attributes are available, `False` if not.
+        ``True`` if all required attributes are available, ``False`` if not.
 
     """
     output = True
     for dataset in datasets:
-        path = dataset['filename']
         if mode != 'only_var_type':
             for key in NECESSARY_KEYS:
                 if key not in dataset:
                     getattr(logger, log_level)(
                         "Dataset '%s' does not have necessary (MLR) attribute "
-                        "'%s'", path, key)
+                        "'%s'", dataset, key)
                     output = False
         if mode != 'only_missing' and dataset.get('var_type') not in VAR_TYPES:
             getattr(logger, log_level)(
                 "Dataset '%s' has invalid var_type '%s', must be one of %s",
-                path, dataset.get('var_type'), VAR_TYPES)
+                dataset, dataset.get('var_type'), VAR_TYPES)
             output = False
     return output
 
@@ -279,8 +278,8 @@ def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
 def get_absolute_time_units(units):
     """Convert time reference units to absolute ones.
 
-    This function converts reference time units (like `'days since YYYY'`) to
-    absolute ones (like `'days'`).
+    This function converts reference time units (like ``'days since YYYY'``) to
+    absolute ones (like ``'days'``).
 
     Parameters
     ----------
@@ -336,7 +335,7 @@ def get_area_weights(cube, normalize=False):
 def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
     """Get input data and check MLR attributes if desired.
 
-    Use `input_data` and ancestors to get all relevant input files. Only
+    Use ``input_data`` and ancestors to get all relevant input files. Only
     accepts files with all necessary MLR attributes if desired.
 
     Parameters
@@ -346,8 +345,8 @@ def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
     pattern : str, optional
         Pattern matched against ancestor files.
     check_mlr_attributes : bool, optional (default: True)
-        If `True`, only returns datasets with valid MLR attributes. If `False`,
-        returns all found datasets.
+        If ``True``, only returns datasets with valid MLR attributes. If
+        ``False``, returns all found datasets.
 
     Returns
     -------
@@ -406,11 +405,11 @@ def get_time_weights(cube, normalize=False):
 
 
 def units_power(units, power):
-    """Raise a :mod:`cf_units.Unit` to given power preserving symbols.
+    """Raise a :class:`cf_units.Unit` to given power preserving symbols.
 
-    Raise :mod:`cf_units.Unit` to given power without expanding it first. For
-    example, raising `'J'` to the power of `2` (by using `**2`) gives
-    `'kg2 m4 s-4'`, not `'W2'`.
+    Raise :class:`cf_units.Unit` to given power without expanding it first. For
+    example, raising ``'J'`` to the power of 2 (by using ``**2``) gives
+    ``'kg2 m4 s-4'``, not ``'W2'``.
 
     Parameters
     ----------

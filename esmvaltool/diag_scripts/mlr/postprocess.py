@@ -19,7 +19,7 @@ Configuration options in recipe
 -------------------------------
 add_var_from_cov : bool, optional (default: True)
     Calculate variances from covariance matrix (diagonal elements) and add
-    those to (squared) error datasets. Set to `False` if variance is already
+    those to (squared) error datasets. Set to ``False`` if variance is already
     given separately in prediction output.
 area_weighted : bool, optional (default: True)
     Calculate weighted averages/sums for area (using grid cell boundaries).
@@ -240,7 +240,7 @@ def _estimate_real_error(cfg, squared_error_cube, ref_dataset, basepath):
 
 
 def _corrcoef(array, rowvar=True, weights=None):
-    """Fast version of :mod:`np.ma.corrcoef`."""
+    """Fast version of :func:`numpy.ma.corrcoef`."""
     if not rowvar:
         array = array.T
         if weights is not None:

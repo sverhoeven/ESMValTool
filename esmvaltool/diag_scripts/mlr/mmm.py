@@ -26,7 +26,7 @@ mlr_model_name : str, optional
 pattern : str, optional
     Pattern matched against ancestor files.
 prediction_name : str, optional
-    Default `prediction_name` of output cubes if no 'prediction_reference'
+    Default ``prediction_name`` of output cubes if no 'prediction_reference'
     dataset is given.
 
 """
@@ -182,7 +182,7 @@ def get_mm_cube(cfg, datasets):
 
 
 def get_reference_dataset(datasets, tag):
-    """Get `prediction_reference` dataset."""
+    """Get ``prediction_reference`` dataset."""
     ref_datasets = select_metadata(datasets, var_type='prediction_reference')
     if not ref_datasets:
         logger.debug(

@@ -17,35 +17,65 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
+grid_search_cv_kwargs : dict, optional
+    Keyword arguments for the grid search cross-validation, see
+    <https://scikit-learn.org/stable/modules/generated/
+    sklearn.model_selection.GridSearchCV.html>.
+grid_search_cv_param_grid : dict or list of dict, optional
+    If specified, perform exhaustive parameter search using cross-validation
+    instead of simply calling
+    :meth:`esmvaltool.diag_scripts.mlr.models.MLRModel.fit`. Contains
+    parameters (keys) and ranges (values) for the exhaustive parameter search.
+    Have to be given for each step of the pipeline seperated by two
+    underscores, i.e. ``s__p`` is the parameter ``p`` for step ``s``.
 group_metadata : str, optional
     Group input data by an attribute. For every group element (set of
-    datasets), an individual MLR model is calculated. Only affects `feature`
-    and `label` datasets. Cannot be used together with the option
-    `pseudo_reality`.
+    datasets), an individual MLR model is calculated. Only affects ``feature``
+    and ``label`` datasets. Cannot be used together with the option
+    ``pseudo_reality``.
 model_type : str, optional (default: 'gbr_sklearn')
     MLR model type. The given model has to be defined in
     :mod:`esmvaltool.diag_scripts.mlr.models`.
 only_predict : bool, optional (default: False)
-    If `True`, only use `predict()` function of MLR model and do not create any
-    other output (CSV files, plots, etc.).
+    If ``True``, only use
+    :meth:`esmvaltool.diag_scripts.mlr.models.MLRModel.predict` and do not
+    create any other output (CSV files, plots, etc.).
 pattern : str, optional
     Pattern matched against ancestor files.
+predict_kwargs : dict, optional
+    Optional keyword arguments for the final regressor's ``predict()``
+    function.
 pseudo_reality : list of str, optional
     List of dataset attributes which are used to group input data for a pseudo-
-    reality test (also known as 'model-as-truth' or 'perfect-model' setup). For
-    every element of the group a single MLR model is fitted on all data EXCEPT
-    for that of the specified group element. This group element is then used as
-    additional `prediction_input` and `prediction_reference`. This allows a
-    direct assessment of the predictive power of the MLR model by comparing the
-    MLR prediction output and the true labels (similar to splitting the input
-    data in a training and test set, but not dividing the data randomly but
-    using specific datasets, e.g. the different climate models). Cannot be used
-    together with the option `group_metadata`.
+    reality test (also known as `model-as-truth` or `perfect-model` setup). For
+    every element of the group a single MLR model is fitted on all data
+    **except** for that of the specified group element. This group element is
+    then used as additional ``prediction_input`` and ``prediction_reference``.
+    This allows a direct assessment of the predictive power of the MLR model by
+    comparing the MLR prediction output and the true labels (similar to
+    splitting the input data in a training and test set, but not dividing the
+    data randomly but using specific datasets, e.g. the different climate
+    models). Cannot be used together with the option ``group_metadata``.
+save_mlr_model_error : bool, optional (default: False)
+    Additionally save estimated (constant) squared MLR model error using RMSE.
+    This error represents the uncertainty of the prediction caused by the MLR
+    model itself and not by errors in the prediction input data (errors in that
+    will be automatically considered by including datasets with ``var_type``
+    set to ``prediction_input_error``. It is calculated by a (hold-out) test
+    data set. Only possible if test data is available, i.e. the option
+    ``test_size`` is not set to ``False`` during class initialization.
+save_lime_importance : bool, optional (default: False)
+    Additionally save local feature importance given by LIME (Local
+    Interpretable Model-agnostic Explanations).
+save_propagated_errors : bool, optional (default: False)
+    Additionally save propagated errors from ``prediction_input_error``
+    datasets.
 select_metadata : dict, optional
     Pre-select input data by specifying (key, value) pairs. Affects all
-    datasets regardless of `var_type`.
+    datasets regardless of ``var_type``.
 
-Additional parameters see :mod:`esmvaltool.diag_scripts.mlr.models`.
+Additional optional parameters are keyword arguments of
+:class:`esmvaltool.diag_scripts.mlr.models.MLRModel`.
 
 """
 
@@ -203,20 +233,26 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
             attr = '' if group_attribute is None else f'{group_attribute} '
             logger.info("Creating MLR model '%s' for %s'%s'", model_type, attr,
                         descr)
-        mlr_model = MLRModel.create(model_type,
-                                    cfg,
-                                    input_data=datasets,
-                                    root_dir=descr)
+            cfg['sub_dir'] = descr
+        mlr_model = MLRModel.create(model_type, datasets, **cfg)
 
         # Update MLR model parameters dynamically
         _update_mlr_model(model_type, mlr_model)
 
         # Fit and predict
         if cfg.get('grid_search_cv_param_grid'):
-            mlr_model.grid_search_cv()
+            cv_param_grid = cfg['grid_search_cv_param_grid']
+            cv_kwargs = cfg.get('grid_search_cv_kwargs', {})
+            mlr_model.grid_search_cv(cv_param_grid, **cv_kwargs)
         else:
             mlr_model.fit()
-        mlr_model.predict()
+        predict_args = {
+            'save_mlr_model_error': cfg.get('save_mlr_model_error'),
+            'save_lime_importance': cfg.get('save_lime_importance'),
+            'save_propagated_errors': cfg.get('save_propagated_errors'),
+            **cfg.get('predict_kwargs', {}),
+        }
+        mlr_model.predict(**predict_args)
 
         # Skip further output if desired
         if cfg.get('only_predict'):

@@ -146,7 +146,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
         return self
 
     def get_george_params(self, include_frozen=False, prefix=''):
-        """Get `dict` of parameters of the :mod:`george.GP` class member."""
+        """Get :obj:`dict` of parameters of the :class:`george.GP` member."""
         params = self._gp.get_parameter_dict(include_frozen=include_frozen)
         new_params = {}
         for (key, val) in params.items():
@@ -202,8 +202,8 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
         Note
         ----
-        See implementation of :mod:`sklearn.gaussian_process.
-        GaussianProcessRegressor`.
+        See implementation of
+        :class:`sklearn.gaussian_process.GaussianProcessRegressor`.
 
         """
         if self.optimizer == 'fmin_l_bfgs_b':

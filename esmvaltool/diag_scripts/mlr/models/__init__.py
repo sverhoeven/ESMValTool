@@ -38,133 +38,45 @@ class MLRModel():
 
     Note
     ----
-    All datasets must have the attribute `var_type` which specifies this
-    dataset. Possible values are `feature` (independent variables used for
-    training/testing), `label` (dependent variables, y-axis) or
-    `prediction_input` (independent variables used for prediction of dependent
-    variables, usually observational data). All datasets can be converted to
-    new units in the loading step by specifying the key `convert_units_to` in
-    the respective dataset(s).
+    All datasets must have the attribute ``var_type`` which specifies this
+    dataset. Possible values are ``feature`` (independent variables used for
+    training/testing), ``label`` (dependent variables, y-axis),
+    ``prediction_input`` (independent variables used for prediction of
+    dependent variables, usually observational data),
+    ``prediction_input_error`` (standard error of the ``prediction_input``
+    data, optional) or ``prediction_reference`` (`true` values for the
+    ``prediction_input`` data, optional). All datasets can be converted to new
+    units in the loading step by specifying the key ``convert_units_to`` in the
+    respective dataset(s).
 
     Training data
     -------------
-    All groups (specified in `group_datasets_by_attributes`, if desired) given
-    for `label` must also be given for the `feature` datasets. Within these
-    groups, all `feature` and `label` datasets must have the same shape, except
-    the attribute `broadcast_from` is set to a list of suitable coordinate
-    indices (must be done for each feature/label).
+    All groups (specified in ``group_datasets_by_attributes``, if desired)
+    given for ``label`` datasets must also be given for the ``feature``
+    datasets. Within these groups, all ``feature`` and ``label`` datasets must
+    have the same shape, except the attribute ``broadcast_from`` is set to a
+    list of suitable coordinate indices for this specific dataset.
 
     Prediction data
     ---------------
-    All `tags` specified for `prediction_input` datasets must also be given for
-    the `feature` datasets (except `allow_missing_features` is set to `True`).
-    Multiple predictions can be specified by `prediction_name`. Within these
-    predictions, all `prediction_input` datasets must have the same shape,
-    except the attribute `broadcast_from` is given. Errors in the prediction
-    input data can be specified by `prediction_input_error`. If given, these
-    errors are used to calculate errors in the final prediction using linear
-    error propagation given by LIME. Additionally, "true" values for
-    `prediction_input` can be specified with `prediction_reference` datasets
-    (together with the respective `prediction_name`). This allows an evaluation
-    of the performance of the MLR model by calculating residuals (true minus
-    predicted values).
+    All ``tag``s specified for ``prediction_input`` datasets must also be given
+    for the ``feature`` datasets (except ``allow_missing_features`` is set to
+    ``True``).  Multiple predictions can be specified by ``prediction_name``.
+    Within these predictions, all ``prediction_input`` datasets must have the
+    same shape, except the attribute ``broadcast_from`` is given. Errors in the
+    prediction input data can be specified by ``prediction_input_error``. If
+    given, these errors are used to calculate errors in the final prediction
+    using linear error propagation given by LIME. Additionally, `true` values
+    for ``prediction_input`` can be specified with ``prediction_reference``
+    datasets (together with the respective ``prediction_name``). This allows an
+    evaluation of the performance of the MLR model by calculating residuals
+    (`true` minus predicted values).
 
     Adding new MLR models
     ---------------------
     MLR models are subclasses of this base class. To add a new one, create a
-    new file in :mod:`esmvaltool.diag_scripts.mlr.models` with a child class
-    of this class decorated by the method `register_mlr_model`.
-
-    Configuration options in recipe
-    -------------------------------
-    accept_only_scalar_data : bool, optional (default: False)
-        Only accept scalar diagnostic data, if set to True
-        'group_datasets_by_attributes should be given.
-    allow_missing_features : bool, optional (default: False)
-        Allow missing features in the training data.
-    area_weighted_samples : bool, optional (default: True)
-        Use area weights of grid cells as sample weights during the training.
-    cache_intermediate_results : bool, optional (default: True)
-        Cache the intermediate results of the pipeline's transformers.
-    coords_as_features : list, optional
-        If given, specify a list of coordinates which should be used as
-        features.
-    dtype : str, optional (default: 'float64')
-        Internal data type which is used for all calculations, see
-        <https://docs.scipy.org/doc/numpy/user/basics.types.html> for a list
-        of allowed values.
-    estimate_mlr_model_error : bool, optional (default: False)
-        Estimate (constant) squared MLR model error using RMSE. This error
-        represents the uncertainty of the prediction caused by the MLR model
-        itself and not by errors in the prediction input data (errors in that
-        will be automatically considered by including datasets with `var_type`
-        `'prediction_input_error'`. It is calculated by a (hold-out) test data
-        set. If the option `test_size` is equivalent to `False`, automatically
-        set it to 0.25.
-    fit_kwargs : dict, optional
-        Optional keyword arguments for the pipeline's `fit()` function. These
-        arguments have to be given for each step of the pipeline seperated by
-        two underscores, i.e. `s__p` is the parameter `p` for step `s`.
-    grid_search_cv_kwargs : dict, optional
-        Keyword arguments for the grid search cross-validation, see
-        <https://scikit-learn.org/stable/modules/generated/
-        sklearn.model_selection.GridSearchCV.html>.
-    grid_search_cv_param_grid : dict or list of dict, optional
-        Parameters (keys) and ranges (values) for exhaustive parameter search
-        using cross-validation. Have to be given for each step of the pipeline
-        seperated by two underscores, i.e. `s__p` is the parameter `p` for step
-        `s`.
-    group_datasets_by_attributes : list of str, optional
-        List of dataset attributes which are used to group input data for
-        `features` and `labels`. For example, this is necessary if the MLR
-        model should consider multiple climate models in the training phase. If
-        this option is not given, specifying multiple datasets with identical
-        `var_type` and `tag` entries results in an error. If given, all the
-        input data is first grouped by the given attributes and then checked
-        for uniqueness within this group. After that, all groups are stacked to
-        form a single set of training data.
-    imputation_strategy : str, optional (default: 'remove')
-        Strategy for the imputation of missing values in the features. Must be
-        one of `remove`, `mean`, `median`, `most_frequent` or `constant`.
-    mlr_model_name : str, optional
-        Human-readable name of the MLR model instance (e.g used for labels).
-    n_jobs : int, optional (default: 1)
-        Maximum number of jobs spawned by this class.
-    parameters : dict, optional
-        Parameters used for the whole pipeline. Have to be given for each step
-        of the pipeline seperated by two underscores, i.e. `s__p` is the
-        parameter `p` for step `s`.
-    parameters_final_regressor : dict, optional
-        Parameters used for the **final** regressor. If these parameters are
-        updated using the function `self.update_parameters()`, the new names
-        have to be given for each step of the pipeline seperated by two
-        underscores, i.e. `s__p` is the parameter `p` for step `s`.
-    pattern : str, optional
-        Pattern matched against ancestor files. Ignored if datasets are given
-        by `input_data` argument at class initialization.
-    pca : bool, optional (default: False)
-        Preprocess numerical input features using PCA. Parameters for this
-        pipeline step can be given via the `parameters` key.
-    plot_units : dict, optional
-        Replace specific units (keys) with other text (values) in plots.
-    predict_kwargs : dict, optional
-        Optional keyword arguments for the regressor's `predict()` function.
-    propagate_input_errors : bool, optional (default: True)
-        Propagate errors from `prediction_input_error` datasets if possible.
-    return_lime_importance : bool, optional (default: False)
-        Return cube with feature importance given by LIME (Local Interpretable
-        Model-agnostic Explanations) during prediction.
-    savefig_kwargs : dict, optional
-        Keyword arguments for :mod:`matplotlib.pyplot.savefig()`.
-    seaborn_settings : dict, optional
-        Options for seaborn's `set()` method (affects all plots), see
-        <https://seaborn.pydata.org/generated/seaborn.set.html>.
-    standardize_data : bool, optional (default: True)
-        Linearly standardize numerical input data by removing mean and scaling
-        to unit variance.
-    test_size : float, optional (default: 0.25)
-        If given, exclude the desired fraction of input data from training and
-        use it as test data.
+    new file in :mod:`esmvaltool.diag_scripts.mlr.models` with a child class of
+    this class decorated by the method :meth:`register_mlr_model`.
 
     """
 
@@ -192,7 +104,7 @@ class MLRModel():
 
     @classmethod
     def register_mlr_model(cls, model_type):
-        """Add model (subclass of this class) to `_MODEL` dict (decorator)."""
+        """Add MLR model (subclass of this class) (decorator)."""
         logger.debug("Found available MLR model '%s'", model_type)
 
         def decorator(subclass):
@@ -224,22 +136,101 @@ class MLRModel():
                     model_type, cls._MODELS[model_type]._CLF_TYPE)
         return cls._MODELS[model_type](*args, **kwargs)
 
-    def __init__(self, cfg, input_data=None, root_dir=None):
-        """Initialize base class members.
+    def __init__(self, input_datasets, **kwargs):
+        """Initialize class members.
 
         Parameters
         ----------
-        cfg : dict
-            Diagnostic script configuration.
-        input_data : list of dict, optional
-            List of datasets used as input. If not specified, these are
-            automatically extracted from the `cfg` dictionary.
-        root_dir : str, optional
-            Root directory for output (subdirectory in `work_dir` and
-            `plot_dir`).
+        input_datasets : list of dict
+            List of dataset metadata used as data for the MLR model.
+        **kwargs
+            Optional keyword arguments, see next sections.
+
+        Optional keyword arguments
+        --------------------------
+        accept_only_scalar_data : bool (default: False)
+            If set to ``True``, only accept scalar input data. Should be used
+            together with the option ``group_datasets_by_attributes``.
+        allow_missing_features : bool (default: False)
+            Allow missing features in the training data.
+        area_weighted_samples : bool (default: True)
+            Use area weights of grid cells as sample weights during the
+            training.
+        cache_intermediate_results : bool (default: True)
+            Cache the intermediate results of the pipeline's transformers.
+        coords_as_features : list
+            If given, specify a list of coordinates which should be used as
+            features.
+        dtype : str (default: 'float64')
+            Internal data type which is used for all calculations, see
+            <https://docs.scipy.org/doc/numpy/user/basics.types.html> for a
+            list of allowed values.
+        fit_kwargs : dict
+            Optional keyword arguments for the pipeline's ``fit()`` function.
+            These arguments have to be given for each step of the pipeline
+            seperated by two underscores, i.e. ``s__p`` is the parameter ``p``
+            for step ``s``.
+        group_datasets_by_attributes : list of str
+            List of dataset attributes which are used to group input data for
+            ``feature``s and ``label``s. For example, this is necessary if the
+            MLR model should consider multiple climate models in the training
+            phase. If this option is not given, specifying multiple datasets
+            with identical ``var_type`` and ``tag`` entries results in an
+            error. If given, all the input data is first grouped by the given
+            attributes and then checked for uniqueness within this group. After
+            that, all groups are stacked to form a single set of training data.
+        imputation_strategy : str (default: 'remove')
+            Strategy for the imputation of missing values in the features. Must
+            be one of ``'remove'``, ``'mean'``, ``'median'``,
+            ``'most_frequent'`` or ``'constant'``.
+        log_level : str (default: 'info')
+            Verbosity for the logger. Must be one of ``'debug'``, ``'info'``,
+            ``'warning'`` or ``'error'``.
+        mlr_model_name : str
+            Human-readable name of the MLR model instance (e.g used for
+            labels).
+        n_jobs : int (default: 1)
+            Maximum number of jobs spawned by this class.
+        output_file_type : str (default: 'png')
+            File type for the plots.
+        parameters : dict
+            Parameters used for the whole pipeline. Have to be given for each
+            step of the pipeline seperated by two underscores, i.e. ``s__p`` is
+            the parameter ``p`` for step ``s``.
+        parameters_final_regressor : dict
+            Parameters used for the **final** regressor. If these parameters
+            are updated using the function :meth:`update_parameters`, the new
+            names have to be given for each step of the pipeline seperated by
+            two underscores, i.e. ``s__p`` is the parameter ``p`` for step
+            ``s``.
+        pca : bool (default: False)
+            Preprocess numerical input features using PCA. Parameters for this
+            pipeline step can be given via the ``parameters`` argument.
+        plot_dir : str (default: ~/plots)
+            Root directory to save plots.
+        plot_units : dict
+            Replace specific units (keys) with other text (values) in plots.
+        savefig_kwargs : dict
+            Keyword arguments for :func:`matplotlib.pyplot.savefig`.
+        seaborn_settings : dict
+            Options for :func:`seaborn.set` (affects all plots), see
+            <https://seaborn.pydata.org/generated/seaborn.set.html>.
+        standardize_data : bool (default: True)
+            Linearly standardize numerical input data by removing mean and
+            scaling to unit variance.
+        sub_dir : str
+            Create additional subdirectory for output in ``work_dir`` and
+            ``plot_dir``.
+        test_size : float (default: 0.25)
+            If given, exclude the desired fraction of input data from training
+            and use it as test data.
+        work_dir : str (default: ~/work)
+            Root directory to save all other files (mainly ``*.nc`` files).
+        write_plots : bool (default: True)
+            If ``False``, do not write any plot.
 
         """
-        self._cfg = deepcopy(cfg)
+        self._cfg = deepcopy(kwargs)
         self._clf = None
         self._data = {}
         self._data['pred'] = {}
@@ -255,13 +246,10 @@ class MLRModel():
         sns.set(**self._cfg.get('seaborn_settings', {}))
 
         # Adapt output directories
-        if root_dir is None:
-            root_dir = ''
-        self._cfg['root_dir'] = root_dir
         self._cfg['mlr_work_dir'] = os.path.join(self._cfg['work_dir'],
-                                                 root_dir)
+                                                 self._cfg['sub_dir'])
         self._cfg['mlr_plot_dir'] = os.path.join(self._cfg['plot_dir'],
-                                                 root_dir)
+                                                 self._cfg['sub_dir'])
         if not os.path.exists(self._cfg['mlr_work_dir']):
             os.makedirs(self._cfg['mlr_work_dir'])
             logger.info("Created %s", self._cfg['mlr_work_dir'])
@@ -270,15 +258,14 @@ class MLRModel():
             logger.info("Created %s", self._cfg['mlr_plot_dir'])
 
         # Load datasets, classes and training data
-        self._load_input_datasets(input_data=input_data)
+        self._load_input_datasets(input_datasets)
         self._load_classes()
         self._load_data()
 
         # Create pipeline (with all preprocessor steps and final regressor)
         self._create_pipeline()
         if self._cfg['parameters']:
-            logger.debug("Found parameter(s) in recipe: %s",
-                         self._cfg['parameters'])
+            logger.debug("Using parameter(s): %s", self._cfg['parameters'])
         self.update_parameters(**self._cfg['parameters'])
 
         # Log successful initialization
@@ -289,26 +276,26 @@ class MLRModel():
 
     @property
     def categorical_features(self):
-        """Categorical features (read-only)."""
+        """numpy.ndarray: Categorical features."""
         return self.features[self._classes['features'].categorical]
 
     @property
     def data(self):
-        """Input data of the model (read-only)."""
+        """dict: Input data of the MLR model."""
         return self._data
 
     @property
     def features(self):
-        """Features of the model (read-only)."""
+        """numpy.ndarray: Features of the input data."""
         return self._classes['features'].index.values
 
     @property
     def features_after_preprocessing(self):
-        """Features after preprocessing (read-only)."""
+        """numpy.ndarray: Features of the input data after preprocessing."""
         x_train = self.get_x_array('train')
         y_train = self.get_y_array('train')
         if not self._is_fitted():
-            fit_kwargs = self._cfg.get('fit_kwargs', {})
+            fit_kwargs = self._cfg['fit_kwargs']
             fit_kwargs = self._update_fit_kwargs(fit_kwargs)
             self._clf.fit_transformers_only(x_train, y_train, **fit_kwargs)
         x_trans = self._clf.transform_only(x_train)
@@ -334,37 +321,37 @@ class MLRModel():
 
     @property
     def features_types(self):
-        """Types of the features of the model (read-only)."""
+        """pandas.Series: Types of the features."""
         return self._classes['features'].types
 
     @property
     def features_units(self):
-        """Units of the features of the model (read-only)."""
+        """pandas.Series: Units of the features."""
         return self._classes['features'].units
 
     @property
     def group_attributes(self):
-        """Group attributes of the model (read-only)."""
+        """numpy.ndarray: Group attributes of the input data."""
         return self._classes['group_attributes']
 
     @property
     def label(self):
-        """Label of the model (read-only)."""
+        """str: Label of the input data."""
         return self._classes['label'].index.values[0]
 
     @property
     def label_units(self):
-        """Units of the label of the model (read-only)."""
+        """str: Units of the label."""
         return self._classes['label'].units.values[0]
 
     @property
     def numerical_features(self):
-        """Numerical features (read-only)."""
+        """numpy.ndarray: Numerical features."""
         return self.features[~self._classes['features'].categorical]
 
     @property
     def parameters(self):
-        """Parameters of the final regressor (read-only)."""
+        """dict: Parameters of the complete MLR model pipeline."""
         return self._parameters
 
     def export_prediction_data(self, filename=None):
@@ -396,9 +383,10 @@ class MLRModel():
 
         Note
         ----
-        Specifying keyword arguments for the `fit()` function is not allowed
-        here since `self.features_after_preprocessing` might be altered by
-        that. Use the option `fit_kwargs` in the recipe instead.
+        Specifying keyword arguments for this function is not allowed here
+        since :attr:`features_after_preprocessing` might be altered by
+        that. Use the keyword argument ``fit_kwargs`` during class
+        initialization instead.
 
         """
         if not self._clf_is_valid(text='Fitting MLR model'):
@@ -406,7 +394,7 @@ class MLRModel():
         logger.info(
             "Fitting MLR model with final regressor %s on %i training "
             "point(s)", self._CLF_TYPE, len(self.data['train'].index))
-        fit_kwargs = self._cfg.get('fit_kwargs', {})
+        fit_kwargs = self._cfg['fit_kwargs']
         if fit_kwargs:
             logger.info("Using keyword argument(s) %s for fit() function",
                         fit_kwargs)
@@ -431,7 +419,8 @@ class MLRModel():
         Parameters
         ----------
         data_type : str
-            Data type to be returned (one of `'all'`, `'train'` or `'test'`).
+            Data type to be returned. Must be one of ``'all'``, ``'train'`` or
+            ``'test'``.
         impute_nans : bool, optional (default: False)
             Impute nans if desired.
 
@@ -443,7 +432,7 @@ class MLRModel():
         Raises
         ------
         TypeError
-            `data_type` is invalid or data does not exist (e.g. test data is
+            ``data_type`` is invalid or data does not exist (e.g. test data is
             not set).
 
         """
@@ -460,24 +449,25 @@ class MLRModel():
         return data_frame
 
     def get_x_array(self, data_type, impute_nans=False):
-        """Return x data of specific type as :mod:`numpy.array`.
+        """Return x data of specific type.
 
         Parameters
         ----------
         data_type : str
-            Data type to be returned (one of `'all'`, `'train'` or `'test'`).
+            Data type to be returned. Must be one of ``'all'``, ``'train'`` or
+            ``'test'``.
         impute_nans : bool, optional (default: False)
             Impute nans if desired.
 
         Returns
         -------
-        numpy.array
+        numpy.ndarray
             Desired data.
 
         Raises
         ------
         TypeError
-            `data_type` is invalid or data does not exist (e.g. test data is
+            ``data_type`` is invalid or data does not exist (e.g. test data is
             not set).
 
         """
@@ -485,61 +475,53 @@ class MLRModel():
         return data_frame.x.values
 
     def get_y_array(self, data_type, impute_nans=False):
-        """Return y data of specific type as :mod:`numpy.array`.
+        """Return y data of specific type.
 
         Parameters
         ----------
         data_type : str
-            Data type to be returned (one of `'all'`, `'train'` or `'test'`).
+            Data type to be returned. Must be one of ``'all'``, ``'train'`` or
+            ``'test'``.
         impute_nans : bool, optional (default: False)
             Impute nans if desired.
 
         Returns
         -------
-        numpy.array
+        numpy.ndarray
             Desired data.
 
         Raises
         ------
         TypeError
-            `data_type` is invalid or data does not exist (e.g. test data is
+            ``data_type`` is invalid or data does not exist (e.g. test data is
             not set).
 
         """
         data_frame = self.get_data_frame(data_type, impute_nans=impute_nans)
         return data_frame.y.squeeze().values
 
-    def grid_search_cv(self, param_grid=None, **kwargs):
+    def grid_search_cv(self, param_grid, **kwargs):
         """Perform exhaustive parameter search using cross-validation.
 
         Parameters
         ----------
-        param_grid : dict or list of dict, optional
+        param_grid : dict or list of dict
             Parameter names (keys) and ranges (values) for the search. Have to
             be given for each step of the pipeline seperated by two
-            underscores, i.e. `s__p` is the parameter `p` for step `s`.
-            Overwrites default and recipe settings.
+            underscores, i.e. ``s__p`` is the parameter ``p`` for step ``s``.
         **kwargs : keyword arguments, optional
-            Additional options for the `GridSearchCV` class. See
+            Additional options for
+            :class:`sklearn.model_selection.GridSearchCV`
             <https://scikit-learn.org/stable/modules/generated/
-            sklearn.model_selection.GridSearchCV.html>. Overwrites default and
-            recipe settings.
+            sklearn.model_selection.GridSearchCV.html>.
 
         """
         if not self._clf_is_valid(text='GridSearchCV'):
             return
-        parameter_grid = self._cfg.get('grid_search_cv_param_grid', {})
-        if param_grid is not None:
-            parameter_grid = param_grid
-        if not parameter_grid:
-            logger.warning(
-                "Cannot perform exhaustive grid search, no parameter grid "
-                "given (neither in recipe nor in grid_search_cv() function)")
-            return
         logger.info(
             "Performing exhaustive grid search cross-validation with final "
             "regressor %s and parameter grid %s on %i training points",
-            self._CLF_TYPE, parameter_grid, len(self.data['train'].index))
+            self._CLF_TYPE, param_grid, len(self.data['train'].index))
 
         # Get keyword arguments
         verbosity = self._get_verbosity_parameters(GridSearchCV)
@@ -547,21 +529,20 @@ class MLRModel():
             'n_jobs': self._cfg['n_jobs'],
             **verbosity,
         }
-        cv_kwargs.update(self._cfg.get('grid_search_cv_kwargs', {}))
         cv_kwargs.update(kwargs)
         logger.info("Using keyword argument(s) %s for GridSearchCV class",
                     cv_kwargs)
         if isinstance(cv_kwargs.get('cv'), str):
             if cv_kwargs['cv'].lower() == 'loo':
                 cv_kwargs['cv'] = LeaveOneOut()
-        fit_kwargs = self._cfg.get('fit_kwargs', {})
+        fit_kwargs = self._cfg['fit_kwargs']
         if fit_kwargs:
             logger.info("Using keyword argument(s) %s for fit() function",
                         fit_kwargs)
         fit_kwargs = self._update_fit_kwargs(fit_kwargs)
 
         # Create and fit GridSearchCV instance
-        clf = GridSearchCV(self._clf, parameter_grid, **cv_kwargs)
+        clf = GridSearchCV(self._clf, param_grid, **cv_kwargs)
         clf.fit(self.data['train'].x, self.data['train'].y, **fit_kwargs)
 
         # Try to find best estimator
@@ -575,7 +556,7 @@ class MLRModel():
             raise ValueError(
                 "GridSearchCV not successful, cannot determine best estimator "
                 "(neither using 'best_estimator_' nor 'best_params_'), "
-                "adapt 'grid_search_cv_kwargs' accordingly (see "
+                "adapt keyword arguments accordingly (see "
                 "<https://scikit-learn.org/stable/modules/generated/"
                 "sklearn.model_selection.GridSearchCV.html> for more help)")
         self._parameters = self._get_clf_parameters()
@@ -929,14 +910,42 @@ class MLRModel():
             logger.info("Wrote %s", plot_path)
             plt.close()
 
-    def predict(self, **kwargs):
-        """Perform prediction using the MLR model(s) and write netcdf.
+    def predict(self,
+                save_mlr_model_error=False,
+                save_lime_importance=False,
+                save_propagated_errors=False,
+                **kwargs):
+        """Perform prediction using the MLR model(s) and write ``*.nc`` files.
 
         Parameters
         ----------
+        save_mlr_model_error : bool (default: False)
+            Additionally saves estimated (constant) squared MLR model error
+            using RMSE.  This error represents the uncertainty of the
+            prediction caused by the MLR model itself and not by errors in the
+            prediction input data (errors in that will be automatically
+            considered by including datasets with ``var_type`` set to
+            ``prediction_input_error``. It is calculated by a (hold-out) test
+            data set. Only possible if test data is available, i.e. the option
+            ``test_size`` is not set to ``False`` during class initialization.
+        save_lime_importance : bool (default: False)
+            Additionally saves local feature importance given by LIME (Local
+            Interpretable Model-agnostic Explanations).
+        save_propagated_errors : bool (default: False)
+            Additionally saves propagated errors from
+            ``prediction_input_error`` datasets. Only possible when these are
+            available.
         **kwargs : keyword arguments, optional
-            Additional options for the `self._clf.predict()` function.
-            Overwrites default and recipe settings.
+            Additional options for the final regressors ``predict()`` function.
+
+        Raises
+        ------
+        ValueError
+            ``save_mlr_model_error`` is ``True`` and no test data is available,
+            ``test_size`` is not set to ``False`` during class initialization.
+        ValueError
+            ``save_propagated_errors`` is ``True`` and no
+            ``prediction_input_error`` data is available.
 
         """
         if not self._is_fitted():
@@ -944,18 +953,31 @@ class MLRModel():
                 "Prediction not possible, MLR model is not fitted yet")
             return
         logger.info("Started prediction")
-        predict_kwargs = dict(self._cfg.get('predict_kwargs', {}))
-        predict_kwargs.update(kwargs)
-        if 'return_var' in predict_kwargs and 'return_cov' in predict_kwargs:
+        if 'return_var' in kwargs and 'return_cov' in kwargs:
             logger.warning(
                 "Found 'return_var' and 'return_cov' in prediction keyword "
                 "arguments, but returning both is not possible. Returning "
                 "only variance")
-            predict_kwargs.pop('return_cov')
-        if predict_kwargs:
+            kwargs.pop('return_cov')
+        if kwargs:
             logger.info(
                 "Using additional keyword argument(s) %s for predict() "
-                "function", predict_kwargs)
+                "function", kwargs)
+
+        # Save additional data
+        additional_data = []
+        if save_mlr_model_error:
+            if not self._cfg['test_size']:
+                raise ValueError(
+                    f"'save_mlr_model_error' is not possible because no test "
+                    f"data is available ('test_size' was set to "
+                    f"'{self._cfg['test_size']}' during class initialization)")
+            additional_data.append('mlr_model_error')
+        if save_lime_importance:
+            additional_data.append('lime_feature_importance')
+        if save_propagated_errors:
+            additional_data.append('propagated_input_error')
+        logger.debug("Additionally saving %s in predict()", additional_data)
 
         # Iterate over different predictions
         for pred_name in self._datasets['prediction_input']:
@@ -965,7 +987,7 @@ class MLRModel():
             (x_pred, x_err, y_ref,
              x_cube) = self._extract_prediction_input(pred_name)
             pred_dict = self._get_prediction_dict(x_pred, x_err, y_ref,
-                                                  **predict_kwargs)
+                                                  additional_data, **kwargs)
 
             # Save data in class member
             y_pred = pd.DataFrame(pred_dict[None],
@@ -1029,16 +1051,16 @@ class MLRModel():
     def update_parameters(self, **params):
         """Update parameters of the whole pipeline.
 
+        Note
+        ----
+        Parameter names have to be given for each step of the pipeline
+        seperated by two underscores, i.e. ``s__p`` is the parameter ``p`` for
+        step ``s``.
+
         Parameters
         ----------
         **params : keyword arguments, optional
             Paramaters for the pipeline which should be updated.
-
-        Note
-        ----
-        Parameter names have to be given for each step of the pipeline
-        seperated by two underscores, i.e. `s__p` is the parameter `p` for
-        step `s`.
 
         """
         if not self._clf_is_valid(text='Updating parameters of MLR model'):
@@ -1094,8 +1116,8 @@ class MLRModel():
                 raise ValueError(
                     f"Expected cubes with shapes {ref_cube.shape}{msg}, got "
                     f"{cube.shape}. Consider regridding, pre-selecting data "
-                    f"at class initialization using the argument 'input_data' "
-                    f"or the options 'broadcast_from' or 'group_datasets_by_"
+                    f"at class initialization (argument 'input_datasets') or "
+                    f"the options 'broadcast_from' or 'group_datasets_by_"
                     f"attributes'")
             cube_coords = cube.coords(dim_coords=True)
             ref_coords = ref_cube.coords(dim_coords=True)
@@ -1141,10 +1163,10 @@ class MLRModel():
             return None
         if len(datasets) > 1:
             raise ValueError(
-                f"{var_type} '{tag}'{msg} not unique, consider the use of the "
-                f"argument 'input_data' at class initialization to pre-select "
-                f"datasets or specify suitable attributes to group datasets "
-                f"with the option 'group_datasets_by_attributes'")
+                f"{var_type} '{tag}'{msg} not unique, consider adapting the "
+                f"argument 'input_datasets' at class initialization to "
+                f"pre-select datasets or specify suitable attributes to group "
+                f"datasets with the option 'group_datasets_by_attributes'")
         if var_type == 'label':
             units = self.label_units
         else:
@@ -1279,7 +1301,7 @@ class MLRModel():
         return (x_data, y_data, sample_weights)
 
     def _extract_prediction_input(self, prediction_name):
-        """Extract prediction input data points for `prediction_name`."""
+        """Extract prediction input data points for ``prediction_name``."""
         (x_pred, x_cube, _) = self._extract_x_data(
             self._datasets['prediction_input'][prediction_name],
             'prediction_input')
@@ -1341,7 +1363,7 @@ class MLRModel():
         return (x_pred, x_err, y_ref, x_cube)
 
     def _extract_x_data(self, datasets, var_type):
-        """Extract required x data of type `var_type` from `datasets`."""
+        """Extract required x data of type ``var_type`` from ``datasets``."""
         allowed_types = ('feature', 'prediction_input',
                          'prediction_input_error')
         if var_type not in allowed_types:
@@ -1390,7 +1412,7 @@ class MLRModel():
         return (x_data, x_cube, sample_weights)
 
     def _extract_y_data(self, datasets, var_type):
-        """Extract required y data of type `var_type` from `datasets`."""
+        """Extract required y data of type ``var_type`` from ``datasets``."""
         allowed_types = ('label', 'prediction_reference')
         if var_type not in allowed_types:
             raise ValueError(
@@ -1423,27 +1445,6 @@ class MLRModel():
             y_data = y_data.append(cube_data, ignore_index=True)
         return y_data
 
-    def _get_ancestor_datasets(self):
-        """Get ancestor datasets."""
-        pattern = self._cfg.get('pattern')
-        if pattern is not None:
-            logger.debug("Matching ancestor files against pattern %s", pattern)
-        datasets = io.netcdf_to_metadata(self._cfg, pattern=pattern)
-        if not datasets:
-            logger.debug("Skipping loading ancestor datasets, no files found")
-            return []
-        logger.debug("Found ancestor file(s):")
-        logger.debug(pformat([d['filename'] for d in datasets]))
-
-        # Check MLR attributes
-        valid_datasets = []
-        for dataset in datasets:
-            if mlr.datasets_have_mlr_attributes([dataset], log_level='info'):
-                valid_datasets.append(dataset)
-            else:
-                logger.info("Skipping ancestor file %s", dataset['filename'])
-        return valid_datasets
-
     def _get_broadcasted_cube(self, dataset, ref_cube, text=None):
         """Get broadcasted cube."""
         msg = '' if text is None else text
@@ -1474,7 +1475,7 @@ class MLRModel():
         return self._clf.get_params(deep=deep)
 
     def _get_features(self):
-        """Extract all features from the `prediction_input` datasets."""
+        """Extract all features from the ``prediction_input`` datasets."""
         logger.debug("Extracting features from 'prediction_input' datasets")
         pred_name = list(self._datasets['prediction_input'].keys())[0]
         pred_name_str = self._get_name(pred_name)
@@ -1576,7 +1577,7 @@ class MLRModel():
         return (units, types)
 
     def _get_group_attributes(self):
-        """Get all group attributes from `label` datasets."""
+        """Get all group attributes from ``label`` datasets."""
         logger.debug("Extracting group attributes from 'label' datasets")
         grouped_datasets = group_metadata(self._datasets['label'],
                                           'group_attribute',
@@ -1653,37 +1654,42 @@ class MLRModel():
         return mask
 
     def _get_plot_feature(self, feature):
-        """Get `str` of selected `feature` and respective units."""
+        """Get :obj:`str` of selected ``feature`` and respective units."""
         units = self._get_plot_units(self.features_units[feature])
         return f'{feature} / {units}'
 
     def _get_plot_label(self):
-        """Get `str` of label and respective units."""
+        """Get :obj:`str` of label and respective units."""
         return f'{self.label} / {self._get_plot_units(self.label_units)}'
 
     def _get_plot_units(self, units):
-        """Get plot units version of specified `units`."""
+        """Get plot units version of specified ``units``."""
         return self._cfg['plot_units'].get(str(units), str(units))
 
-    def _get_prediction_dict(self, x_pred, x_err, y_ref, **kwargs):
+    def _get_prediction_dict(self, x_pred, x_err, y_ref, additional_data,
+                             **kwargs):
         """Get prediction output in a dictionary."""
         logger.info("Predicting %i point(s)", len(x_pred.index))
         y_preds = self._clf.predict(x_pred, **kwargs)
         pred_dict = self._prediction_to_dict(y_preds, **kwargs)
 
         # Estimate error of MLR model itself
-        if self._cfg.get('estimate_mlr_model_error'):
-            mlr_model_error = self._estimate_mlr_model_error(len(x_pred.index))
-            pred_dict['squared_mlr_model_error_estim'] = mlr_model_error
-
-        # Propagate prediction input errors if possible
-        if self._cfg.get('propagate_input_errors', True) and x_err is not None:
-            pred_dict['squared_propagated_input_error'] = (
-                self._propagate_input_errors(x_pred, x_err))
+        if 'mlr_model_error' in additional_data:
+            pred_dict['squared_mlr_model_error_estim'] = (
+                self._estimate_mlr_model_error(len(x_pred.index)))
 
         # LIME feature importance
-        if self._cfg.get('return_lime_importance'):
+        if 'lime_feature_importance' in additional_data:
             pred_dict['lime'] = self._get_lime_feature_importance(x_pred)
+
+        # Propagate prediction input errors
+        if 'propagated_input_error' in additional_data:
+            if x_err is None:
+                raise ValueError(
+                    "'save_propagated_errors' is not possible because no "
+                    "'prediction_input_error' data is available")
+            pred_dict['squared_propagated_input_error'] = (
+                self._propagate_input_errors(x_pred, x_err))
 
         # Calculate residuals relative to reference if possible
         if y_ref is not None:
@@ -1703,7 +1709,7 @@ class MLRModel():
         return pred_dict
 
     def _get_prediction_dtype(self):
-        """Get `dtype` of the output of `predict()` of the final regressor."""
+        """Get ``dtype`` of the output of final regressor's ``predict()``."""
         x_data = self.get_x_array('all')[0].reshape(1, -1)
         y_pred = self._clf.predict(x_data)
         return y_pred.dtype
@@ -1728,7 +1734,7 @@ class MLRModel():
         return properties
 
     def _get_reference_cube(self, datasets, var_type, text=None):
-        """Get reference cube for `datasets`."""
+        """Get reference cube for ``datasets``."""
         msg = '' if text is None else text
         regular_features = self.features[self.features_types == 'regular']
 
@@ -1863,7 +1869,7 @@ class MLRModel():
         return datasets
 
     def _impute_nans(self, data_frame, copy=True):
-        """Impute all nans of a `data_frame`."""
+        """Impute all nans of a given :class:`pandas.DataFrame`."""
         if copy:
             data_frame = data_frame.copy()
         if 'imputer' in self._clf.named_steps:
@@ -1892,8 +1898,9 @@ class MLRModel():
                 "Plotting not possible, MLR model is not fitted yet")
             return False
         if not self._cfg['write_plots']:
-            logger.debug("Plotting not possible, 'write_plots' is set to "
-                         "'False' in user configuration file")
+            logger.debug(
+                "Plotting not possible, 'write_plots' was set to 'False' in "
+                "class initialization")
             return False
         return True
 
@@ -1934,8 +1941,7 @@ class MLRModel():
             raise ValueError(
                 f"Units of cube '{dataset['filename']}' for "
                 f"{dataset['var_type']} '{dataset['tag']}' differ from units "
-                f"given in dataset list (retrieved from ancestors or "
-                f"metadata.yml), got '{cube.units}' in cube and "
+                f"given in dataset list, got '{cube.units}' in cube and "
                 f"'{dataset['units']}' in dataset list")
         return cube
 
@@ -1978,24 +1984,19 @@ class MLRModel():
                         len(y_all.index))
 
     def _load_final_parameters(self):
-        """Load parameters for final regressor from recipe."""
+        """Load parameters for final regressor."""
         parameters = self._cfg.get('parameters_final_regressor', {})
-        logger.debug("Found parameter(s) for final regressor in recipe: %s",
-                     parameters)
+        logger.debug("Using parameter(s) for final regressor: %s", parameters)
         verbosity_params = self._get_verbosity_parameters(self._CLF_TYPE)
         for (param, verbosity) in verbosity_params.items():
             parameters.setdefault(param, verbosity)
         return parameters
 
-    def _load_input_datasets(self, input_data=None):
-        """Load input datasets (including ancestors)."""
-        if input_data is None:
-            logger.debug("Loading input data from 'cfg' argument")
-            input_datasets = deepcopy(list(self._cfg['input_data'].values()))
-            input_datasets.extend(self._get_ancestor_datasets())
-        else:
-            logger.debug("Loading input data from 'input_data' argument")
-            input_datasets = deepcopy(input_data)
+    def _load_input_datasets(self, input_datasets):
+        """Load input datasets."""
+        input_datasets = deepcopy(input_datasets)
+
+        # Output warning if invalid var_type is given (not considered later)
         mlr.datasets_have_mlr_attributes(input_datasets,
                                          log_level='warning',
                                          mode='only_var_type')
@@ -2122,7 +2123,7 @@ class MLRModel():
         return np.ma.masked_invalid(new_y_pred)
 
     def _prediction_to_dict(self, pred_out, **kwargs):
-        """Convert output of `clf.predict()` to `dict`."""
+        """Convert output of final regressor's ``predict()`` to :obj:`dict`."""
         if not isinstance(pred_out, (list, tuple)):
             pred_out = [pred_out]
         idx_to_name = {0: None}
@@ -2316,15 +2317,20 @@ class MLRModel():
         logger.info("Wrote %s", path)
 
     def _set_default_settings(self):
-        """Set default (non-`False`) configuration settings."""
+        """Set default (non-``False``) keyword arguments."""
         self._cfg.setdefault('area_weighted_samples',
                              not self._cfg.get('accept_only_scalar_data'))
         self._cfg.setdefault('cache_intermediate_results', True)
         self._cfg.setdefault('dtype', 'float64')
+        self._cfg.setdefault('fit_kwargs', {})
         self._cfg.setdefault('imputation_strategy', 'remove')
+        self._cfg.setdefault('log_level', 'info')
         self._cfg.setdefault('mlr_model_name', f'{self._CLF_TYPE} model')
         self._cfg.setdefault('n_jobs', 1)
+        self._cfg.setdefault('output_file_type', 'png')
         self._cfg.setdefault('parameters', {})
+        self._cfg.setdefault('plot_dir',
+                             os.path.expanduser(os.path.join('~', 'plots')))
         self._cfg.setdefault('plot_units', {})
         self._cfg.setdefault('savefig_kwargs', {
             'bbox_inches': 'tight',
@@ -2332,14 +2338,11 @@ class MLRModel():
             'orientation': 'landscape',
         })
         self._cfg.setdefault('standardize_data', True)
+        self._cfg.setdefault('sub_dir', '')
         self._cfg.setdefault('test_size', 0.25)
-        if (not self._cfg['test_size']
-                and self._cfg.get('estimate_mlr_model_error')):
-            logger.warning(
-                "The option 'estimate_mlr_model_error' is given, but "
-                "'test_size' is set to '%s', setting 'test_size' to '0.25'",
-                self._cfg['test_size'])
-            self._cfg['test_size'] = 0.25
+        self._cfg.setdefault('work_dir',
+                             os.path.expanduser(os.path.join('~', 'work')))
+        self._cfg.setdefault('write_plots', True)
         logger.info("Using imputation strategy '%s'",
                     self._cfg['imputation_strategy'])
 
@@ -2367,10 +2370,10 @@ class MLRModel():
         # Get new path
         suffix = '' if pred_type is None else f'_{pred_type}'
         pred_str = f'_{self._get_name(pred_name)}'
-        root_str = ('' if self._cfg['root_dir'] == '' else
-                    f"_for_{self._cfg['root_dir']}")
+        sub_str = ('' if self._cfg['sub_dir'] == '' else
+                   f"_for_{self._cfg['sub_dir']}")
         filename = (f'{self._MODEL_TYPE}_{self.label}_prediction{suffix}'
-                    f'{pred_str}{root_str}.nc')
+                    f'{pred_str}{sub_str}.nc')
         new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
         cube.attributes['filename'] = new_path
         return new_path
@@ -2442,7 +2445,7 @@ class MLRModel():
 
     @staticmethod
     def _get_coordinate_data(ref_cube, var_type, tag, text=None):
-        """Get coordinate variable `ref_cube` which can be used as x data."""
+        """Get coordinate variable ``ref_cube`` which can be used as x data."""
         msg = '' if text is None else text
         if var_type == 'prediction_input_error':
             logger.debug(
@@ -2466,7 +2469,7 @@ class MLRModel():
             for idx in new_axis_pos:
                 coord_array = np.expand_dims(coord_array, idx)
         coord_array = np.broadcast_to(coord_array, ref_cube.shape)
-        logger.debug("Added coordinate %s '%s'%s", var_type, tag, msg)
+        logger.debug("Added %s coordinate '%s'%s", var_type, tag, msg)
         return coord_array.ravel()
 
     @staticmethod
@@ -2477,7 +2480,7 @@ class MLRModel():
 
     @staticmethod
     def _get_name(string):
-        """Convert `None` to `str` if necessary."""
+        """Convert ``None`` to :obj:`str` if necessary."""
         return 'unnamed' if string is None else string
 
     @staticmethod
@@ -2488,7 +2491,7 @@ class MLRModel():
 
     @staticmethod
     def _group_prediction_datasets(datasets):
-        """Group prediction datasets (use `prediction_name` key)."""
+        """Group prediction datasets (use ``prediction_name`` key)."""
         for dataset in datasets:
             dataset['group_attribute'] = None
         return group_metadata(datasets, 'prediction_name')
