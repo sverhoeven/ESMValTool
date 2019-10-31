@@ -1,15 +1,16 @@
-# recipe_mlr_co2.yml
+# recipe_mlr_co2_gpr.yml
 ---
 documentation:
 
   description: |
-    Use MLR (Machine Learning Regression) models to predict future CO2 fluxes.
+    Use MLR (Machine Learning Regression) models to constrain projections of
+    CO2 fluxes with gridded data.
 
   authors:
-    - schl_ma
+    - schlund_manuel
 
   maintainer:
-    - schl_ma
+    - schlund_manuel
 
   projects:
     - crescendo
@@ -38,7 +39,7 @@ DATASET_ANCHOR: &datasets
 
 preprocessors:
 
-  mask_sea: &mask_sea
+  regular_var: &regular_var
     mask_landsea:
       mask_out: sea
     extract_region:
@@ -50,6 +51,12 @@ preprocessors:
       scheme: nearest
       target_grid: 10x10
 
+  flux_var:
+    <<: *regular_var
+    weighting_landsea_fraction:
+      area_type: land
+      strict: false
+
 
 diagnostics:
 
@@ -57,7 +64,7 @@ diagnostics:
     variables:
       features: &variable_settings_features
         short_name: tas
-        preprocessor: mask_sea
+        preprocessor: regular_var
         project: CMIP5
         mip: Amon
         exp: historical
@@ -75,8 +82,7 @@ diagnostics:
       monthly_clim: &monthly_clim
         script: mlr/preprocess.py
         aggregate_by:
-          season: mean
-          # month_number: mean
+          month_number: mean
         tag: T_c
         convert_units_to: celsius
 
@@ -96,77 +102,77 @@ diagnostics:
         tag: PR_c
         convert_units_to: 'kg m-2 day-1'
 
-  # diag_mlr_input_rsds:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: rsds
-  #       start_year: 2001
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: rsds
-  #       start_year: 2001
-  #       additional_datasets:
-  #         - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: SSRD_c
-  #       convert_units_to: null
+  diag_mlr_input_rsds:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: rsds
+        start_year: 2001
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: rsds
+        start_year: 2001
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: SSRD_c
+        convert_units_to: null
 
-  # diag_mlr_input_rsus:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: rsus
-  #       start_year: 2001
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: rsus
-  #       start_year: 2001
-  #       additional_datasets:
-  #         - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: SSRU_c
-  #       convert_units_to: null
+  diag_mlr_input_rsus:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: rsus
+        start_year: 2001
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: rsus
+        start_year: 2001
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: SSRU_c
+        convert_units_to: null
 
-  # diag_mlr_input_rlds:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: rlds
-  #       start_year: 2001
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: rlds
-  #       start_year: 2001
-  #       additional_datasets:
-  #         - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: SLRD_c
-  #       convert_units_to: null
+  diag_mlr_input_rlds:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: rlds
+        start_year: 2001
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: rlds
+        start_year: 2001
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: SLRD_c
+        convert_units_to: null
 
-  # diag_mlr_input_rlus:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: rlus
-  #       start_year: 2001
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: rlus
-  #       start_year: 2001
-  #       additional_datasets:
-  #         - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: SLRU_c
-  #       convert_units_to: null
+  diag_mlr_input_rlus:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: rlus
+        start_year: 2001
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: rlus
+        start_year: 2001
+        additional_datasets:
+          - {dataset: CERES-EBAF, project: obs4mips, level: L3B, version: Ed2-7, tier: 1}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: SLRU_c
+        convert_units_to: null
 
   diag_mlr_input_et:
     variables:
@@ -188,78 +194,38 @@ diagnostics:
         tag: ET_c
         convert_units_to: null
 
-  # diag_mlr_input_cVeg:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: cVeg_grid
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: cVeg_grid
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: NDP, project: OBS, type: ground, version: 017b, tier: 2, start_year: 2000, end_year: 2000}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: CVEG_c
-  #       convert_units_to: 'Gt km-2'
-
-  # diag_mlr_input_cSoil:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: cSoil_grid
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: cSoil_grid
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: HWSD, project: OBS, type: ground, version: 1, tier: 2, start_year: 2000, end_year: 2000}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: CSOIL_c
-  #       convert_units_to: 'Gt km-2'
-
-  # diag_mlr_input_nbp:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_features
-  #       short_name: nbp_grid
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_prediction_input
-  #       short_name: nbp_grid
-  #       mip: Lmon
-  #       derive: true
-  #       additional_datasets:
-  #         - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
-  #   scripts:
-  #     monthly_clim:
-  #       <<: *monthly_clim
-  #       tag: NBP_c
-  #       convert_units_to: 'Gt km-2 yr-1'
+  diag_mlr_input_nbp:
+    variables:
+      features:
+        <<: *variable_settings_features
+        short_name: nbp
+        preprocessor: flux_var
+        mip: Lmon
+      prediction_input:
+        <<: *variable_settings_prediction_input
+        short_name: nbp
+        preprocessor: flux_var
+        mip: Lmon
+        additional_datasets:
+          - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 2018, tier: 3}
+    scripts:
+      monthly_clim:
+        <<: *monthly_clim
+        tag: NBP_c
+        convert_units_to: 'Gt km-2 yr-1'
 
   diag_mlr_input_gpp:
     variables:
       features:
         <<: *variable_settings_features
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
       prediction_input:
         <<: *variable_settings_prediction_input
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         additional_datasets:
           - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
     scripts:
@@ -272,14 +238,14 @@ diagnostics:
     variables:
       features:
         <<: *variable_settings_features
-        short_name: lai_grid
+        short_name: lai
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
       prediction_input:
         <<: *variable_settings_prediction_input
-        short_name: lai_grid
+        short_name: lai
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         additional_datasets:
           - {dataset: LAI3g, project: OBS, type: reanaly, version: 1_regridded, tier: 3, var_type: prediction_input}
     scripts:
@@ -293,18 +259,18 @@ diagnostics:
     variables:
       ref:
         <<: *variable_settings_features
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         ref: true
       label: &variable_settings_label
         <<: *variable_settings_features
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
         exp: rcp45
         start_year: 2021
         end_year: 2035
-        derive: true
         var_type: label
     scripts:
       monthly_clim:
@@ -320,11 +286,14 @@ diagnostics:
           'diag_mlr_input_*/monthly_clim',
         ]
         coords_as_features: ['month_number', 'latitude', 'longitude']
+        grid_search_cv_kwargs:
+          cv: 2
+        grid_search_cv_param_grid:
+          final__regressor__n_restarts_optimizer: [2, 3]
         group_metadata: dataset
         mlr_model_type: gpr_george
         parameters_final_regressor:
           white_noise: 0.05
-          n_restarts_optimizer: 5
         predict_kwargs:
           return_cov: true
       postprocess:

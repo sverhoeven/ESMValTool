@@ -7,10 +7,10 @@ documentation:
     primary production (GPP).
 
   authors:
-    - schl_ma
+    - schlund_manuel
 
   maintainer:
-    - schl_ma
+    - schlund_manuel
 
   projects:
     - crescendo
@@ -20,24 +20,24 @@ DATASET_ANCHOR: &datasets
   - {dataset: bcc-csm1-1}
   - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
-  - {dataset: CanESM2}
-  - {dataset: CESM1-BGC}
-  - {dataset: GFDL-ESM2G}
-  - {dataset: GFDL-ESM2M}
-  - {dataset: HadGEM2-CC}
-  - {dataset: HadGEM2-ES}
-  - {dataset: inmcm4}
-  - {dataset: IPSL-CM5A-LR}
-  - {dataset: IPSL-CM5A-MR}
-  - {dataset: IPSL-CM5B-LR}
-  - {dataset: MIROC-ESM}
-  - {dataset: MIROC-ESM-CHEM}
-  - {dataset: NorESM1-ME}
+  # - {dataset: CanESM2}
+  # - {dataset: CESM1-BGC}
+  # - {dataset: GFDL-ESM2G}
+  # - {dataset: GFDL-ESM2M}
+  # - {dataset: HadGEM2-CC}
+  # - {dataset: HadGEM2-ES}
+  # - {dataset: inmcm4}
+  # - {dataset: IPSL-CM5A-LR}
+  # - {dataset: IPSL-CM5A-MR}
+  # - {dataset: IPSL-CM5B-LR}
+  # - {dataset: MIROC-ESM}
+  # - {dataset: MIROC-ESM-CHEM}
+  # - {dataset: NorESM1-ME}
 
 
 preprocessors:
 
-  mask_sea: &mask_sea
+  regular_var: &regular_var
     custom_order: true
     regrid:
       scheme: nearest
@@ -51,6 +51,12 @@ preprocessors:
       mask_out: sea
       always_use_ne_mask: true
 
+  flux_var:
+    weighting_landsea_fraction:
+      area_type: land
+      strict: false
+    <<: *regular_var
+
 
 diagnostics:
 
@@ -58,7 +64,7 @@ diagnostics:
     variables:
       features: &variable_settings_features
         short_name: tas
-        preprocessor: mask_sea
+        preprocessor: regular_var
         project: CMIP5
         mip: Amon
         exp: historical
@@ -81,20 +87,21 @@ diagnostics:
         tag: T
         convert_units_to: celsius
 
-  diag_mlr_input_tas_trend:
+  diag_mlr_input_rsds:
     variables:
       features:
         <<: *variable_settings_features
+        short_name: rsds
       prediction_input:
         <<: *variable_settings_prediction_input
+        short_name: rsds
+        additional_datasets:
+          - {dataset: ERA-Interim, project: OBS6, type: reanaly, version: 1, tier: 3}
     scripts:
-      monthly_trend: &monthly_trend
-        script: mlr/preprocess.py
-        aggregate_by:
-          month_number: trend
-        return_trend_stderr: true
-        convert_units_to: celsius yr-1
-        tag: T_trend
+      monthly_clim:
+        <<: *monthly_clim
+        tag: RSDS
+        convert_units_to: null
 
   diag_mlr_input_pr:
     variables:
@@ -111,22 +118,6 @@ diagnostics:
         <<: *monthly_clim
         tag: PR
         convert_units_to: kg m-2 day-1
-
-  diag_mlr_input_pr_trend:
-    variables:
-      features:
-        <<: *variable_settings_features
-        short_name: pr
-      prediction_input:
-        <<: *variable_settings_prediction_input
-        short_name: pr
-        additional_datasets:
-          - {dataset: CRU, project: OBS, type: reanaly, version: TS4.02, tier: 2}
-    scripts:
-      monthly_trend:
-        <<: *monthly_trend
-        tag: PR_trend
-        convert_units_to: celsius yr-1
 
   diag_mlr_input_et:
     variables:
@@ -155,47 +146,27 @@ diagnostics:
         tag: ET
         convert_units_to: mm day-1
 
-  diag_mlr_input_et_trend:
-    variables:
-      features:
-        <<: *variable_settings_features
-        short_name: et
-        mip: Lmon
-        derive: true
-      prediction_input:
-        <<: *variable_settings_prediction_input
-        short_name: et
-        mip: Lmon
-        derive: true
-        additional_datasets:
-          - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
-    scripts:
-      monthly_trend:
-        <<: *monthly_trend
-        tag: ET_trend
-        convert_units_to: mm day-1 yr-1
-
   diag_mlr_input_gpp:
     variables:
       features:
         <<: *variable_settings_features
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
       label:
         <<: *variable_settings_features
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
         exp: rcp85
         start_year: 2083
         end_year: 2099
-        derive: true
         var_type: label
       prediction_input:
         <<: *variable_settings_prediction_input
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         additional_datasets:
           - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
       prediction_input_error:
@@ -211,38 +182,18 @@ diagnostics:
         tag: GPP
         convert_units_to: t km-2 yr-1
 
-  diag_mlr_input_gpp_trend:
-    variables:
-      features:
-        <<: *variable_settings_features
-        short_name: gpp_grid
-        mip: Lmon
-        derive: true
-      prediction_input:
-        <<: *variable_settings_prediction_input
-        short_name: gpp_grid
-        mip: Lmon
-        derive: true
-        additional_datasets:
-          - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
-    scripts:
-      monthly_trend:
-        <<: *monthly_trend
-        tag: GPP_trend
-        convert_units_to: t km-2 yr-2
-
   diag_mlr_input_lai:
     variables:
       features:
         <<: *variable_settings_features
-        short_name: lai_grid
+        short_name: lai
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
       prediction_input:
         <<: *variable_settings_prediction_input
-        short_name: lai_grid
+        short_name: lai
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         additional_datasets:
           - {dataset: LAI3g, project: OBS, type: reanaly, version: 1_regridded, tier: 3}
     scripts:
@@ -251,41 +202,21 @@ diagnostics:
         tag: LAI
         convert_units_to: null
 
-  diag_mlr_input_lai_trend:
-    variables:
-      features:
-        <<: *variable_settings_features
-        short_name: lai_grid
-        mip: Lmon
-        derive: true
-      prediction_input:
-        <<: *variable_settings_prediction_input
-        short_name: lai_grid
-        mip: Lmon
-        derive: true
-        additional_datasets:
-          - {dataset: LAI3g, project: OBS, type: reanaly, version: 1_regridded, tier: 3}
-    scripts:
-      monthly_trend:
-        <<: *monthly_trend
-        tag: LAI_trend
-        convert_units_to: yr-1
-
   diag_postprocess_mte:
     description: Calculate mean and errors of MTE dataset.
     variables:
       ref:
         <<: *variable_settings_prediction_input
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         additional_datasets:
           - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
       mean:
         <<: *variable_settings_prediction_input
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         var_type: prediction_output
         additional_datasets:
           - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
@@ -313,16 +244,16 @@ diagnostics:
     variables:
       ref:
         <<: *variable_settings_prediction_input
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         additional_datasets:
           - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
       mean:
         <<: *variable_settings_features
-        short_name: gpp_grid
+        short_name: gpp
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
         var_type: label
     scripts:
       monthly_clim:
@@ -349,8 +280,7 @@ diagnostics:
         script: mlr/main.py
         ancestors: ['diag_mlr_input_*/monthly_*']
         categorical_features: ['longitude', 'month_number']
-        coords_as_features: ['month_number', 'latitude', 'longitude']
-        estimate_mlr_model_error: true
+        save_mlr_model_error: true
         # grid_search_cv_kwargs:
         #   cv: 5
         # grid_search_cv_param_grid:
@@ -407,7 +337,6 @@ diagnostics:
       gbrt:
         <<: *gbrt_pr
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
-        coords_as_features: []
         mlr_model_name: GBRT (one feature)
       postprocess:
         <<: *postprocess
@@ -423,7 +352,6 @@ diagnostics:
         script: mlr/main.py
         ancestors: ['diag_mlr_input_*/monthly_*']
         categorical_features: ['longitude', 'month_number']
-        coords_as_features: ['month_number', 'latitude', 'longitude']
         group_datasets_by_attributes: ['dataset']
         mlr_model_type: lasso_cv
         mlr_model_name: Lasso

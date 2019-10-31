@@ -3,14 +3,14 @@
 documentation:
 
   description: |
-    Use MLR (Machine Learning Regression) models to predict future CO2 fluxes
-    scalar diagnostics.
+    Use MLR (Machine Learning Regression) models to constrain projections of
+    CO2 fluxes with scalar diagnostics.
 
   authors:
-    - schl_ma
+    - schlund_manuel
 
   maintainer:
-    - schl_ma
+    - schlund_manuel
 
   projects:
     - crescendo
@@ -44,7 +44,7 @@ DATASET_ANCHOR: &datasets
 
 preprocessors:
 
-  landmask: &landmask
+  regular_var:
     mask_landsea:
       mask_out: sea
     extract_region:
@@ -52,11 +52,36 @@ preprocessors:
       end_latitude: 90.0
       start_longitude: 0.0
       end_longitude: 360.0
-
-  landmask_average:
-    <<: *landmask
     area_statistics:
       operator: mean
+
+  lai_var:
+    weighting_landsea_fraction:
+      area_type: land
+      strict: false
+    mask_landsea:
+      mask_out: sea
+    extract_region:
+      start_latitude: -60.0
+      end_latitude: 90.0
+      start_longitude: 0.0
+      end_longitude: 360.0
+    area_statistics:
+      operator: mean
+
+  flux_var:
+    weighting_landsea_fraction:
+      area_type: land
+      strict: false
+    mask_landsea:
+      mask_out: sea
+    extract_region:
+      start_latitude: -60.0
+      end_latitude: 90.0
+      start_longitude: 0.0
+      end_longitude: 360.0
+    area_statistics:
+      operator: sum
 
 
 diagnostics:
@@ -65,7 +90,7 @@ diagnostics:
     variables:
       features: &variable_settings
         short_name: tas
-        preprocessor: landmask_average
+        preprocessor: regular_var
         project: CMIP5
         mip: Amon
         exp: historical
@@ -232,92 +257,79 @@ diagnostics:
         tag: ET-Glob_t
         convert_units_to: null
 
-  # diag_mlr_input_cVeg:
-  #   variables:
-  #     features: &variable_settings_flux
-  #       <<: *variable_settings
-  #       short_name: cVeg_grid
-  #       preprocessor: landmask
-  #       mip: Lmon
-  #       derive: true
-  #     prediction_input:
-  #       <<: *variable_settings_flux
-  #       var_type: prediction_input
-  #       additional_datasets:
-  #         - {dataset: NDP, project: OBS, type: ground, version: 017b, tier: 2, start_year: 2000, end_year: 2000}
-  #   scripts:
-  #     mean: &mean_flux
-  #       <<: *mean
-  #       sum: ['latitude', 'longitude']
-  #       tag: CVEG-Glob_c
-  #       convert_units_to: 'Gt'
-
-  # diag_mlr_input_cSoil:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_flux
-  #       short_name: cSoil_grid
-  #     prediction_input:
-  #       <<: *variable_settings_flux
-  #       short_name: cSoil_grid
-  #       var_type: prediction_input
-  #       additional_datasets:
-  #         - {dataset: HWSD, project: OBS, type: ground, version: 1, tier: 2, start_year: 2000, end_year: 2000}
-  #   scripts:
-  #     mean:
-  #       <<: *mean_flux
-  #       tag: CSOIL-Glob_c
-  #       convert_units_to: 'Gt'
-
-  # diag_mlr_input_nbp:
-  #   variables:
-  #     features:
-  #       <<: *variable_settings_flux
-  #       short_name: nbp_grid
-  #     prediction_input:
-  #       <<: *vnariable_settings_flux
-  #       short_name: nbp_grid
-  #       var_type: prediction_input
-  #       additional_datasets:
-  #         - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 1, tier: 3}
-  #     label:
-  #       <<: *variable_settings_flux
-  #       short_name: nbp_grid
-  #       exp: rcp45
-  #       start_year: 2020
-  #       end_year: 2039
-  #       var_type: label
-  #   scripts:
-  #     mean:
-  #       <<: *mean_flux
-  #       tag: NBP-Glob_c
-  #       convert_units_to: 'Gt yr-1'
-
-  diag_mlr_input_gpp:
+  diag_mlr_input_cVeg:
     variables:
       features: &variable_settings_flux
         <<: *variable_settings
-        short_name: gpp_grid
-        preprocessor: landmask
+        short_name: cVeg
+        preprocessor: flux_var
         mip: Lmon
-        derive: true
       prediction_input:
         <<: *variable_settings_flux
-        short_name: gpp_grid
+        var_type: prediction_input
+        additional_datasets:
+          - {dataset: NDP, project: OBS, type: reanaly, version: 017b, tier: 3, start_year: 2000, end_year: 2000}
+    scripts:
+      mean:
+        <<: *mean
+        tag: CVEG-Glob_c
+        convert_units_to: 'Gt'
+
+  diag_mlr_input_cSoil:
+    variables:
+      features:
+        <<: *variable_settings_flux
+        short_name: cSoil
+      prediction_input:
+        <<: *variable_settings_flux
+        short_name: cSoil
+        var_type: prediction_input
+        additional_datasets:
+          - {dataset: HWSD, project: OBS, type: reanaly, version: 1.2, tier: 3, start_year: 2000, end_year: 2000}
+    scripts:
+      mean:
+        <<: *mean
+        tag: CSOIL-Glob_c
+        convert_units_to: 'Gt'
+
+  diag_mlr_input_nbp:
+    variables:
+      features:
+        <<: *variable_settings_flux
+        short_name: nbp
+      prediction_input:
+        <<: *variable_settings_flux
+        short_name: nbp
+        var_type: prediction_input
+        additional_datasets:
+          - {dataset: JMA-TRANSCOM, project: OBS, type: reanaly, version: 2018, tier: 3}
+    scripts:
+      mean:
+        <<: *mean
+        tag: NBP-Glob_c
+        convert_units_to: 'Gt yr-1'
+
+  diag_mlr_input_gpp:
+    variables:
+      features:
+        <<: *variable_settings_flux
+        short_name: gpp
+      prediction_input:
+        <<: *variable_settings_flux
+        short_name: gpp
         var_type: prediction_input
         additional_datasets:
           - {dataset: MTE, project: OBS, type: reanaly, version: May12, tier: 3}
       label:
         <<: *variable_settings_flux
-        short_name: gpp_grid
+        short_name: gpp
         exp: rcp45
         start_year: 2020
         end_year: 2039
         var_type: label
     scripts:
-      mean: &mean_flux
+      mean:
         <<: *mean
-        sum: ['latitude', 'longitude']
         tag: GPP-Glob_c
         convert_units_to: 'Gt yr-1'
 
@@ -325,12 +337,12 @@ diagnostics:
     variables:
       features:
         <<: *variable_settings_flux
-        short_name: lai_grid
-        preprocessor: landmask_average
+        short_name: lai
+        preprocessor: lai_var
       prediction_input:
         <<: *variable_settings_flux
-        short_name: lai_grid
-        preprocessor: landmask_average
+        short_name: lai
+        preprocessor: lai_var
         var_type: prediction_input
         additional_datasets:
           - {dataset: LAI3g, project: OBS, type: reanaly, version: 1_regridded, tier: 3}
