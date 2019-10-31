@@ -21,6 +21,9 @@ abs_plot : dict, optional
     Specify additional keyword arguments for the absolute plotting function by
     ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
     as functions of :mod:`matplotlib.pyplot`).
+alias : dict, optional
+    :obj:`str` to :obj:`str` mapping for nicer plot labels (e.g.
+    ``{'feature': 'Historical CMIP5 data'}``.
 bias_plot : dict, optional
     Specify additional keyword arguments for the absolute plotting function by
     ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
