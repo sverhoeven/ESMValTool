@@ -986,8 +986,9 @@ class MLRModel():
             # Prediction
             (x_pred, x_err, y_ref,
              x_cube) = self._extract_prediction_input(pred_name)
-            pred_dict = self._get_prediction_dict(x_pred, x_err, y_ref,
-                                                  additional_data, **kwargs)
+            pred_dict = self._get_prediction_dict(pred_name, x_pred, x_err,
+                                                  y_ref, additional_data,
+                                                  **kwargs)
 
             # Save data in class member
             y_pred = pd.DataFrame(pred_dict[None],
@@ -1666,8 +1667,8 @@ class MLRModel():
         """Get plot units version of specified ``units``."""
         return self._cfg['plot_units'].get(str(units), str(units))
 
-    def _get_prediction_dict(self, x_pred, x_err, y_ref, additional_data,
-                             **kwargs):
+    def _get_prediction_dict(self, pred_name, x_pred, x_err, y_ref,
+                             additional_data, **kwargs):
         """Get prediction output in a dictionary."""
         logger.info("Predicting %i point(s)", len(x_pred.index))
         y_preds = self._clf.predict(x_pred, **kwargs)
@@ -1686,8 +1687,9 @@ class MLRModel():
         if 'propagated_input_error' in additional_data:
             if x_err is None:
                 raise ValueError(
-                    "'save_propagated_errors' is not possible because no "
-                    "'prediction_input_error' data is available")
+                    f"'save_propagated_errors' is not possible because no "
+                    f"'prediction_input_error' data for prediction "
+                    f"'{self._get_name(pred_name)}' is available")
             pred_dict['squared_propagated_input_error'] = (
                 self._propagate_input_errors(x_pred, x_err))
 
@@ -2094,7 +2096,6 @@ class MLRModel():
             training_labels=y_train,
             feature_names=self.features,
             categorical_features=categorical_features_idx,
-            class_names=[self.label],
             discretize_continuous=False,
             sample_around_instance=True,
             **verbosity,

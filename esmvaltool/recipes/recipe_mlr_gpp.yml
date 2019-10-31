@@ -20,19 +20,19 @@ DATASET_ANCHOR: &datasets
   - {dataset: bcc-csm1-1}
   - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
-  # - {dataset: CanESM2}
-  # - {dataset: CESM1-BGC}
-  # - {dataset: GFDL-ESM2G}
-  # - {dataset: GFDL-ESM2M}
-  # - {dataset: HadGEM2-CC}
-  # - {dataset: HadGEM2-ES}
-  # - {dataset: inmcm4}
-  # - {dataset: IPSL-CM5A-LR}
-  # - {dataset: IPSL-CM5A-MR}
-  # - {dataset: IPSL-CM5B-LR}
-  # - {dataset: MIROC-ESM}
-  # - {dataset: MIROC-ESM-CHEM}
-  # - {dataset: NorESM1-ME}
+  - {dataset: CanESM2}
+  - {dataset: CESM1-BGC}
+  - {dataset: GFDL-ESM2G}
+  - {dataset: GFDL-ESM2M}
+  - {dataset: HadGEM2-CC}
+  - {dataset: HadGEM2-ES}
+  - {dataset: inmcm4}
+  - {dataset: IPSL-CM5A-LR}
+  - {dataset: IPSL-CM5A-MR}
+  - {dataset: IPSL-CM5B-LR}
+  - {dataset: MIROC-ESM}
+  - {dataset: MIROC-ESM-CHEM}
+  - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -159,8 +159,8 @@ diagnostics:
         preprocessor: flux_var
         mip: Lmon
         exp: rcp85
-        start_year: 2083
-        end_year: 2099
+        start_year: 2081
+        end_year: 2100
         var_type: label
       prediction_input:
         <<: *variable_settings_prediction_input
@@ -279,8 +279,6 @@ diagnostics:
       gbrt: &gbrt
         script: mlr/main.py
         ancestors: ['diag_mlr_input_*/monthly_*']
-        categorical_features: ['longitude', 'month_number']
-        save_mlr_model_error: true
         # grid_search_cv_kwargs:
         #   cv: 5
         # grid_search_cv_param_grid:
@@ -304,6 +302,8 @@ diagnostics:
           subsample: 0.5
         plot_units:
           't km-2 yr-1': 'tC km$^{-2}$ yr$^{-1}$'
+        save_mlr_model_error: true
+        save_propagated_errors: true
       postprocess:
         <<: *postprocess
         ancestors: [
@@ -324,6 +324,7 @@ diagnostics:
           n_estimators: 250
           subsample: 0.5
         pseudo_reality: ['dataset']
+        save_propagated_errors: false
       postprocess:
         <<: *postprocess
         ancestors: [
@@ -351,7 +352,6 @@ diagnostics:
       lasso:
         script: mlr/main.py
         ancestors: ['diag_mlr_input_*/monthly_*']
-        categorical_features: ['longitude', 'month_number']
         group_datasets_by_attributes: ['dataset']
         mlr_model_type: lasso_cv
         mlr_model_name: Lasso
