@@ -306,7 +306,21 @@ def get_absolute_time_units(units):
 
 
 def get_area_weights(cube, normalize=False):
-    """Get area weights of cube if possible."""
+    """Get area weights of cube.
+
+    Parameters
+    ----------
+    cube : iris.cube.Cube
+        Input cube.
+    normalize : bool, optional (default: False)
+        Normalize weights with total area.
+
+    Returns
+    -------
+    numpy.ndarray
+        Area weights.
+
+    """
     cube_str = cube.summary(shorten=True)
     logger.debug("Calculating area weights of cube %s", cube_str)
     for coord_name in ('latitude', 'longitude'):
@@ -374,8 +388,80 @@ def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
     return valid_datasets
 
 
+def get_squared_error_cube(ref_cube, error_datasets):
+    """Get array of squared errors.
+
+    Parameters
+    ----------
+    ref_cube : iris.cube.Cube
+        Reference cube (determines mask, coordinates and attributes of output).
+    error_datasets : list of dict
+        List of metadata dictionaries where each dictionary represents a single
+        dataset.
+
+    Returns
+    -------
+    iris.cube.Cube
+        Cube containing squared errors.
+
+    Raises
+    ------
+    ValueError
+        Shape of a dataset does not match shape of reference cube.
+
+    """
+    squared_error_cube = ref_cube.copy()
+
+    # Fill cube with zeros
+    squared_error_cube.data = np.ma.array(
+        np.full(squared_error_cube.shape, 0.0),
+        mask=np.ma.getmaskarray(squared_error_cube.data),
+    )
+
+    # Adapt cube metadata
+    if not squared_error_cube.attributes.get('squared'):
+
+        squared_error_cube.var_name += '_squared_error'
+        squared_error_cube.long_name += ' (squared error)'
+        squared_error_cube.units = units_power(squared_error_cube.units, 2)
+    squared_error_cube.attributes['var_type'] = 'prediction_output_error'
+
+    # Aggregate errors
+    for dataset in error_datasets:
+        path = dataset['filename']
+        cube = iris.load_cube(path)
+
+        # Check shape
+        if cube.shape != ref_cube.shape:
+            raise ValueError(
+                f"Expected shape {ref_cube.shape} for error cubes, got "
+                f"{cube.shape} for dataset '{path}'")
+
+        # Add squared error
+        new_data = cube.data
+        if 'squared_' not in cube.var_name:
+            new_data **= 2
+        squared_error_cube.data += new_data
+        logger.debug("Added '%s' to squared error datasets", path)
+    return squared_error_cube
+
+
 def get_time_weights(cube, normalize=False):
-    """Get time weights of cube if possible."""
+    """Get time weights of cube.
+
+    Parameters
+    ----------
+    cube : iris.cube.Cube
+        Input cube.
+    normalize : bool, optional (default: False)
+        Normalize weights with total time range.
+
+    Returns
+    -------
+    numpy.ndarray
+        Time weights.
+
+    """
     cube_str = cube.summary(shorten=True)
     logger.debug("Calculating time weights of cube %s", cube_str)
     try:
@@ -402,6 +488,20 @@ def get_time_weights(cube, normalize=False):
         time_weights = np.expand_dims(time_weights, idx)
     time_weights = np.broadcast_to(time_weights, cube.shape)
     return time_weights
+
+
+def square_root_metadata(cube):
+    """Take the square root of the cube metadata.
+
+    Parameters
+    ----------
+    cube : iris.cube.Cube
+        Cube (will be modified in-place).
+
+    """
+    cube.var_name = cube.var_name.replace('squared_', '')
+    cube.long_name = cube.long_name.replace('squared ', '')
+    cube.units = cube.units.root(2)
 
 
 def units_power(units, power):

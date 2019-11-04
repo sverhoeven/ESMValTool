@@ -43,9 +43,11 @@ seaborn_settings : dict, optional
 import itertools
 import logging
 import os
+from pprint import pformat
 
 import iris
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
 
 import esmvaltool.diag_scripts.shared.iris_helpers as ih
@@ -62,6 +64,55 @@ def _get_alias(cfg, name):
     return cfg.get('aliases', {}).get(name, name)
 
 
+def _get_cube(var_type, model_name, datasets):
+    """Get single cube for datasets of type ``key``."""
+    key = _get_key(var_type, model_name)
+    logger.debug("Found the following datasets for '%s':\n%s", key,
+                 pformat([d['filename'] for d in datasets]))
+    if 'error' in var_type:
+        logger.debug("Calculating cube for '%s' by squared error aggregation",
+                     key)
+        ref_cube = iris.load_cube(datasets[0]['filename'])
+        print(ref_cube)
+        cube = mlr.get_squared_error_cube(ref_cube, datasets)
+        print(cube)
+        mlr.square_root_metadata(cube)
+        print(cube)
+        assert False
+        cube.data = np.sqrt(cube.data)
+    else:
+        logger.debug("Calculating cube for '%s' by averaging", key)
+        try:
+            cube = ih.get_mean_cube(datasets)
+        except iris.exceptions.MergeError:
+            logger.error("Merging of '%s' data failed", key)
+            raise
+    print(key)
+    print(cube)
+    dataset_names = list({d['dataset'] for d in datasets})
+    projects = list({d['project'] for d in datasets})
+    start_years = list({d['start_year'] for d in datasets})
+    end_years = list({d['end_year'] for d in datasets})
+    cube.attributes.update({
+        'dataset': '|'.join(dataset_names),
+        'end_year': min(end_years),
+        'project': '|'.join(projects),
+        'start_year': min(start_years),
+        'tag': datasets[0]['tag'],
+        'var_type': var_type,
+    })
+    if model_name is not None:
+        cube.attributes['mlr_model_name'] = model_name
+    return cube
+
+
+def _get_key(var_type, model_name):
+    """Get dictionary key for specific dataset."""
+    if model_name is None:
+        return var_type
+    return f'{var_type}_{model_name}'
+
+
 def get_cube_dict(cfg, input_data):
     """Get dictionary of mean cubes (values) with ``var_type`` (keys)."""
     cube_dict = {}
@@ -71,31 +122,9 @@ def get_cube_dict(cfg, input_data):
             continue
         grouped_datasets = group_metadata(datasets, 'mlr_model_name')
         for (model_name, model_datasets) in grouped_datasets.items():
-            if model_name is not None:
-                key = f'{var_type}_{model_name}'
-            else:
-                key = var_type
+            key = _get_key(var_type, model_name)
+            cube = _get_cube(var_type, model_name, model_datasets)
             logger.info("Found cube for '%s'", key)
-            try:
-                cube = ih.get_mean_cube(model_datasets)
-            except iris.exceptions.MergeError as exc:
-                logger.warning("Merging of var_type '%s' data failed: %s",
-                               var_type, str(exc))
-                continue
-            dataset_names = list({d['dataset'] for d in model_datasets})
-            projects = list({d['project'] for d in model_datasets})
-            start_years = list({d['start_year'] for d in model_datasets})
-            end_years = list({d['end_year'] for d in model_datasets})
-            cube.attributes.update({
-                'dataset': '|'.join(dataset_names),
-                'end_year': min(end_years),
-                'project': '|'.join(projects),
-                'start_year': min(start_years),
-                'tag': model_datasets[0]['tag'],
-                'var_type': var_type,
-            })
-            if model_name is not None:
-                cube.attributes['mlr_model_name'] = model_name
             cube_dict[key] = cube
     return cube_dict
 

@@ -2176,6 +2176,7 @@ class MLRModel():
             long_name += error_types[pred_type]
             units = mlr.units_power(cube.units, 2)
             attributes['var_type'] = 'prediction_output_error'
+            attributes['squared'] = 1
         elif pred_type == 'lime':
             var_name = 'lime_feature_importance'
             long_name = (f'Most important feature for predicting {self.label} '

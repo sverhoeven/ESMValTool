@@ -59,20 +59,12 @@ OPS = {
 }
 
 
-def _add_squared_error_attributes(cube):
-    """Add correct squared error attributes to cube."""
-    cube.var_name += '_squared_error'
-    cube.long_name += ' (squared error)'
-    cube.units = mlr.units_power(cube.units, 2)
-    cube.attributes['var_type'] = 'prediction_output_error'
-
-
 def _calculate_lower_error_bound(cfg, squared_error_cube, basepath):
     """Calculate lower error bound."""
     logger.debug("Calculating lower error bound")
     lower_bound = _collapse_regular_cube(cfg, squared_error_cube, power=2)
     lower_bound.data = np.ma.sqrt(lower_bound.data)
-    _square_root_metadata(lower_bound)
+    mlr.square_root_metadata(lower_bound)
     _convert_units(cfg, lower_bound)
     lower_bound.attributes['error_type'] = 'lower_bound'
     new_path = basepath.replace('.nc', '_lower_bound.nc')
@@ -107,7 +99,7 @@ def _calculate_upper_error_bound(cfg, squared_error_cube, basepath):
     logger.debug("Calculating upper error bound")
     upper_bound = squared_error_cube.copy()
     upper_bound.data = np.ma.sqrt(upper_bound.data)
-    _square_root_metadata(upper_bound)
+    mlr.square_root_metadata(upper_bound)
     upper_bound = _collapse_regular_cube(cfg, upper_bound)
     _convert_units(cfg, upper_bound)
     upper_bound.attributes['error_type'] = 'upper_bound'
@@ -227,7 +219,7 @@ def _estimate_real_error(cfg, squared_error_cube, ref_dataset, basepath):
     # Create cube (collapse using dummy operation)
     real_error = squared_error_cube.collapsed(coords, iris.analysis.MEAN)
     real_error.data = error
-    _square_root_metadata(real_error)
+    mlr.square_root_metadata(real_error)
     real_error.units *= units
     _convert_units(cfg, real_error)
     real_error.attributes['error_type'] = 'estimated_real_error'
@@ -369,13 +361,6 @@ def _get_time_weights(cfg, cube, power=1, normalize=False):
     return (time_weights, time_units**power)
 
 
-def _square_root_metadata(cube):
-    """Take the square root of the cube metadata."""
-    cube.var_name = cube.var_name.replace('_squared_error', '_error')
-    cube.long_name = cube.long_name.replace(' (squared error)', ' (error)')
-    cube.units = cube.units.root(2)
-
-
 def check_cfg(cfg):
     """Check options of configuration and catch errors."""
     for operation in ('sum', 'mean'):
@@ -391,40 +376,13 @@ def postprocess_errors(cfg, ref_cube, error_datasets, cov_estim_datasets):
     """Postprocess errors."""
     logger.info("Postprocessing errors using reference cube %s",
                 ref_cube.summary(shorten=True))
-    squared_error_cube = ref_cube.copy()
-    squared_error_cube.data = np.ma.array(
-        np.full(squared_error_cube.shape, 0.0),
-        mask=np.ma.getmaskarray(squared_error_cube.data),
-    )
-    _add_squared_error_attributes(squared_error_cube)
-
-    # Extract basename for error cubes
-    basename = os.path.splitext(
-        os.path.basename(ref_cube.attributes['filename']))[0] + '_error'
-    basepath = get_diagnostic_filename(basename, cfg)
 
     # Extract covariance
     (cov_cube,
      error_datasets) = _get_covariance_dataset(error_datasets, ref_cube)
 
     # Extract squared errors
-    for dataset in error_datasets:
-        path = dataset['filename']
-        cube = iris.load_cube(path)
-
-        # Ignore cubes with wrong shape
-        if cube.shape != ref_cube.shape:
-            logger.warning(
-                "Expected shape %s for error cubes, got %s, skipping",
-                ref_cube.shape, cube.shape)
-            continue
-
-        # Add squared errors
-        new_data = cube.data
-        if 'squared_' not in cube.var_name:
-            new_data **= 2
-        squared_error_cube.data += new_data
-        logger.debug("Added '%s' to squared error datasets", path)
+    squared_error_cube = mlr.get_squared_error_cube(ref_cube, error_datasets)
 
     # Extract variance from covariance if desired
     if cfg.get('add_var_from_cov', True) and cov_cube is not None:
@@ -438,6 +396,11 @@ def postprocess_errors(cfg, ref_cube, error_datasets, cov_estim_datasets):
             "datasets")
         if not error_datasets:
             error_datasets = True
+
+    # Extract basename for error cubes
+    basename = os.path.splitext(
+        os.path.basename(ref_cube.attributes['filename']))[0] + '_error'
+    basepath = get_diagnostic_filename(basename, cfg)
 
     # Lower and upper error bounds
     if error_datasets:
