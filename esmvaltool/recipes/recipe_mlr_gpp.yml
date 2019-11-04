@@ -180,7 +180,7 @@ diagnostics:
       monthly_clim:
         <<: *monthly_clim
         tag: GPP
-        convert_units_to: t km-2 yr-1
+        convert_units_to: g m-2 yr-1
 
   diag_mlr_input_lai:
     variables:
@@ -231,7 +231,7 @@ diagnostics:
       monthly_clim:
         <<: *monthly_clim
         tag: GPP
-        convert_units_to: t km-2 yr-1
+        convert_units_to: g m-2 yr-1
       postprocess: &postprocess
         script: mlr/postprocess.py
         ancestors: ['diag_postprocess_mte/monthly_clim']
@@ -259,7 +259,7 @@ diagnostics:
       monthly_clim:
         <<: *monthly_clim
         tag: GPP
-        convert_units_to: t km-2 yr-1
+        convert_units_to: g m-2 yr-1
       mmm: &mmm
         script: mlr/main.py
         ancestors: ['diag_postprocess_historical_gpp/monthly_clim']
@@ -295,13 +295,13 @@ diagnostics:
         mlr_model_type: gbr_xgboost
         mlr_model_name: GBRT
         n_jobs: 24
-        parameters_final_regressor:
+        parameters_final_regressor: &best_final_parameters
           learning_rate: 0.02
-          max_depth: 10
-          n_estimators: 250
+          max_depth: 6
+          n_estimators: 300
           subsample: 0.5
         plot_units:
-          't km-2 yr-1': 'tC km$^{-2}$ yr$^{-1}$'
+          'g m-2 yr-1': 'gC m$^{-2}$ yr$^{-1}$'
         save_mlr_model_error: true
         save_propagated_errors: true
       postprocess:
@@ -318,11 +318,7 @@ diagnostics:
         <<: *gbrt
         grid_search_cv_param_grid: false
         only_predict: true
-        parameters_final_regressor:
-          learning_rate: 0.02
-          max_depth: 10
-          n_estimators: 250
-          subsample: 0.5
+        parameters_final_regressor: *best_final_parameters
         pseudo_reality: ['dataset']
         save_propagated_errors: false
       postprocess:
@@ -399,17 +395,18 @@ diagnostics:
         ]
         abs_plot:
           plot_kwargs:
-            cbar_label: 'GPP / tC km$^{-2}$ yr$^{-1}$'
+            cbar_label: 'GPP / gC m$^{-2}$ yr$^{-1}$'
             cbar_range: [0, 6000, 100]
         bias_plot:
           plot_kwargs:
-            cbar_label: 'ΔGPP / tC km$^{-2}$ yr$^{-1}$'
+            cbar_label: 'ΔGPP / gC m$^{-2}$ yr$^{-1}$'
             cbar_range: [-2500, 2500, 100]
         aliases:
           label: CMIP5
           feature: CMIP5
           prediction_output_GBRT: GBRT
           prediction_input: MTE
+
         ignore_var_types: [
           'prediction_input_error',
           'prediction_output_error',
@@ -430,4 +427,4 @@ diagnostics:
           ]
         box_plot:
           pyplot_kwargs:
-            ylabel: 'GPP / tC km$^{-2}$ yr$^{-1}$'
+            ylabel: 'RMSE / gC m$^{-2}$ yr$^{-1}$'
