@@ -48,6 +48,7 @@ from pprint import pformat
 import iris
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 
 import esmvaltool.diag_scripts.shared.iris_helpers as ih
@@ -57,6 +58,8 @@ from esmvaltool.diag_scripts.shared import (get_plot_filename, group_metadata,
                                             select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
+
+ALL_CUBES = pd.DataFrame()
 
 
 def _get_alias(cfg, name):
@@ -73,13 +76,9 @@ def _get_cube(var_type, model_name, datasets):
         logger.debug("Calculating cube for '%s' by squared error aggregation",
                      key)
         ref_cube = iris.load_cube(datasets[0]['filename'])
-        print(ref_cube)
         cube = mlr.get_squared_error_cube(ref_cube, datasets)
-        print(cube)
         mlr.square_root_metadata(cube)
-        print(cube)
-        assert False
-        cube.data = np.sqrt(cube.data)
+        cube.data = np.ma.sqrt(cube.data)
     else:
         logger.debug("Calculating cube for '%s' by averaging", key)
         try:
@@ -87,8 +86,6 @@ def _get_cube(var_type, model_name, datasets):
         except iris.exceptions.MergeError:
             logger.error("Merging of '%s' data failed", key)
             raise
-    print(key)
-    print(cube)
     dataset_names = list({d['dataset'] for d in datasets})
     projects = list({d['project'] for d in datasets})
     start_years = list({d['start_year'] for d in datasets})
@@ -189,6 +186,9 @@ def plot_abs(cfg, cube_dict):
         logger.info("Wrote %s", plot_path)
         plt.close()
 
+        # Add to global DataFrame
+        ALL_CUBES[key] = np.ma.filled(cube.data.ravel(), np.nan)
+
 
 def plot_biases(cfg, cube_dict):
     """Plot biases of datasets."""
@@ -230,6 +230,10 @@ def plot_biases(cfg, cube_dict):
         logger.info("Wrote %s", plot_path)
         plt.close()
 
+        # Add to global DataFrame
+        ALL_CUBES[f'{key_1}-{key_2}'] = np.ma.filled(diff_cube.data.ravel(),
+                                                     np.nan)
+
 
 def main(cfg):
     """Run the diagnostic."""
@@ -240,6 +244,7 @@ def main(cfg):
     # Plots
     plot_abs(cfg, cube_dict)
     plot_biases(cfg, cube_dict)
+    print(ALL_CUBES.corr())
 
 
 # Run main function when this script is called

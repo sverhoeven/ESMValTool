@@ -153,9 +153,6 @@ class MLRModel():
             together with the option ``group_datasets_by_attributes``.
         allow_missing_features : bool (default: False)
             Allow missing features in the training data.
-        area_weighted_samples : bool (default: True)
-            Use area weights of grid cells as sample weights during the
-            training.
         cache_intermediate_results : bool (default: True)
             Cache the intermediate results of the pipeline's transformers.
         coords_as_features : list
@@ -224,6 +221,9 @@ class MLRModel():
         test_size : float (default: 0.25)
             If given, exclude the desired fraction of input data from training
             and use it as test data.
+        weighted_samples : bool (default: True)
+            Use area and time weights of grid cells as sample weights during
+            the training.
         work_dir : str (default: ~/work)
             Root directory to save all other files (mainly ``*.nc`` files).
         write_plots : bool (default: True)
@@ -1080,23 +1080,19 @@ class MLRModel():
             logger.info("Updated pipeline with parameters %s", new_params)
 
     def _calculate_sample_weights(self, cube, var_type, group_attr=None):
-        """Calculate sample weights (using grid cell area) if desired."""
-        if not self._cfg['area_weighted_samples']:
+        """Calculate sample weights (using area and time) if desired."""
+        if not self._cfg['weighted_samples']:
             return None
         if var_type != 'feature':
             return None
-        msg = '' if group_attr is None else f" of '{group_attr}'"
-        weights = mlr.get_area_weights(cube)
-        if weights is None:
-            logger.warning(
-                "Calculation of area weights for training data%s failed", msg)
-            return None
+        weights = mlr.get_all_weights(cube)
         weights *= 1e-8
         weights = weights.astype(self._cfg['dtype'], casting='same_kind')
         weights = pd.DataFrame({'sample_weight': weights.ravel()},
                                dtype=self._cfg['dtype'])
+        msg = '' if group_attr is None else f" of '{group_attr}'"
         logger.debug(
-            "Successfully calculated %i area-based sample weights for "
+            "Successfully calculated %i area/time-based sample weights for "
             "training data%s", len(weights.index), msg)
         return weights
 
@@ -1373,8 +1369,11 @@ class MLRModel():
                 f"'{var_type}'")
         x_data = pd.DataFrame(columns=self.features, dtype=self._cfg['dtype'])
         x_cube = None
-        sample_weights = pd.DataFrame(columns=['sample_weight'],
-                                      dtype=self._cfg['dtype'])
+        if self._cfg['weighted_samples']:
+            sample_weights = pd.DataFrame(columns=['sample_weight'],
+                                          dtype=self._cfg['dtype'])
+        else:
+            sample_weights = None
 
         # Iterate over datasets
         datasets = select_metadata(datasets, var_type=var_type)
@@ -1395,21 +1394,21 @@ class MLRModel():
                                                    group_attr)
             x_data = x_data.append(group_data, ignore_index=True)
 
-            # If no weights are given for at least one group discard all
+            # Append weights if desired
             if sample_weights is not None:
-                if weights is None:
-                    sample_weights = None
-                else:
-                    sample_weights = sample_weights.append(weights,
-                                                           ignore_index=True)
+                sample_weights = sample_weights.append(weights,
+                                                       ignore_index=True)
         if sample_weights is not None:
             logger.info(
-                "Successfully calculated area-based sample weights for "
+                "Successfully calculated area/time-based sample weights for "
                 "training data")
-        elif self._cfg['area_weighted_samples'] and var_type == 'feature':
-            logger.warning(
-                "Calculation of area-based sample weights failed, using equal "
-                "weights for all samples")
+            if sample_weights.max() / sample_weights.min() > 100.0:
+                logger.warning(
+                    "Sample weights differ by more than a factor of 100, got "
+                    "a minimum value of %e and a maximum value of %e. This "
+                    "might be caused by differing coordinates in the training "
+                    "cubes", sample_weights.min(), sample_weights.max())
+
         return (x_data, x_cube, sample_weights)
 
     def _extract_y_data(self, datasets, var_type):
@@ -2320,7 +2319,7 @@ class MLRModel():
 
     def _set_default_settings(self):
         """Set default (non-``False``) keyword arguments."""
-        self._cfg.setdefault('area_weighted_samples',
+        self._cfg.setdefault('weighted_samples',
                              not self._cfg.get('accept_only_scalar_data'))
         self._cfg.setdefault('cache_intermediate_results', True)
         self._cfg.setdefault('dtype', 'float64')

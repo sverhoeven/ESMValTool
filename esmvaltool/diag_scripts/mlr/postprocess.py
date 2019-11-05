@@ -250,7 +250,7 @@ def _corrcoef(array, rowvar=True, weights=None):
 
 
 def _get_all_weights(cfg, cube, power=1):
-    """Get all necessary weights (including mean calculation)."""
+    """Get all necessary weights (including norm for mean calculation)."""
     cfg = deepcopy(cfg)
     all_coords = []
     weights = np.ones(cube.shape)

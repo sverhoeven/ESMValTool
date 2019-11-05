@@ -183,11 +183,23 @@ def _calculate_slope_along_coord(cube, coord_name, return_stderr=False):
 def _get_anomaly_base(cfg, cube):
     """Get base value(s) for anomaly calculation."""
     if cfg['anomaly'].get('mean') and cube.shape != ():
-        area_weights = _get_area_weights(cfg, cube)
-        base = np.ma.average(cube.data, weights=area_weights)
+        weights = _get_all_weights(cfg, cube)
+        base = np.ma.average(cube.data, weights=weights)
     else:
         base = cube.data
     return base
+
+
+def _get_all_weights(cfg, cube):
+    """Get all desired weights for a cube."""
+    weights = np.ones(cube.shape)
+    area_weights = _get_area_weights(cfg, cube)
+    if area_weights is not None:
+        weights *= area_weights
+    time_weights = _get_time_weights(cfg, cube)
+    if time_weights is not None:
+        weights *= time_weights
+    return weights
 
 
 def _get_area_weights(cfg, cube):
@@ -394,8 +406,8 @@ def calculate_sum_and_mean(cfg, cube, data):
                 ]
 
             # Latitude and longitude (weighted)
-            area_weights = _get_area_weights(cfg, cube)
             if 'latitude' in cfg[oper] and 'longitude' in cfg[oper]:
+                area_weights = _get_area_weights(cfg, cube)
                 cube = cube.collapsed(['latitude', 'longitude'],
                                       iris_op,
                                       weights=area_weights)
@@ -406,8 +418,8 @@ def calculate_sum_and_mean(cfg, cube, data):
                     data['units'] = str(cube.units)
 
             # Time (weighted)
-            time_weights = _get_time_weights(cfg, cube)
             if 'time' in cfg[oper]:
+                time_weights = _get_time_weights(cfg, cube)
                 time_units = mlr.get_absolute_time_units(
                     cube.coord('time').units)
                 cube = cube.collapsed(['time'], iris_op, weights=time_weights)
@@ -468,8 +480,8 @@ def normalize(cfg, cube, data):
     units = cube.units
     if cfg.get('normalize_mean'):
         logger.debug("Normalizing mean")
-        area_weights = _get_area_weights(cfg, cube)
-        mean = np.ma.average(cube.data, weights=area_weights)
+        weights = _get_all_weights(cfg, cube)
+        mean = np.ma.average(cube.data, weights=weights)
         cube.data -= mean
         data['long_name'] += ' (mean normalized)'
         data['normalize_mean'] = (

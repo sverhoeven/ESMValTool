@@ -37,6 +37,18 @@ VAR_TYPES = [
 ]
 
 
+def _has_valid_coords(cube, coords):
+    """Check if cube has valid coords for calculating weights."""
+    for coord_name in coords:
+        try:
+            coord = cube.coord(coord_name)
+        except iris.exceptions.CoordinateNotFoundError:
+            return False
+        if coord.shape[0] <= 1:
+            return False
+    return True
+
+
 class AdvancedPipeline(Pipeline):
     """Expand :class:`sklearn.pipeline.Pipeline`."""
 
@@ -305,6 +317,39 @@ def get_absolute_time_units(units):
     return units
 
 
+def get_all_weights(cube, normalize=False):
+    """Get all possible weights of cube.
+
+    Parameters
+    ----------
+    cube : iris.cube.Cube
+        Input cube.
+    normalize : bool, optional (default: False)
+        Normalize weights with total area and total time range.
+
+    Returns
+    -------
+    numpy.ndarray
+        Area weights.
+
+    """
+    cube_str = cube.summary(shorten=True)
+    logger.debug("Calculating all weights of cube %s", cube_str)
+    weights = np.ones(cube.shape)
+
+    # Area weights
+    if _has_valid_coords(cube, ['latitude', 'longitude']):
+        area_weights = get_area_weights(cube, normalize=normalize)
+        weights *= area_weights
+
+    # Time weights
+    if _has_valid_coords(cube, ['time']):
+        time_weights = get_time_weights(cube, normalize=normalize)
+        weights *= time_weights
+
+    return weights
+
+
 def get_area_weights(cube, normalize=False):
     """Get area weights of cube.
 
@@ -320,6 +365,13 @@ def get_area_weights(cube, normalize=False):
     numpy.ndarray
         Area weights.
 
+    Raises
+    ------
+    iris.exceptions.CoordinateNotFoundError
+        Cube does not contain the coordinates ``latitude`` and ``longitude``.
+    iris.exceptions.CoordinateNotRegularError
+        Length of ``latitude`` or ``longitude`` coordinate is smaller than 2.
+
     """
     cube_str = cube.summary(shorten=True)
     logger.debug("Calculating area weights of cube %s", cube_str)
@@ -327,19 +379,19 @@ def get_area_weights(cube, normalize=False):
         try:
             coord = cube.coord(coord_name)
         except iris.exceptions.CoordinateNotFoundError:
-            logger.warning(
+            logger.error(
                 "Calculation of area weights for cube %s failed, coordinate "
                 "'%s' not found", cube_str, coord_name)
-            return None
+            raise
         if coord.shape[0] <= 1:
-            logger.warning(
-                "Calculation of area weights for cube %s failed, coordinate "
-                "'%s' has length %i, needs to be > 1", cube_str, coord_name,
-                coord.shape[0])
-            return None
+            raise iris.exceptions.CoordinateNotRegularError(
+                f"Calculation of area weights for cube {cube_str} failed, "
+                f"coordinate '{coord_name}' has length {coord.shape[0]}, "
+                f"needs to be > 1")
         if not coord.has_bounds():
-            logger.debug("Guessing bounds of coordinate '%s' of cube %s",
-                         coord_name, cube_str)
+            logger.debug(
+                "Guessing bounds of coordinate '%s' of cube %s for area "
+                "weights calculation", coord_name, cube_str)
             coord.guess_bounds()
     area_weights = iris.analysis.cartography.area_weights(cube,
                                                           normalize=normalize)
@@ -419,11 +471,20 @@ def get_squared_error_cube(ref_cube, error_datasets):
     )
 
     # Adapt cube metadata
-    if not squared_error_cube.attributes.get('squared'):
-
-        squared_error_cube.var_name += '_squared_error'
-        squared_error_cube.long_name += ' (squared error)'
-        squared_error_cube.units = units_power(squared_error_cube.units, 2)
+    if 'error' in squared_error_cube.attributes.get('var_type', ''):
+        if not squared_error_cube.attributes.get('squared'):
+            squared_error_cube.var_name += '_squared'
+            squared_error_cube.long_name += ' (squared)'
+            squared_error_cube.units = units_power(squared_error_cube.units, 2)
+    else:
+        if squared_error_cube.attributes.get('squared'):
+            squared_error_cube.var_name += '_error'
+            squared_error_cube.long_name += ' (error)'
+        else:
+            squared_error_cube.var_name += '_squared_error'
+            squared_error_cube.long_name += ' (squared error)'
+            squared_error_cube.units = units_power(squared_error_cube.units, 2)
+    squared_error_cube.attributes['squared'] = 1
     squared_error_cube.attributes['var_type'] = 'prediction_output_error'
 
     # Aggregate errors
@@ -439,7 +500,7 @@ def get_squared_error_cube(ref_cube, error_datasets):
 
         # Add squared error
         new_data = cube.data
-        if 'squared_' not in cube.var_name:
+        if not cube.attributes.get('squared'):
             new_data **= 2
         squared_error_cube.data += new_data
         logger.debug("Added '%s' to squared error datasets", path)
@@ -461,24 +522,32 @@ def get_time_weights(cube, normalize=False):
     numpy.ndarray
         Time weights.
 
+    Raises
+    ------
+    iris.exceptions.CoordinateNotFoundError
+        Cube does not contain the coordinate ``time``.
+    iris.exceptions.CoordinateNotRegularError
+        Length of ``time`` coordinate is smaller than 2.
+
     """
     cube_str = cube.summary(shorten=True)
     logger.debug("Calculating time weights of cube %s", cube_str)
     try:
         coord = cube.coord('time')
     except iris.exceptions.CoordinateNotFoundError:
-        logger.warning(
+        logger.error(
             "Calculation of time weights for cube %s failed, coordinate "
             "'time' not found", cube_str)
-        return None
+        raise
     if coord.shape[0] <= 1:
-        logger.warning(
-            "Calculation of time weights for cube %s failed, coordinate "
-            "'time' has length %i, needs to be > 1", cube_str, coord.shape[0])
-        return None
+        raise iris.exceptions.CoordinateNotRegularError(
+            f"Calculation of time weights for cube {cube_str} failed, "
+            f"coordinate 'time' has length {coord.shape[0]}, needs to be "
+            f"> 1")
     if not coord.has_bounds():
-        logger.debug("Guessing bounds of coordinate 'time' of cube %s",
-                     cube_str)
+        logger.debug(
+            "Guessing bounds of coordinate 'time' of cube %s for time weights "
+            "calculation", cube_str)
         coord.guess_bounds()
     time_weights = coord.bounds[:, 1] - coord.bounds[:, 0]
     if normalize:
@@ -499,9 +568,29 @@ def square_root_metadata(cube):
         Cube (will be modified in-place).
 
     """
-    cube.var_name = cube.var_name.replace('squared_', '')
-    cube.long_name = cube.long_name.replace('squared ', '')
+    if 'squared_' in cube.var_name:
+        cube.var_name = cube.var_name.replace('squared_', '')
+    elif '_squared' in cube.var_name:
+        cube.var_name = cube.var_name.replace('_squared', '')
+    else:
+        cube.var_name = 'root_' + cube.var_name
+    if 'squared ' in cube.long_name:
+        cube.long_name = cube.long_name.replace('squared ', '')
+    elif 'Squared ' in cube.long_name:
+        cube.long_name = cube.long_name.replace('Squared ', '')
+    elif ' squared' in cube.long_name:
+        cube.long_name = cube.long_name.replace(' squared', '')
+    elif ' Squared' in cube.long_name:
+        cube.long_name = cube.long_name.replace(' Squared', '')
+    elif ' (squared)' in cube.long_name:
+        cube.long_name = cube.long_name.replace(' (squared)', '')
+    elif ' (Squared)' in cube.long_name:
+        cube.long_name = cube.long_name.replace(' (Squared)', '')
+    else:
+        cube.long_name = 'Root ' + cube.long_name
     cube.units = cube.units.root(2)
+    if cube.attributes.get('squared'):
+        cube.attributes.pop('squared')
 
 
 def units_power(units, power):

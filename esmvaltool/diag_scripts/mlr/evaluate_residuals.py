@@ -70,7 +70,7 @@ def plot_boxplot(cfg, input_data):
         rmse_data = []
         for dataset in datasets:
             cube = iris.load_cube(dataset['filename'])
-            weights = mlr.get_area_weights(cube)
+            weights = mlr.get_all_weights(cube)
             mse = np.ma.average(cube.data**2, weights=weights)
             rmse_data.append(np.ma.sqrt(mse))
         data_frame = pd.DataFrame(rmse_data, columns=[model_name])

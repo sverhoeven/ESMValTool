@@ -2,6 +2,7 @@
 
 import os
 
+import iris
 import mock
 import numpy as np
 import pandas as pd
@@ -177,3 +178,102 @@ def test_create_alias(mock_logger, attrs, default, delim, output, logger):
         mock_logger.warning.assert_called_once()
     else:
         mock_logger.warning.assert_not_called()
+
+
+METADATA_IN = [iris.cube.CubeMetadata(*x) for x in [
+    ('air_temperature', 'Long', 'var', 'kg2', {}, None),
+    ('air_temperature', 'squared Long', 'var', 'kg2', {'squared': 1}, None),
+    ('air_temperature', 'Squared Long', 'var', 'kg2', {}, None),
+    ('air_temperature', 'squaredLong', 'var', 'kg2', {'squared': 1}, None),
+    ('air_temperature', 'SquaredLong', 'var', 'kg2', {}, None),
+    ('air_temperature', 'Long squared', 'var', 'kg2', {}, None),
+    ('air_temperature', 'Long Squared', 'var', 'kg2', {'squared': 1}, None),
+    ('air_temperature', 'Long (squared)', 'var', 'kg2', {}, None),
+    ('air_temperature', 'Long (Squared)', 'var', 'kg2', {}, None),
+    ('air_temperature', 'Long (squared test)', 'var', 'kg2', {}, None),
+    ('air_temperature', 'Long (Squared test)', 'var', 'kg2', {}, None),
+    ('air_temperature', 'squared Long (squared)', 'var', 'kg2', {}, None),
+    ('air_temperature', 'Squared Long (Squared)', 'var', 'kg2', {}, None),
+    ('air_temperature', 'Long squared', 'squared_var', 'kg2', {}, None),
+    ('air_temperature', 'Long Squared', 'var_squared', 'kg2', {}, None),
+    ('air_temperature', 'Long', 'squared_var_squared', 'kg2', {}, None),
+]]
+METADATA_OUT = [iris.cube.CubeMetadata(*x) for x in [
+    ('air_temperature', 'Root Long', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Root squaredLong', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Root SquaredLong', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long (test)', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long (test)', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long (squared)', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long (Squared)', 'root_var', 'kg', {}, None),
+    ('air_temperature', 'Long', 'var', 'kg', {}, None),
+    ('air_temperature', 'Long', 'var', 'kg', {}, None),
+    ('air_temperature', 'Root Long', 'var_squared', 'kg', {}, None),
+]]
+TEST_SQUARE_ROOT_METADATA = [
+    (iris.cube.Cube(0, **METADATA_IN[idx]._asdict()),
+     iris.cube.Cube(0, **METADATA_OUT[idx]._asdict())) for idx in
+    range(len(METADATA_IN))
+]
+
+
+@pytest.mark.parametrize('cube_in,cube_out', TEST_SQUARE_ROOT_METADATA)
+def test_square_root_metadata(cube_in, cube_out):
+    """Test taking square root of cube metadata."""
+    assert cube_in != cube_out
+    assert cube_in is not cube_out
+    mlr.square_root_metadata(cube_in)
+    assert cube_in == cube_out
+
+
+LONG_NAME_1 = 'long_name_1'
+LONG_NAME_2 = 'long_name_2'
+AUX_NAME = 'aux_name'
+COORD_1 = iris.coords.DimCoord([-2.0, -1.0, 20.0], long_name=LONG_NAME_1)
+COORD_2 = iris.coords.DimCoord([-2.0, -1.0, 20.0], long_name=LONG_NAME_2)
+COORD_3 = iris.coords.DimCoord([-42.0], long_name=LONG_NAME_2)
+COORD_AUX = iris.coords.AuxCoord(['a', 'b', 'c'], long_name=AUX_NAME)
+CUBE_1 = iris.cube.Cube(np.arange(3.0), dim_coords_and_dims=[(COORD_1, 0)])
+CUBE_2 = iris.cube.Cube(np.arange(3.0), dim_coords_and_dims=[(COORD_2, 0)])
+CUBE_3 = iris.cube.Cube(np.arange(1.0), dim_coords_and_dims=[(COORD_3, 0)])
+CUBE_4 = iris.cube.Cube(np.arange(3.0),
+                        dim_coords_and_dims=[(COORD_1, 0)],
+                        aux_coords_and_dims=[(COORD_AUX, 0)])
+CUBE_5 = iris.cube.Cube(np.arange(3.0 * 3.0).reshape(3, 3),
+                        dim_coords_and_dims=[(COORD_1, 0), (COORD_2, 1)],
+                        aux_coords_and_dims=[(COORD_AUX, 0)])
+CUBE_6 = iris.cube.Cube(np.arange(3.0).reshape(1, 3),
+                        dim_coords_and_dims=[(COORD_3, 0), (COORD_1, 1)])
+TEST_CHECK_COORDS = [
+    (CUBE_1, [LONG_NAME_1], True),
+    (CUBE_2, [LONG_NAME_1], False),
+    (CUBE_3, [LONG_NAME_1], False),
+    (CUBE_4, [LONG_NAME_1], True),
+    (CUBE_5, [LONG_NAME_1], True),
+    (CUBE_6, [LONG_NAME_1], True),
+    (CUBE_1, [LONG_NAME_1, LONG_NAME_2], False),
+    (CUBE_2, [LONG_NAME_1, LONG_NAME_2], False),
+    (CUBE_3, [LONG_NAME_1, LONG_NAME_2], False),
+    (CUBE_4, [LONG_NAME_1, LONG_NAME_2], False),
+    (CUBE_5, [LONG_NAME_1, LONG_NAME_2], True),
+    (CUBE_6, [LONG_NAME_1, LONG_NAME_2], False),
+    (CUBE_1, [LONG_NAME_1, LONG_NAME_2, AUX_NAME], False),
+    (CUBE_2, [LONG_NAME_1, LONG_NAME_2, AUX_NAME], False),
+    (CUBE_3, [LONG_NAME_1, LONG_NAME_2, AUX_NAME], False),
+    (CUBE_4, [LONG_NAME_1, LONG_NAME_2, AUX_NAME], False),
+    (CUBE_5, [LONG_NAME_1, LONG_NAME_2, AUX_NAME], True),
+    (CUBE_6, [LONG_NAME_1, LONG_NAME_2, AUX_NAME], False),
+]
+
+
+@pytest.mark.parametrize('cube,coords,output', TEST_CHECK_COORDS)
+def test_has_valid_coords(cube, coords, output):
+    """Test check for valid coords."""
+    out = mlr._has_valid_coords(cube, coords)
+    assert out == output

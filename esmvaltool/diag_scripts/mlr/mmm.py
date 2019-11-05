@@ -104,7 +104,7 @@ def get_error_cube(cfg, datasets):
 
         y_true = ref_cube.data.ravel()[~mask]
         y_pred = mm_cube.data.ravel()[~mask]
-        weights = mlr.get_area_weights(ref_cube).ravel()[~mask]
+        weights = mlr.get_all_weights(ref_cube).ravel()[~mask]
 
         # Calculate mean squared error
         error = mean_squared_error(y_true, y_pred, sample_weight=weights)
@@ -120,6 +120,7 @@ def get_error_cube(cfg, datasets):
     error_cube.data = error_array.reshape(error_cube.shape)
 
     # Cube metadata
+    error_cube.attributes['squared'] = 1
     error_cube.attributes['var_type'] = 'prediction_output_error'
     error_cube.var_name += '_squared_mmm_error_estim'
     error_cube.long_name += ' (squared MMM error estimation using CV)'
@@ -149,14 +150,14 @@ def get_grouped_data(cfg, input_data=None):
     logger.debug(pformat(paths))
 
     # Extract necessary data
-    extracted_data = select_metadata(input_data, var_type='label')
-    extracted_data.extend(
-        select_metadata(input_data, var_type='prediction_reference'))
-    logger.debug(
-        "Extracted files with var_types 'label' and 'prediction_reference'")
-    paths = [d['filename'] for d in extracted_data]
-    logger.debug("Found files")
-    logger.debug(pformat(paths))
+    label_data = select_metadata(input_data, var_type='label')
+    prediction_reference_data = select_metadata(
+        input_data, var_type='prediction_reference')
+    extracted_data = label_data + prediction_reference_data
+    logger.debug("Found 'label' data")
+    logger.debug(pformat([d['filename'] for d in label_data]))
+    logger.debug("Found 'prediction_reference' data")
+    logger.debug(pformat([d['filename'] for d in prediction_reference_data]))
 
     # Return grouped data
     return group_metadata(extracted_data, 'tag')
