@@ -39,23 +39,26 @@ preprocessors:
 
   regular_var: &regular_var
     custom_order: true
-    regrid:
+    regrid: &regrid
       scheme: nearest
       target_grid: 2x2
-    extract_region:
+    extract_region: &extract_region
       start_latitude: -60.0
       end_latitude: 90.0
       start_longitude: 0.0
       end_longitude: 360.0
-    mask_landsea:
+    mask_landsea: &mask_landsea
       mask_out: sea
       always_use_ne_mask: true
 
   flux_var:
+    custom_order: true
     weighting_landsea_fraction:
       area_type: land
       strict: false
-    <<: *regular_var
+    regrid: *regrid
+    extract_region: *extract_region
+    mask_landsea: *mask_landsea
 
 
 diagnostics:
@@ -350,7 +353,7 @@ diagnostics:
         ancestors: ['diag_mlr_input_*/monthly_*']
         group_datasets_by_attributes: ['dataset']
         mlr_model_type: lasso_cv
-        mlr_model_name: Lasso
+        mlr_model_name: Linear
         n_jobs: 24
         only_predict: true
         parameters_final_regressor:
@@ -376,6 +379,7 @@ diagnostics:
     scripts:
       mmm:
         <<: *mmm
+        ancestors: ['diag_mlr_input_gpp/monthly_clim']
         pseudo_reality: ['dataset']
       postprocess:
         <<: *postprocess
@@ -406,10 +410,8 @@ diagnostics:
           feature: CMIP5
           prediction_output_GBRT: GBRT
           prediction_input: MTE
-
         ignore_var_types: [
           'prediction_input_error',
-          'prediction_output_error',
           'prediction_output_misc',
         ]
 
