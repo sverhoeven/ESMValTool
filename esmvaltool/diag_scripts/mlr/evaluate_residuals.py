@@ -107,6 +107,14 @@ def plot_boxplot(cfg, input_data):
     logger.info("Wrote %s", plot_path)
     plt.close()
 
+    # Write information
+    logger.info("Means\n%s", boxplot_data.mean(axis=0))
+    logger.info("Minimums\n%s", boxplot_data.min(axis=0))
+    logger.info("25%% quartiles\n%s", boxplot_data.quantile(q=0.25, axis=0))
+    logger.info("Medians\n%s", boxplot_data.median(axis=0))
+    logger.info("75%% quartile\n%s", boxplot_data.quantile(q=0.75, axis=0))
+    logger.info("Maximums\n%s", boxplot_data.max(axis=0))
+
 
 def plot_residuals(cfg, input_data):
     """Plot relative errors for every MLR model."""

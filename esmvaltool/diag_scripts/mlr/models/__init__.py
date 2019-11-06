@@ -1369,7 +1369,7 @@ class MLRModel():
                 f"'{var_type}'")
         x_data = pd.DataFrame(columns=self.features, dtype=self._cfg['dtype'])
         x_cube = None
-        if self._cfg['weighted_samples']:
+        if self._cfg['weighted_samples'] and var_type == 'feature':
             sample_weights = pd.DataFrame(columns=['sample_weight'],
                                           dtype=self._cfg['dtype'])
         else:
@@ -1402,12 +1402,15 @@ class MLRModel():
             logger.info(
                 "Successfully calculated area/time-based sample weights for "
                 "training data")
-            if sample_weights.max() / sample_weights.min() > 100.0:
+            if (sample_weights.max().values[0] /
+                    sample_weights.min().values[0]) > 100.0:
                 logger.warning(
                     "Sample weights differ by more than a factor of 100, got "
                     "a minimum value of %e and a maximum value of %e. This "
                     "might be caused by differing coordinates in the training "
-                    "cubes", sample_weights.min(), sample_weights.max())
+                    "cubes",
+                    sample_weights.min().values[0],
+                    sample_weights.max().values[0])
 
         return (x_data, x_cube, sample_weights)
 

@@ -254,6 +254,10 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
         }
         mlr_model.predict(**predict_args)
 
+        # Print information
+        mlr_model.print_correlation_matrices()
+        mlr_model.print_regression_metrics()
+
         # Skip further output if desired
         if cfg.get('only_predict'):
             continue
@@ -261,10 +265,6 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
         # CSV export
         mlr_model.export_training_data()
         mlr_model.export_prediction_data()
-
-        # Print information
-        mlr_model.print_correlation_matrices()
-        mlr_model.print_regression_metrics()
 
         # Plots
         mlr_model.plot_residuals()
