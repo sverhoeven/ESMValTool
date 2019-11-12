@@ -20,19 +20,19 @@ DATASET_ANCHOR: &datasets
   - {dataset: bcc-csm1-1}
   - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
-  - {dataset: CanESM2}
-  - {dataset: CESM1-BGC}
-  - {dataset: GFDL-ESM2G}
-  - {dataset: GFDL-ESM2M}
-  - {dataset: HadGEM2-CC}
-  - {dataset: HadGEM2-ES}
-  - {dataset: inmcm4}
-  - {dataset: IPSL-CM5A-LR}
-  - {dataset: IPSL-CM5A-MR}
-  - {dataset: IPSL-CM5B-LR}
-  - {dataset: MIROC-ESM}
-  - {dataset: MIROC-ESM-CHEM}
-  - {dataset: NorESM1-ME}
+  # - {dataset: CanESM2}
+  # - {dataset: CESM1-BGC}
+  # - {dataset: GFDL-ESM2G}
+  # - {dataset: GFDL-ESM2M}
+  # - {dataset: HadGEM2-CC}
+  # - {dataset: HadGEM2-ES}
+  # - {dataset: inmcm4}
+  # - {dataset: IPSL-CM5A-LR}
+  # - {dataset: IPSL-CM5A-MR}
+  # - {dataset: IPSL-CM5B-LR}
+  # - {dataset: MIROC-ESM}
+  # - {dataset: MIROC-ESM-CHEM}
+  # - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -388,10 +388,10 @@ diagnostics:
           'diag_mlr_input_gpp/monthly_clim',
         ]
 
-  diag_plots:
-    description: Create plots.
+  diag_plot_abs_bias:
+    description: Create absoulte and bias plots.
     scripts:
-      plot:
+      plot: &plot
         script: mlr/plot.py
         ancestors: [
           'diag_gbrt_gpp/gbrt',
@@ -412,8 +412,38 @@ diagnostics:
           prediction_input: MTE
         ignore_var_types: [
           'prediction_input_error',
+          'prediction_output_error',
           'prediction_output_misc',
         ]
+
+  diag_plot_error:
+    description: Create error plots.
+    scripts:
+      mask:
+        script: mlr/mask.py
+        ancestors: [
+          'diag_gbrt_gpp/gbrt',
+          'diag_mmm_gpp/mmm',
+        ]
+        reference_dataset:
+          var_type: prediction_output
+          mlr_model_name: GBRT
+        masking_operations:
+          masked_less:
+            value: 500
+      plot:
+        <<: *plot
+        ancestors: ['diag_plot_error/mask']
+        aliases:
+          prediction_output_GBRT: GBRT
+          prediction_output_MMM: CMIP5
+        ignore_var_types: [
+          'prediction_input_error',
+          'prediction_output_misc',
+        ]
+      postprocess:
+        <<: *postprocess
+        ancestors: ['diag_plot_error/mask']
 
   diag_evaluate_residuals:
     description: Evaluate residuals of different statistical models.
