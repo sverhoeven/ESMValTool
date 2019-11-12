@@ -180,7 +180,7 @@ def global_contourf(cube,
     map_plot = iris.plot.contourf(cube, **kwargs)
 
     # Appearance
-    axes.gridlines(color='lightgrey')
+    axes.gridlines(color='lightgrey', alpha=0.5)
     axes.coastlines()
     axes.set_global()
     colorbar = plt.colorbar(orientation='horizontal', aspect=30)
