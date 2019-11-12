@@ -170,7 +170,7 @@ def plot_abs(cfg, cube_dict):
         # Plot
         plot_kwargs = {
             'cbar_label': f"{attrs['tag']} / {cube.units}",
-            'cmap': 'YlOrBr',
+            'cmap': 'YlGn',
         }
         plot_kwargs.update(get_plot_kwargs(cfg, 'abs_plot'))
         plot.global_contourf(cube, **plot_kwargs)
