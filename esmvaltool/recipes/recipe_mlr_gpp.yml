@@ -20,19 +20,19 @@ DATASET_ANCHOR: &datasets
   - {dataset: bcc-csm1-1}
   - {dataset: bcc-csm1-1-m}
   - {dataset: BNU-ESM}
-  # - {dataset: CanESM2}
-  # - {dataset: CESM1-BGC}
-  # - {dataset: GFDL-ESM2G}
-  # - {dataset: GFDL-ESM2M}
-  # - {dataset: HadGEM2-CC}
-  # - {dataset: HadGEM2-ES}
-  # - {dataset: inmcm4}
-  # - {dataset: IPSL-CM5A-LR}
-  # - {dataset: IPSL-CM5A-MR}
-  # - {dataset: IPSL-CM5B-LR}
-  # - {dataset: MIROC-ESM}
-  # - {dataset: MIROC-ESM-CHEM}
-  # - {dataset: NorESM1-ME}
+  - {dataset: CanESM2}
+  - {dataset: CESM1-BGC}
+  - {dataset: GFDL-ESM2G}
+  - {dataset: GFDL-ESM2M}
+  - {dataset: HadGEM2-CC}
+  - {dataset: HadGEM2-ES}
+  - {dataset: inmcm4}
+  - {dataset: IPSL-CM5A-LR}
+  - {dataset: IPSL-CM5A-MR}
+  - {dataset: IPSL-CM5B-LR}
+  - {dataset: MIROC-ESM}
+  - {dataset: MIROC-ESM-CHEM}
+  - {dataset: NorESM1-ME}
 
 
 preprocessors:
@@ -266,7 +266,7 @@ diagnostics:
       mmm: &mmm
         script: mlr/main.py
         ancestors: ['diag_postprocess_historical_gpp/monthly_clim']
-        mlr_model_name: MMM
+        mlr_model_name: MMM_hist
         mlr_model_type: mmm
         prediction_name: OBS
       postprocess:
@@ -323,6 +323,7 @@ diagnostics:
         only_predict: true
         parameters_final_regressor: *best_final_parameters
         pseudo_reality: ['dataset']
+        save_mlr_model_error: false
         save_propagated_errors: false
       postprocess:
         <<: *postprocess
@@ -337,7 +338,7 @@ diagnostics:
       gbrt:
         <<: *gbrt_pr
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
-        mlr_model_name: GBRT (one feature)
+        mlr_model_name: 'GBRT 1D'
       postprocess:
         <<: *postprocess
         ancestors: [
@@ -345,21 +346,60 @@ diagnostics:
           'diag_mlr_input_gpp/monthly_clim',
         ]
 
-  diag_lasso_gpp_pseudo_reality:
-    description: Validate Lasso model using pseudo-reality approach.
+  diag_lasso:
+    description: Use Lasso model to predict GPP.
     scripts:
-      lasso:
+      lasso: &lasso
         script: mlr/main.py
         ancestors: ['diag_mlr_input_*/monthly_*']
         group_datasets_by_attributes: ['dataset']
+        imputation_strategy: constant
         mlr_model_type: lasso_cv
-        mlr_model_name: Linear
+        mlr_model_name: Lasso
         n_jobs: 24
         only_predict: true
         parameters_final_regressor:
           cv: 5
           n_jobs: 24
+        plot_units:
+          'g m-2 yr-1': 'gC m$^{-2}$ yr$^{-1}$'
+      postprocess:
+        <<: *postprocess
+        ancestors: [
+          'diag_lasso/lasso',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
+
+  diag_lasso_gpp_pseudo_reality:
+    description: Validate Lasso model using pseudo-reality approach.
+    scripts:
+      lasso: &lasso_pr
+        <<: *lasso
+        grid_search_cv_param_grid: false
+        only_predict: true
         pseudo_reality: ['dataset']
+        save_mlr_model_error: false
+        save_propagated_errors: false
+      postprocess:
+        <<: *postprocess
+        ancestors: [
+          'diag_lasso_gpp_pseudo_reality/lasso',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
+
+  diag_lasso_single_pred_gpp_pseudo_reality:
+    description: Validate Lasso model (with single predictor) using pseudo-reality approach.
+    scripts:
+      lasso:
+        <<: *lasso_pr
+        ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        mlr_model_name: 'Lasso 1D'
+      postprocess:
+        <<: *postprocess
+        ancestors: [
+          'diag_lasso_single_pred_gpp_pseudo_reality/lasso',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
 
   diag_mmm_gpp:
     description: Use simple multi-model mean to predict GPP.
@@ -367,6 +407,7 @@ diagnostics:
       mmm:
         <<: *mmm
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        mlr_model_name: MMM
       postprocess:
         <<: *postprocess
         ancestors: [
@@ -380,6 +421,7 @@ diagnostics:
       mmm:
         <<: *mmm
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        mlr_model_name: MMM
         pseudo_reality: ['dataset']
       postprocess:
         <<: *postprocess
@@ -395,7 +437,10 @@ diagnostics:
         script: mlr/plot.py
         ancestors: [
           'diag_gbrt_gpp/gbrt',
-          'diag_mlr_input_gpp/monthly_clim',
+          'diag_lasso/lasso',
+          'diag_mmm_gpp/mmm',
+          'diag_postprocess_historical_gpp/mmm',
+          'diag_postprocess_mte/monthly_clim',
         ]
         abs_plot:
           plot_kwargs:
@@ -406,15 +451,15 @@ diagnostics:
             cbar_label: 'ΔGPP / gC m$^{-2}$ yr$^{-1}$'
             cbar_range: [-2500, 2500, 100]
         aliases:
-          label: CMIP5
-          feature: CMIP5
+          prediction_output: MTE
           prediction_output_GBRT: GBRT
-          prediction_input: MTE
-        ignore_var_types: [
-          'prediction_input_error',
-          'prediction_output_error',
-          'prediction_output_misc',
-        ]
+          prediction_output_MMM: CMIP5
+          prediction_output_MMM_hist: CMIP5
+        ignore:
+          - {var_type: prediction_input}
+          - {var_type: prediction_input_error}
+          - {var_type: prediction_output_error}
+          - {var_type: prediction_output_misc}
 
   diag_plot_error:
     description: Create error plots.
@@ -455,6 +500,7 @@ diagnostics:
             'diag_gbrt_gpp_pseudo_reality/gbrt',
             'diag_gbrt_single_pred_gpp_pseudo_reality/gbrt',
             'diag_lasso_gpp_pseudo_reality/lasso',
+            'diag_lasso_single_pred_gpp_pseudo_reality/lasso',
             'diag_mmm_gpp_pseudo_reality/mmm',
           ]
         box_plot:

@@ -28,8 +28,8 @@ bias_plot : dict, optional
     Specify additional keyword arguments for the absolute plotting function by
     ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
     as functions of :mod:`matplotlib.pyplot`).
-ignore_var_types : list of str, optional
-    Ignore specific ``var_type``s.
+ignore : list of dict, optional
+    Ignore specific datasets by specifying multiple :obj:`dict`s of metadata.
 pattern : str, optional
     Pattern matched against ancestor files.
 savefig_kwargs : dict, optional
@@ -51,7 +51,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-import esmvaltool.diag_scripts.shared.iris_helpers as ih
 from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (get_plot_filename, group_metadata,
                                             plot, run_diagnostic,
@@ -80,12 +79,11 @@ def _get_cube(var_type, model_name, datasets):
         mlr.square_root_metadata(cube)
         cube.data = np.ma.sqrt(cube.data)
     else:
-        logger.debug("Calculating cube for '%s' by averaging", key)
-        try:
-            cube = ih.get_mean_cube(datasets)
-        except iris.exceptions.MergeError:
-            logger.error("Merging of '%s' data failed", key)
-            raise
+        if len(datasets) != 1:
+            raise ValueError(f"Expected exactly one dataset for '{key}' got "
+                             f"{len(datasets):d}:\n"
+                             f"{pformat([d['filename'] for d in datasets])}")
+        cube = iris.load_cube(datasets[0]['filename'])
     dataset_names = list({d['dataset'] for d in datasets})
     projects = list({d['project'] for d in datasets})
     start_years = list({d['start_year'] for d in datasets})
@@ -110,13 +108,10 @@ def _get_key(var_type, model_name):
     return f'{var_type}_{model_name}'
 
 
-def get_cube_dict(cfg, input_data):
+def get_cube_dict(input_data):
     """Get dictionary of mean cubes (values) with ``var_type`` (keys)."""
     cube_dict = {}
     for (var_type, datasets) in group_metadata(input_data, 'var_type').items():
-        if var_type in cfg.get('ignore_var_types', []):
-            logger.debug("Ignored var_type '%s'", var_type)
-            continue
         grouped_datasets = group_metadata(datasets, 'mlr_model_name')
         for (model_name, model_datasets) in grouped_datasets.items():
             key = _get_key(var_type, model_name)
@@ -134,7 +129,18 @@ def get_input_datasets(cfg):
         logger.warning(
             "Got multiple tags %s, processing only first one ('%s')", tags,
             tags[0])
-    return select_metadata(input_data, tag=tags[0])
+    input_data = select_metadata(input_data, tag=tags[0])
+    valid_data = []
+    ignored_datasets = []
+    logger.debug("Ignoring datasets with\n%s", pformat(cfg.get('ignore', [])))
+    for ignore_metadata in cfg.get('ignore', []):
+        ignored_datasets.extend(select_metadata(input_data, **ignore_metadata))
+    for dataset in input_data:
+        if dataset not in ignored_datasets:
+            valid_data.append(dataset)
+    logger.info("Considering files for plotting:\n%s",
+                pformat([d['filename'] for d in valid_data]))
+    return valid_data
 
 
 def get_plot_kwargs(cfg, option):
@@ -239,7 +245,7 @@ def main(cfg):
     """Run the diagnostic."""
     sns.set(**cfg.get('seaborn_settings', {}))
     input_data = get_input_datasets(cfg)
-    cube_dict = get_cube_dict(cfg, input_data)
+    cube_dict = get_cube_dict(input_data)
 
     # Plots
     plot_abs(cfg, cube_dict)

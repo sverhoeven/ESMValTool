@@ -64,7 +64,7 @@ def get_ref_mask(cfg, input_data):
     ref_cube = iris.load_cube(ref_datasets[0]['filename'])
     for (masking_op, kwargs) in cfg['masking_operations'].items():
         if not hasattr(np.ma, masking_op):
-            raise ValueError(
+            raise AttributeError(
                 f"Invalid masking operation, '{masking_op}' is not a function "
                 f"of numpy.ma")
         ref_cube.data = getattr(np.ma, masking_op)(ref_cube.data, **kwargs)
