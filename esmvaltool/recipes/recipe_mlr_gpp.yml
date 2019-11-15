@@ -500,25 +500,6 @@ diagnostics:
           - {var_type: prediction_output_error}
           - {var_type: prediction_output_misc}
 
-  diag_plot_bias_correction:
-    description: Create plots showing the bias correction.
-    scripts:
-      plot:
-        <<: *plot
-        ancestors: [
-          'diag_gbrt_gpp/gbrt',
-          'diag_gbrt_1d_gpp/gbrt',
-          'diag_mmm_gpp/mmm',
-          'diag_lasso_gpp/lasso',
-          'diag_lasso_1d_gpp/lasso',
-          'diag_postprocess_historical_gpp/mmm',
-          'diag_postprocess_mte/monthly_clim',
-        ]
-        bias_plot:
-          plot_kwargs:
-            cbar_label: 'ΔGPP / gC m$^{-2}$ yr$^{-1}$'
-            cbar_range: [-1200, 1200, 100]
-
   diag_plot_mlr_models:
     description: Create plots for the different MLR models.
     scripts:
@@ -533,7 +514,7 @@ diagnostics:
         bias_plot:
           plot_kwargs:
             cbar_label: 'ΔGPP / gC m$^{-2}$ yr$^{-1}$'
-            cbar_range: [-500, 500, 100]
+            cbar_range: [-800, 800, 100]
 
   diag_plot_errors:
     description: Create error plots.

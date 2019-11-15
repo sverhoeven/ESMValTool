@@ -183,8 +183,13 @@ def plot_abs(cfg, cube_dict):
 
         # Plot appearance
         alias = _get_alias(cfg, key)
-        plt.title(f"{alias} ({attrs['start_year']}-{attrs['end_year']})")
+        title = f"{alias} ({attrs['start_year']}-{attrs['end_year']})"
+        plt.title(title)
         process_pyplot_kwargs(cfg, 'abs_plot')
+
+        # Write minimum and maximum
+        logger.debug("Minimum of '%s': %.2f", title, cube.data.min())
+        logger.debug("Maximum of '%s': %.2f", title, cube.data.max())
 
         # Save plot
         plot_path = get_plot_filename(f'abs_{key}', cfg)
@@ -229,6 +234,10 @@ def plot_biases(cfg, cube_dict):
                      f"{attrs_2['start_year']}-{attrs_2['end_year']})")
         plt.title(title)
         process_pyplot_kwargs(cfg, 'bias_plot')
+
+        # Write minimum and maximum
+        logger.debug("Minimum of '%s': %.2f", title, diff_cube.data.min())
+        logger.debug("Maximum of '%s': %.2f", title, diff_cube.data.max())
 
         # Save plot
         plot_path = get_plot_filename(f'bias_{key_1}-{key_2}', cfg)
