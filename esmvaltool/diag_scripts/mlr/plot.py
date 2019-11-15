@@ -250,7 +250,10 @@ def main(cfg):
     # Plots
     plot_abs(cfg, cube_dict)
     plot_biases(cfg, cube_dict)
-    print(ALL_CUBES.corr())
+
+    # Print correlations between figures
+    logger.info("Correlations")
+    logger.info(ALL_CUBES.corr())
 
 
 # Run main function when this script is called

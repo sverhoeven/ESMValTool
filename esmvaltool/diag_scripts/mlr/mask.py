@@ -17,6 +17,8 @@ CRESCENDO
 
 Configuration options in recipe
 -------------------------------
+area_weighted : bool, optional (default: True)
+    Calculate weighted averages/sums for area (using grid cell boundaries).
 reference_dataset : dict
     Metadata describing the reference dataset. Must refer to exactly one
     dataset.
@@ -25,8 +27,16 @@ masking_operations : list of dict
     the mask. Keys have to be :mod:`numpy.ma` conversion operations (see
     https://docs.scipy.org/doc/numpy/reference/routines.ma.html) and values
     all the keyword arguments of them.
+mean : list of str, optional
+    Preprocess reference dataset by calculate the mean over the specified
+    coordinates.
 pattern : str, optional
     Pattern matched against ancestor files.
+sum : list of str, optional
+    Preprocess reference dataset by calculating the sum of over the specified
+    coordinates.
+time_weighted : bool, optional (default: True)
+    Calculate weighted averages/sums for time (using grid cell boundaries).
 
 """
 
@@ -37,6 +47,8 @@ import iris
 import numpy as np
 
 from esmvaltool.diag_scripts import mlr
+# TODO
+# from esmvaltool.diag_scripts.mlr.preprocess import calculate_sum_and_mean
 from esmvaltool.diag_scripts.shared import (get_diagnostic_filename, io,
                                             run_diagnostic, select_metadata)
 

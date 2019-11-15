@@ -332,21 +332,35 @@ diagnostics:
           'diag_mlr_input_gpp/monthly_clim',
         ]
 
-  diag_gbrt_single_pred_gpp_pseudo_reality:
+  diag_gbrt_1d_gpp:
+    description: Use GBRT model (with single predictor) to predict GPP.
+    scripts:
+      gbrt:
+        <<: *gbrt
+        ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        mlr_model_name: 'GBRT-1D'
+      postprocess:
+        <<: *postprocess
+        ancestors: [
+          'diag_gbrt_1d_gpp/gbrt',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
+
+  diag_gbrt_1d_gpp_pseudo_reality:
     description: Validate GBRT model (with single predictor) using pseudo-reality approach.
     scripts:
       gbrt:
         <<: *gbrt_pr
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
-        mlr_model_name: 'GBRT 1D'
+        mlr_model_name: 'GBRT-1D'
       postprocess:
         <<: *postprocess
         ancestors: [
-          'diag_gbrt_single_pred_gpp_pseudo_reality/gbrt',
+          'diag_gbrt_1d_gpp_pseudo_reality/gbrt',
           'diag_mlr_input_gpp/monthly_clim',
         ]
 
-  diag_lasso:
+  diag_lasso_gpp:
     description: Use Lasso model to predict GPP.
     scripts:
       lasso: &lasso
@@ -363,10 +377,12 @@ diagnostics:
           n_jobs: 24
         plot_units:
           'g m-2 yr-1': 'gC m$^{-2}$ yr$^{-1}$'
+        save_mlr_model_error: true
+        save_propagated_errors: true
       postprocess:
         <<: *postprocess
         ancestors: [
-          'diag_lasso/lasso',
+          'diag_lasso_gpp/lasso',
           'diag_mlr_input_gpp/monthly_clim',
         ]
 
@@ -387,17 +403,31 @@ diagnostics:
           'diag_mlr_input_gpp/monthly_clim',
         ]
 
-  diag_lasso_single_pred_gpp_pseudo_reality:
+  diag_lasso_1d_gpp:
+    description: Use Lasso model (with single predictor) to predict GPP.
+    scripts:
+      lasso:
+        <<: *lasso
+        ancestors: ['diag_mlr_input_gpp/monthly_clim']
+        mlr_model_name: 'Lasso-1D'
+      postprocess:
+        <<: *postprocess
+        ancestors: [
+          'diag_lasso_1d_gpp/lasso',
+          'diag_mlr_input_gpp/monthly_clim',
+        ]
+
+  diag_lasso_1d_gpp_pseudo_reality:
     description: Validate Lasso model (with single predictor) using pseudo-reality approach.
     scripts:
       lasso:
         <<: *lasso_pr
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
-        mlr_model_name: 'Lasso 1D'
+        mlr_model_name: 'Lasso-1D'
       postprocess:
         <<: *postprocess
         ancestors: [
-          'diag_lasso_single_pred_gpp_pseudo_reality/lasso',
+          'diag_lasso_1d_gpp_pseudo_reality/lasso',
           'diag_mlr_input_gpp/monthly_clim',
         ]
 
@@ -430,14 +460,13 @@ diagnostics:
           'diag_mlr_input_gpp/monthly_clim',
         ]
 
-  diag_plot_abs_bias:
-    description: Create absoulte and bias plots.
+  diag_plot_cmip5_gbrt:
+    description: Create CMIP5 vs. GBRT plots.
     scripts:
       plot: &plot
         script: mlr/plot.py
         ancestors: [
           'diag_gbrt_gpp/gbrt',
-          'diag_lasso/lasso',
           'diag_mmm_gpp/mmm',
           'diag_postprocess_historical_gpp/mmm',
           'diag_postprocess_mte/monthly_clim',
@@ -453,42 +482,116 @@ diagnostics:
         aliases:
           prediction_output: MTE
           prediction_output_GBRT: GBRT
+          prediction_output_GBRT-1D: GBRT-1D
+          prediction_output_Lasso: Lasso
+          prediction_output_Lasso-1D: Lasso-1D
           prediction_output_MMM: CMIP5
           prediction_output_MMM_hist: CMIP5
+          prediction_output_error: MTE
+          prediction_output_error_GBRT: GBRT
+          prediction_output_error_GBRT-1D: GBRT-1D
+          prediction_output_error_Lasso: Lasso
+          prediction_output_error_Lasso-1D: Lasso-1D
+          prediction_output_error_MMM: CMIP5
+          prediction_output_error_MMM_hist: CMIP5
         ignore:
           - {var_type: prediction_input}
           - {var_type: prediction_input_error}
           - {var_type: prediction_output_error}
           - {var_type: prediction_output_misc}
 
-  diag_plot_error:
-    description: Create error plots.
+  diag_plot_bias_correction:
+    description: Create plots showing the bias correction.
     scripts:
-      mask:
-        script: mlr/mask.py
-        ancestors: [
-          'diag_gbrt_gpp/gbrt',
-          'diag_mmm_gpp/mmm',
-        ]
-        reference_dataset:
-          var_type: prediction_output
-          mlr_model_name: GBRT
-        masking_operations:
-          masked_less:
-            value: 500
       plot:
         <<: *plot
-        ancestors: ['diag_plot_error/mask']
-        aliases:
-          prediction_output_GBRT: GBRT
-          prediction_output_MMM: CMIP5
-        ignore_var_types: [
-          'prediction_input_error',
-          'prediction_output_misc',
+        ancestors: [
+          'diag_gbrt_gpp/gbrt',
+          'diag_gbrt_1d_gpp/gbrt',
+          'diag_mmm_gpp/mmm',
+          'diag_lasso_gpp/lasso',
+          'diag_lasso_1d_gpp/lasso',
+          'diag_postprocess_historical_gpp/mmm',
+          'diag_postprocess_mte/monthly_clim',
         ]
-      postprocess:
-        <<: *postprocess
-        ancestors: ['diag_plot_error/mask']
+        bias_plot:
+          plot_kwargs:
+            cbar_label: 'ΔGPP / gC m$^{-2}$ yr$^{-1}$'
+            cbar_range: [-1200, 1200, 100]
+
+  diag_plot_mlr_models:
+    description: Create plots for the different MLR models.
+    scripts:
+      plot:
+        <<: *plot
+        ancestors: [
+          'diag_gbrt_gpp/gbrt',
+          'diag_gbrt_1d_gpp/gbrt',
+          'diag_lasso_gpp/lasso',
+          'diag_lasso_1d_gpp/lasso',
+        ]
+        bias_plot:
+          plot_kwargs:
+            cbar_label: 'ΔGPP / gC m$^{-2}$ yr$^{-1}$'
+            cbar_range: [-500, 500, 100]
+
+  diag_plot_errors:
+    description: Create error plots.
+    scripts:
+      plot:
+        <<: *plot
+        ancestors: [
+          'diag_gbrt_gpp/gbrt',
+          'diag_gbrt_1d_gpp/gbrt',
+          'diag_lasso_gpp/lasso',
+          'diag_lasso_1d_gpp/lasso',
+          'diag_mmm_gpp/mmm',
+          'diag_postprocess_historical_gpp/mmm',
+          'diag_postprocess_mte/monthly_clim',
+        ]
+        abs_plot:
+          plot_kwargs:
+            cbar_label: 'GPP / gC m$^{-2}$ yr$^{-1}$'
+            cbar_range: [0, 1200, 100]
+        bias_plot:
+          plot_kwargs:
+            cbar_label: 'ΔGPP / gC m$^{-2}$ yr$^{-1}$'
+            cbar_range: [-500, 500, 100]
+        ignore:
+          - {var_type: prediction_input}
+          - {var_type: prediction_input_error}
+          - {var_type: prediction_output}
+          - {var_type: prediction_output_misc}
+
+  # TODO
+  # diag_plot_error:
+  #   description: Create error plots.
+  #   scripts:
+  #     mask:
+  #       script: mlr/mask.py
+  #       ancestors: [
+  #         'diag_gbrt_gpp/gbrt',
+  #         'diag_mmm_gpp/mmm',
+  #       ]
+  #       reference_dataset:
+  #         var_type: prediction_output
+  #         mlr_model_name: GBRT
+  #       masking_operations:
+  #         masked_less:
+  #           value: 500
+  #     plot:
+  #       <<: *plot
+  #       ancestors: ['diag_plot_error/mask']
+  #       aliases:
+  #         prediction_output_GBRT: GBRT
+  #         prediction_output_MMM: CMIP5
+  #       ignore_var_types: [
+  #         'prediction_input_error',
+  #         'prediction_output_misc',
+  #       ]
+  #     postprocess:
+  #       <<: *postprocess
+  #       ancestors: ['diag_plot_error/mask']
 
   diag_evaluate_residuals:
     description: Evaluate residuals of different statistical models.
@@ -498,9 +601,9 @@ diagnostics:
         ancestors:
           [
             'diag_gbrt_gpp_pseudo_reality/gbrt',
-            'diag_gbrt_single_pred_gpp_pseudo_reality/gbrt',
+            'diag_gbrt_1d_gpp_pseudo_reality/gbrt',
             'diag_lasso_gpp_pseudo_reality/lasso',
-            'diag_lasso_single_pred_gpp_pseudo_reality/lasso',
+            'diag_lasso_1d_gpp_pseudo_reality/lasso',
             'diag_mmm_gpp_pseudo_reality/mmm',
           ]
         box_plot:

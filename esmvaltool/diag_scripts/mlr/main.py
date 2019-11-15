@@ -42,6 +42,11 @@ only_predict : bool, optional (default: False)
     create any other output (CSV files, plots, etc.).
 pattern : str, optional
     Pattern matched against ancestor files.
+plot_pairplots : bool, optional (default: False)
+    Plot pairplots of input data (computationally expensive).
+plot_partial_dependences : bool, optional (default: False)
+    Plot partial dependence of every feature in MLR model (computationally
+    expensive).
 predict_kwargs : dict, optional
     Optional keyword arguments for the final regressor's ``predict()``
     function.
@@ -269,11 +274,13 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
         # Plots
         mlr_model.plot_residuals()
         mlr_model.plot_prediction_errors()
-        mlr_model.plot_pairplots()
+        if cfg.get('plot_pairplots'):
+            mlr_model.plot_pairplots()
         mlr_model.plot_scatterplots()
         if not cfg.get('accept_only_scalar_data'):
             mlr_model.plot_feature_importance()
-            # mlr_model.plot_partial_dependences()
+            if cfg.get('plot_partial_dependences'):
+                mlr_model.plot_partial_dependences()
         if 'gbr' in model_type:
             mlr_model.plot_gbr_feature_importance()
             mlr_model.plot_training_progress()
