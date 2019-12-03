@@ -62,7 +62,7 @@ pseudo_reality : list of str, optional
     data randomly but using specific datasets, e.g. the different climate
     models). Cannot be used together with the option ``group_metadata``.
 save_mlr_model_error : bool, optional (default: False)
-    Additionally save estimated (constant) squared MLR model error using RMSE.
+    Additionally save estimated (constant) squared MLR model error using RMSEP.
     This error represents the uncertainty of the prediction caused by the MLR
     model itself and not by errors in the prediction input data (errors in that
     will be automatically considered by including datasets with ``var_type``
@@ -106,6 +106,11 @@ WARNINGS_TO_IGNORE = [
     {
         'message': ".* contains unknown cell method 'trend'",
         'category': UnknownCellMethodWarning,
+        'module': 'iris',
+    },
+    {
+        'message': "Using DEFAULT_SPHERICAL_EARTH_RADIUS",
+        'category': UserWarning,
         'module': 'iris',
     },
 ]

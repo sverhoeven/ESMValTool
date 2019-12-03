@@ -606,7 +606,7 @@ class MLRModel():
 
             # Plot appearance
             axes.set_title(
-                f"Variable Importance ({self._cfg['mlr_model_name']})")
+                f"Global feature importance ({self._cfg['mlr_model_name']})")
             axes.set_xlabel('Relative Importance')
             axes.set_yticks(pos)
             axes.set_yticklabels(feature_importance.index)
@@ -921,7 +921,7 @@ class MLRModel():
         ----------
         save_mlr_model_error : bool (default: False)
             Additionally saves estimated (constant) squared MLR model error
-            using RMSE.  This error represents the uncertainty of the
+            using RMSEP.  This error represents the uncertainty of the
             prediction caused by the MLR model itself and not by errors in the
             prediction input data (errors in that will be automatically
             considered by including datasets with ``var_type`` set to

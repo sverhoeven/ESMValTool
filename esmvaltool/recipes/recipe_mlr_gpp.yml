@@ -55,7 +55,13 @@ preprocessors:
     custom_order: true
     weighting_landsea_fraction:
       area_type: land
-      strict: false
+      exclude: [
+        'bcc-csm1-1-m',
+        'BNU-ESM',
+        'inmcm4',
+        'LAI3g',
+        'MTE',
+      ]
     regrid: *regrid
     extract_region: *extract_region
     mask_landsea: *mask_landsea
@@ -589,4 +595,5 @@ diagnostics:
           ]
         box_plot:
           pyplot_kwargs:
-            ylabel: 'RMSE / gC m$^{-2}$ yr$^{-1}$'
+            ylabel: 'RMSEP / gC m$^{-2}$ yr$^{-1}$'
+            title: RMSEP for different statistical models
