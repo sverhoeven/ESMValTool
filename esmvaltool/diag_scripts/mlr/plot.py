@@ -52,7 +52,8 @@ import pandas as pd
 import seaborn as sns
 
 from esmvaltool.diag_scripts import mlr
-from esmvaltool.diag_scripts.shared import (get_plot_filename, group_metadata,
+from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
+                                            get_plot_filename, group_metadata,
                                             plot, run_diagnostic,
                                             select_metadata)
 
@@ -198,7 +199,7 @@ def plot_abs(cfg, cube_dict):
         plt.close()
 
         # Add to global DataFrame
-        ALL_CUBES[key] = np.ma.filled(cube.data.ravel(), np.nan)
+        ALL_CUBES[title] = np.ma.filled(cube.data.ravel(), np.nan)
 
 
 def plot_biases(cfg, cube_dict):
@@ -246,8 +247,7 @@ def plot_biases(cfg, cube_dict):
         plt.close()
 
         # Add to global DataFrame
-        ALL_CUBES[f'{key_1}-{key_2}'] = np.ma.filled(diff_cube.data.ravel(),
-                                                     np.nan)
+        ALL_CUBES[title] = np.ma.filled(diff_cube.data.ravel(), np.nan)
 
 
 def main(cfg):
@@ -260,9 +260,12 @@ def main(cfg):
     plot_abs(cfg, cube_dict)
     plot_biases(cfg, cube_dict)
 
-    # Print correlations between figures
-    logger.info("Correlations")
-    logger.info(ALL_CUBES.corr())
+    # Print and save correlations between figures
+    corr = ALL_CUBES.corr()
+    logger.info("Correlations:\n%s", corr)
+    corr_path = get_diagnostic_filename('corr', cfg).replace('.nc', '.csv')
+    corr.to_csv(corr_path)
+    logger.info("Wrote %s", corr_path)
 
 
 # Run main function when this script is called
