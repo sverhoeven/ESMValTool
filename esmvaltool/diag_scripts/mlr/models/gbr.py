@@ -58,7 +58,8 @@ class GBRModel(MLRModel):
 
         # Plot appearance
         y_tick_labels = self.features_after_preprocessing[sorted_idx]
-        axes.set_title(f"Variable Importance ({self._cfg['mlr_model_name']})")
+        axes.set_title(
+            f"Global feature importance ({self._cfg['mlr_model_name']})")
         axes.set_xlabel('Relative Importance')
         axes.set_yticks(pos)
         axes.set_yticklabels(y_tick_labels)
