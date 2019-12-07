@@ -26,6 +26,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.inspection import plot_partial_dependence
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 from sklearn.preprocessing import StandardScaler
+from yellowbrick.draw import manual_legend
 
 from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import group_metadata, io, select_metadata
@@ -756,28 +757,21 @@ class MLRModel():
         (_, axes) = plt.subplots()
 
         # Get available datasets
-        data_to_plot = {
-            'train': {
-                'marker': 'o',
-                'color': 'b',
-                's': 6,
-                'alpha': 0.5,
-            },
-        }
+        opts = {'marker': 'o', 's': 6, 'alpha': 0.5}
+        data_to_plot = [('train', {**opts, 'color': 'b', 'label': 'Train'})]
         if 'test' in self.data:
-            data_to_plot['test'] = dict(data_to_plot['train'])
-            data_to_plot['test']['color'] = 'g'
+            data_to_plot.append(('test', {
+                **opts, 'color': 'g',
+                'label': 'Test'
+            }))
 
         # Create plot
-        for (data_type, plot_kwargs) in data_to_plot.items():
+        for (data_type, plot_kwargs) in data_to_plot:
             logger.debug("Plotting prediction error of '%s' data", data_type)
             x_data = self.data[data_type].x
             y_true = self.get_y_array(data_type)
             y_pred = self._clf.predict(x_data)
-            axes.scatter(y_true,
-                         y_pred,
-                         label=f'{data_type} data',
-                         **plot_kwargs)
+            axes.scatter(y_true, y_pred, **plot_kwargs)
 
         # Plot appearance
         lims = [
@@ -791,7 +785,10 @@ class MLRModel():
         axes.set_title(f"Prediction errors ({self._cfg['mlr_model_name']})")
         axes.set_xlabel(f'True {self._get_plot_label()}')
         axes.set_ylabel(f'Predicted {self._get_plot_label()}')
-        axes.legend(loc='upper left')
+        manual_legend(axes, [d[1]['label'] for d in data_to_plot],
+                      [d[1]['color'] for d in data_to_plot],
+                      loc='upper left',
+                      frameon=True)
 
         # Save plot
         plot_path = os.path.join(
@@ -816,37 +813,27 @@ class MLRModel():
         logger.info("Plotting residuals")
         if filename is None:
             filename = 'residuals'
-        (_, axes) = plt.subplots()
+        visualizer = mlr.AdvancedResidualsPlot(self._clf)
 
         # Get available datasets
-        data_to_plot = {
-            'train': {
-                'marker': 'o',
-                'color': 'b',
-                's': 6,
-                'alpha': 0.5,
-            },
-        }
+        data_to_plot = ['train']
         if 'test' in self.data:
-            data_to_plot['test'] = dict(data_to_plot['train'])
-            data_to_plot['test']['color'] = 'g'
+            data_to_plot.append('test')
 
         # Create plot
-        for (data_type, plot_kwargs) in data_to_plot.items():
+        for data_type in data_to_plot:
             logger.debug("Plotting residuals of '%s' data", data_type)
             x_data = self.data[data_type].x
             y_true = self.get_y_array(data_type)
-            y_pred = self._clf.predict(x_data)
-            res = self._get_residuals(y_true, y_pred)
-            axes.scatter(y_pred, res, label=f'{data_type} data', **plot_kwargs)
+            is_train_data = data_type == 'train'
+            visualizer.score(x_data, y_true, train=is_train_data)
 
         # Plot appearance
-        axes.set_aspect('equal')
-        axes.axhline(0.0, linestyle='--', color='k', alpha=0.75)
-        axes.set_title(f"Residuals ({self._cfg['mlr_model_name']})")
-        axes.set_xlabel(f'Predicted {self._get_plot_label()}')
-        axes.set_ylabel(f'Residuals of {self._get_plot_label()}')
-        axes.legend(loc='best')
+        visualizer.finalize()
+        visualizer.set_title(f"Residuals ({self._cfg['mlr_model_name']})")
+        visualizer.ax.set_aspect('equal')
+        visualizer.ax.set_xlabel(f'Predicted {self._get_plot_label()}')
+        visualizer.ax.set_ylabel(f'Residuals of {self._get_plot_label()}')
 
         # Save plot
         plot_path = os.path.join(

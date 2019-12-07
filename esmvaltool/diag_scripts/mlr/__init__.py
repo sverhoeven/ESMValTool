@@ -15,6 +15,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from sklearn.utils import check_array
 from sklearn.utils.validation import check_is_fitted
+from yellowbrick.regressor import ResidualsPlot
 
 from esmvaltool.diag_scripts.shared import io
 
@@ -86,6 +87,24 @@ class AdvancedPipeline(Pipeline):
         return y_trans
 
 
+class AdvancedResidualsPlot(ResidualsPlot):
+    """Expand :class:`yellowbrick.regressor.ResidualsPlot`."""
+
+    def score(self, X, y=None, train=False, **kwargs):
+        """Change sign convention of residuals."""
+        score = self.estimator.score(X, y, **kwargs)
+        if train:
+            self.train_score_ = score
+        else:
+            self.test_score_ = score
+
+        y_pred = self.predict(X)
+        residuals = y - y_pred
+        self.draw(y_pred, residuals, train=train)
+
+        return score
+
+
 class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
     """Expand :class:`sklearn.compose.TransformedTargetRegressor`."""
 
@@ -147,7 +166,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
     def predict(self, x_data, always_return_1d=True, **predict_kwargs):
         """Expand :meth:`predict()` to accept kwargs."""
         predict_kwargs = dict(predict_kwargs)
-        check_is_fitted(self, "regressor_")
+        check_is_fitted(self)
 
         # Kwargs for returning variance or covariance
         return_var = predict_kwargs.pop('return_var', False)
