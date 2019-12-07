@@ -72,6 +72,7 @@ requirements:
     - fiona
     - xlrd
     - xlsxwriter
+    - yellowbrick
     # Command line tools used by diagnostic scripts
     - cdo
     - imagemagick
