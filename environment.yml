@@ -11,7 +11,7 @@ dependencies:
   - george
   # Non-Python dependencies
   - graphviz
-  - cdo
+  - cdo>=1.9.7
   - imagemagick
   - nco
   # Installation fails when used directly with pip (cython issues)
