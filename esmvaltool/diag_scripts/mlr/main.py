@@ -33,7 +33,7 @@ group_metadata : str, optional
     datasets), an individual MLR model is calculated. Only affects ``feature``
     and ``label`` datasets. Cannot be used together with the option
     ``pseudo_reality``.
-model_type : str, optional (default: 'gbr_sklearn')
+mlr_model_type : str
     MLR model type. The given model has to be defined in
     :mod:`esmvaltool.diag_scripts.mlr.models`.
 only_predict : bool, optional (default: False)
@@ -195,9 +195,9 @@ def _get_raw_input_data(cfg):
     return input_data
 
 
-def _update_mlr_model(model_type, mlr_model):
+def _update_mlr_model(mlr_model_type, mlr_model):
     """Update MLR model paramters during run time."""
-    if model_type == 'gpr_george':
+    if mlr_model_type == 'gpr_george':
         n_features = mlr_model.features_after_preprocessing.size
         exp_squared_kernel = george_kernels.ExpSquaredKernel(
             1.0,
@@ -211,7 +211,7 @@ def _update_mlr_model(model_type, mlr_model):
         )
         new_kernel = exp_squared_kernel * constant_kernel
         mlr_model.update_parameters(final__regressor__kernel=new_kernel)
-    elif model_type == 'gpr_sklearn':
+    elif mlr_model_type == 'gpr_sklearn':
         new_kernel = (sklearn_kernels.ConstantKernel(1.0, (1e-5, 1e5)) *
                       sklearn_kernels.RBF(1.0, (1e-5, 1e5)))
         mlr_model.update_parameters(final__regressor__kernel=new_kernel)
@@ -236,18 +236,18 @@ def get_grouped_data(cfg):
     return (None, {None: input_data})
 
 
-def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
+def run_mlr_model(cfg, mlr_model_type, group_attribute, grouped_datasets):
     """Run MLR model(s) of desired type on input data."""
     for (descr, datasets) in grouped_datasets.items():
         if descr is not None:
             attr = '' if group_attribute is None else f'{group_attribute} '
-            logger.info("Creating MLR model '%s' for %s'%s'", model_type, attr,
-                        descr)
+            logger.info("Creating MLR model '%s' for %s'%s'", mlr_model_type,
+                        attr, descr)
             cfg['sub_dir'] = descr
-        mlr_model = MLRModel.create(model_type, datasets, **cfg)
+        mlr_model = MLRModel.create(mlr_model_type, datasets, **cfg)
 
         # Update MLR model parameters dynamically
-        _update_mlr_model(model_type, mlr_model)
+        _update_mlr_model(mlr_model_type, mlr_model)
 
         # Fit and predict
         if cfg.get('grid_search_cv_param_grid'):
@@ -286,10 +286,10 @@ def run_mlr_model(cfg, model_type, group_attribute, grouped_datasets):
             mlr_model.plot_feature_importance()
             if cfg.get('plot_partial_dependences'):
                 mlr_model.plot_partial_dependences()
-        if 'gbr' in model_type:
+        if 'gbr' in mlr_model_type:
             mlr_model.plot_gbr_feature_importance()
             mlr_model.plot_training_progress()
-        if 'gpr' in model_type and not cfg.get('accept_only_scalar_data'):
+        if 'gpr' in mlr_model_type and not cfg.get('accept_only_scalar_data'):
             mlr_model.print_kernel_info()
 
 
@@ -306,19 +306,15 @@ def main(cfg):
     """Run the diagnostic."""
     check_cfg(cfg)
     if 'mlr_model_type' not in cfg:
-        default = 'gbr_sklearn'
-        logger.warning(
-            "'mlr_model_type' not given in recipe, defaulting to '%s'",
-            default)
-        model_type = default
-    else:
-        model_type = cfg['mlr_model_type']
-        logger.info("Found mlr_model_type '%s'", model_type)
+        raise ValueError(
+            "Necessary configuration option 'mlr_model_type' not given")
+    mlr_model_type = cfg['mlr_model_type']
+    logger.info("Found MLR model type '%s'", mlr_model_type)
     (group_attr, grouped_datasets) = get_grouped_data(cfg)
-    if model_type == 'mmm':
+    if mlr_model_type == 'mmm':
         run_mmm_model(cfg, group_attr, grouped_datasets)
     else:
-        run_mlr_model(cfg, model_type, group_attr, grouped_datasets)
+        run_mlr_model(cfg, mlr_model_type, group_attr, grouped_datasets)
 
 
 # Run main function when this script is called

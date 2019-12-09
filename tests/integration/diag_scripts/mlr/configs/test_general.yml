@@ -1,6 +1,9 @@
 # Configuration file for general tests.
 ---
-base_cfg: &base_cfg
+args:
+  - []
+
+kwargs: &kwargs
   input_data: {}
   input_files: []
   output_file_type: pdf
@@ -11,10 +14,5 @@ base_cfg: &base_cfg
     very: 3.0
     cool: 1
     params: [4, 1, 5]
-
-args:
-  - *base_cfg
-
-kwargs: &kwargs
   input_data: []
-  root_dir: /root/dir
+  sub_dir: /sub/dir

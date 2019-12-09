@@ -53,17 +53,20 @@ from esmvaltool.diag_scripts.shared import (get_plot_filename, group_metadata,
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def plot_boxplot(cfg, input_data):
+def get_residual_data(cfg):
+    """Get residual data."""
+    input_data = mlr_plot.get_input_datasets(cfg)
+    residual_data = select_metadata(input_data, var_type='prediction_residual')
+    if not residual_data:
+        raise ValueError("No 'prediction_residual' data found")
+    return residual_data
+
+
+def plot_boxplot(cfg, residual_data):
     """Plot boxplot."""
     logger.info("Creating box plot")
     mlr_models_rmse = []
-    input_data = select_metadata(input_data, var_type='prediction_residual')
-    if not input_data:
-        logger.warning(
-            "Creating box plot not possible, no 'prediction_residual' data "
-            "found")
-        return
-    grouped_datasets = group_metadata(input_data, 'mlr_model_name')
+    grouped_datasets = group_metadata(residual_data, 'mlr_model_name')
 
     # Collect data of for every MLR model
     for (model_name, datasets) in grouped_datasets.items():
@@ -97,7 +100,7 @@ def plot_boxplot(cfg, input_data):
 
     # Plot appearance
     plt.title('RMSE for different statistical models')
-    plt.ylabel(f"{input_data[0]['tag']} / {input_data[0]['units']}")
+    plt.ylabel(f"{residual_data[0]['tag']} / {residual_data[0]['units']}")
     plt.ylim(0.0, plt.ylim()[1])
     mlr_plot.process_pyplot_kwargs(cfg, 'box_plot')
 
@@ -116,17 +119,11 @@ def plot_boxplot(cfg, input_data):
     logger.info("Maximums\n%s", boxplot_data.max(axis=0))
 
 
-def plot_residuals(cfg, input_data):
+def plot_residuals(cfg, residual_data):
     """Plot relative errors for every MLR model."""
     logger.info("Creating residual plots")
-    input_data = select_metadata(input_data, var_type='prediction_residual')
-    if not input_data:
-        logger.warning(
-            "Creating residual plot not possible, no 'prediction_residual' "
-            "data found")
-        return
     plot_kwargs = mlr_plot.get_plot_kwargs(cfg, 'residual_plot')
-    grouped_datasets = group_metadata(input_data, 'mlr_model_name')
+    grouped_datasets = group_metadata(residual_data, 'mlr_model_name')
     for (model_name, datasets) in grouped_datasets.items():
         logger.debug("Plotting residual plots for MLR model '%s'", model_name)
         filename = model_name.lower().replace(' ', '_')
@@ -137,11 +134,11 @@ def plot_residuals(cfg, input_data):
         for (pred_name, pred_datasets) in pred_groups.items():
             if pred_name is None:
                 pred_name = 'unnamed_prediction'
-            if len(pred_datasets) > 1:
-                logger.warning(
-                    "Multiple 'prediction_residual' datasets for prediction "
-                    "'%s' of MLR model '%s' found, using only first one (%s)",
-                    pred_name, model_name, pred_datasets[0]['filename'])
+            if len(pred_datasets) != 1:
+                raise ValueError(
+                    f"Expected exactly one 'prediction_residual' dataset for "
+                    f"prediction '{pred_name}' of MLR model '{model_name}', "
+                    f"got {len(datasets):d}")
             cube = iris.load_cube(pred_datasets[0]['filename'])
 
             # Create plot
@@ -175,11 +172,11 @@ def plot_residuals(cfg, input_data):
 def main(cfg):
     """Run the diagnostic."""
     sns.set(**cfg.get('seaborn_settings', {}))
-    input_data = mlr_plot.get_input_datasets(cfg)
+    residual_data = get_residual_data(cfg)
 
     # Plots
-    plot_boxplot(cfg, input_data)
-    plot_residuals(cfg, input_data)
+    plot_boxplot(cfg, residual_data)
+    plot_residuals(cfg, residual_data)
 
 
 # Run main function when this script is called

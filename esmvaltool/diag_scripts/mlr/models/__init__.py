@@ -83,7 +83,7 @@ class MLRModel():
 
     _CLF_TYPE = None
     _MODELS = {}
-    _MODEL_TYPE = None
+    _MLR_MODEL_TYPE = None
 
     @staticmethod
     def _load_mlr_models():
@@ -104,38 +104,39 @@ class MLRModel():
                     pass
 
     @classmethod
-    def register_mlr_model(cls, model_type):
+    def register_mlr_model(cls, mlr_model_type):
         """Add MLR model (subclass of this class) (decorator)."""
-        logger.debug("Found available MLR model '%s'", model_type)
+        logger.debug("Found available MLR model '%s'", mlr_model_type)
 
         def decorator(subclass):
             """Decorate subclass."""
-            subclass._MODEL_TYPE = model_type
-            cls._MODELS[model_type] = subclass
+            subclass._MLR_MODEL_TYPE = mlr_model_type
+            cls._MODELS[mlr_model_type] = subclass
             return subclass
 
         return decorator
 
     @classmethod
-    def create(cls, model_type, *args, **kwargs):
+    def create(cls, mlr_model_type, *args, **kwargs):
         """Create desired MLR model subclass (factory method)."""
         cls._load_mlr_models()
         if not cls._MODELS:
-            logger.warning(
-                "No MLR models found, please add subclasses to 'esmvaltool."
-                "diag_scripts.mlr.models' decorated by 'MLRModel."
-                "register_mlr_model'")
-            return cls(*args, **kwargs)
-        default_model_type = list(cls._MODELS.keys())[0]
-        if model_type not in cls._MODELS:
-            logger.warning(
-                "MLR model type '%s' not found in 'esmvaltool.diag_scripts."
-                "mlr.models', using default model type '%s'", model_type,
-                default_model_type)
-            model_type = default_model_type
-        logger.info("Created MLR model '%s' with final regressor %s",
-                    model_type, cls._MODELS[model_type]._CLF_TYPE)
-        return cls._MODELS[model_type](*args, **kwargs)
+            raise NotImplementedError(
+                f"Cannot initialize new MLR model with type "
+                f"'{mlr_model_type}', no MLR models found. Please add "
+                f"subclasses of {cls} in new files under 'esmvaltool/"
+                f"diag_scripts/mlr/models/' decorated by 'esmvaltool."
+                f"diag_scripts.mlr.models.{cls.__name__}."
+                f"register_mlr_model()'")
+        if mlr_model_type not in cls._MODELS:
+            raise NotImplementedError(
+                f"MLR model type '{mlr_model_type}' not found in 'esmvaltool/"
+                f"diag_scripts/mlr/models/'")
+        subclass = cls._MODELS[mlr_model_type]
+        logger.info(
+            "Initialized MLR model with type '%s' and final regressor %s",
+            mlr_model_type, subclass._CLF_TYPE)
+        return subclass(*args, **kwargs)
 
     def __init__(self, input_datasets, **kwargs):
         """Initialize class members.
@@ -230,7 +231,18 @@ class MLRModel():
         write_plots : bool (default: True)
             If ``False``, do not write any plot.
 
+        Raises
+        ------
+        NotImplementedError
+            Class is initialized directly without the use of its factory
+            function ``create()``.
+        ValueError
+            Invalid data given.
+
         """
+        self._check_clf()
+
+        # Private attributes
         self._cfg = deepcopy(kwargs)
         self._clf = None
         self._data = {}
@@ -295,7 +307,9 @@ class MLRModel():
         """numpy.ndarray: Features of the input data after preprocessing."""
         x_train = self.get_x_array('train')
         y_train = self.get_y_array('train')
-        if not self._is_fitted():
+        try:
+            self._check_fit_status('')
+        except NotFittedError:
             fit_kwargs = self._cfg['fit_kwargs']
             fit_kwargs = self._update_fit_kwargs(fit_kwargs)
             self._clf.fit_transformers_only(x_train, y_train, **fit_kwargs)
@@ -346,6 +360,11 @@ class MLRModel():
         return self._classes['label'].units.values[0]
 
     @property
+    def mlr_model_type(self):
+        """str: MLR model type."""
+        return self._MLR_MODEL_TYPE
+
+    @property
     def numerical_features(self):
         """numpy.ndarray: Numerical features."""
         return self.features[~self._classes['features'].categorical]
@@ -390,8 +409,6 @@ class MLRModel():
         initialization instead.
 
         """
-        if not self._clf_is_valid(text='Fitting MLR model'):
-            return
         logger.info(
             "Fitting MLR model with final regressor %s on %i training "
             "point(s)", self._CLF_TYPE, len(self.data['train'].index))
@@ -516,9 +533,13 @@ class MLRModel():
             <https://scikit-learn.org/stable/modules/generated/
             sklearn.model_selection.GridSearchCV.html>.
 
+        Raises
+        ------
+        ValueError
+            Final regressor does not supply the attributes ``best_estimator_``
+            or ``best_params_``.
+
         """
-        if not self._clf_is_valid(text='GridSearchCV'):
-            return
         logger.info(
             "Performing exhaustive grid search cross-validation with final "
             "regressor %s and parameter grid %s on %i training points",
@@ -584,6 +605,11 @@ class MLRModel():
         filename : str, optional (default: 'feature_importance_{method}')
             Name of the plot file.
 
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
+
         """
         if not self._is_ready_for_plotting():
             return
@@ -630,19 +656,26 @@ class MLRModel():
         filename : str, optional (default: 'lime')
             Name of the plot file.
 
+        Raises
+        ------
+        IndexError
+            Invalid argument for ``index`` is given.
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
+        ValueError
+            Invalid argument for ``data_type`` is given.
+
         """
         if not self._is_ready_for_plotting():
             return
         logger.info("Plotting LIME")
         if data_type not in self.data:
-            logger.warning("Cannot plot LIME, got invalid data type '%s'",
-                           data_type)
-            return
+            raise ValueError(
+                f"Cannot plot LIME, got invalid data type '{data_type}'")
         if index >= len(self.data[data_type].index):
-            logger.warning(
-                "Cannot plot LIME, index %i is out of range for '%s' data",
-                index, data_type)
-            return
+            raise IndexError(
+                f"Cannot plot LIME, index {index:d} is out of range for "
+                f"'{data_type}' data")
         if filename is None:
             filename = 'lime'
         new_filename_plot = filename + '.' + self._cfg['output_file_type']
@@ -682,6 +715,11 @@ class MLRModel():
         filename : str, optional (default: 'pairplot_{data_type}')
             Name of the plot file.
 
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
+
         """
         if not self._is_ready_for_plotting():
             return
@@ -709,6 +747,11 @@ class MLRModel():
         ----------
         filename : str, optional (default: 'partial_dependece_{feature}')
             Name of the plot file.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
 
         """
         if not self._is_ready_for_plotting():
@@ -747,6 +790,11 @@ class MLRModel():
         ----------
         filename : str, optional (default: 'prediction_errors')
             Name of the plot file.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
 
         """
         if not self._is_ready_for_plotting():
@@ -807,6 +855,11 @@ class MLRModel():
         filename : str, optional (default: 'residuals')
             Name of the plot file.
 
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
+
         """
         if not self._is_ready_for_plotting():
             return
@@ -851,6 +904,11 @@ class MLRModel():
         ----------
         filename : str, optional (default: 'scatterplot_{feature}')
             Name of the plot file.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
 
         """
         if not self._is_ready_for_plotting():
@@ -927,6 +985,10 @@ class MLRModel():
 
         Raises
         ------
+        RuntimeError
+            ``return_var`` and ``return_cov`` are both set to ``True``.
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
         ValueError
             ``save_mlr_model_error`` is ``True`` and no test data is available,
             ``test_size`` is not set to ``False`` during class initialization.
@@ -935,17 +997,12 @@ class MLRModel():
             ``prediction_input_error`` data is available.
 
         """
-        if not self._is_fitted():
-            logger.warning(
-                "Prediction not possible, MLR model is not fitted yet")
-            return
+        self._check_fit_status('Prediction')
         logger.info("Started prediction")
         if 'return_var' in kwargs and 'return_cov' in kwargs:
-            logger.warning(
-                "Found 'return_var' and 'return_cov' in prediction keyword "
-                "arguments, but returning both is not possible. Returning "
-                "only variance")
-            kwargs.pop('return_cov')
+            raise RuntimeError(
+                "Cannot return variance (return_cov=True) and full "
+                "covariance matrix (return_cov=True) simultaneously")
         if kwargs:
             logger.info(
                 "Using additional keyword argument(s) %s for predict() "
@@ -990,11 +1047,7 @@ class MLRModel():
 
     def print_correlation_matrices(self):
         """Print correlation matrices for all datasets."""
-        if not self._is_fitted():
-            logger.warning(
-                "Printing correlation matrices not possible, MLR model is not "
-                "fitted yet")
-            return
+        self._check_fit_status('Printing correlation matrices')
         for data_type in ('all', 'train', 'test'):
             if data_type not in self.data:
                 continue
@@ -1003,11 +1056,7 @@ class MLRModel():
 
     def print_regression_metrics(self):
         """Print all available regression metrics for training data."""
-        if not self._is_fitted():
-            logger.warning(
-                "Printing regression metrics not possible, MLR model is not "
-                "fitted yet")
-            return
+        self._check_fit_status('Printing regression metrics')
         regression_metrics = [
             'explained_variance_score',
             'mean_absolute_error',
@@ -1050,17 +1099,20 @@ class MLRModel():
         **params : keyword arguments, optional
             Paramaters for the pipeline which should be updated.
 
+        Raises
+        ------
+        ValueError
+            Invalid parameter for pipeline given.
+
         """
-        if not self._clf_is_valid(text='Updating parameters of MLR model'):
-            return
         allowed_params = self._get_clf_parameters()
         new_params = {}
         for (key, val) in params.items():
             if key in allowed_params:
                 new_params[key] = val
             else:
-                logger.warning(
-                    "'%s' is not a valid parameter for the pipeline", key)
+                raise ValueError(
+                    f"'{key}' is not a valid parameter for the pipeline")
         self._clf.set_params(**new_params)
         self._parameters = self._get_clf_parameters()
         if new_params:
@@ -1082,6 +1134,15 @@ class MLRModel():
             "Successfully calculated %i area/time-based sample weights for "
             "training data%s", len(weights.index), msg)
         return weights
+
+    def _check_clf(self):
+        """Check if valid regressor type is given."""
+        class_name = self.__class__.__name__
+        if self._CLF_TYPE is None:
+            raise NotImplementedError(
+                f"No MLR model type specified, please use the factory "
+                f"function 'esmvaltool.diag_scripts.mlr.models.{class_name}."
+                f"create()' to initialize this class")
 
     def _check_cube_dimensions(self, cube, ref_cube, text=None):
         """Check shape and coordinates of a given cube."""
@@ -1161,22 +1222,18 @@ class MLRModel():
                 f"'{datasets[0]['units']}'")
         return datasets[0]
 
-    def _clf_is_valid(self, text=None):
-        """Check if valid regressor type is given."""
-        msg = '' if text is None else f'{text} not possible: '
-        if self._CLF_TYPE is None:
-            logger.warning(
-                "%sNo MLR model specified, please use factory function "
-                "'MLRModel.create()' to initialize this class or populate the "
-                "module 'esmvaltool.diag_scripts.mlr.models' if necessary",
-                msg)
-            return False
-        return True
+    def _check_fit_status(self, text):
+        """Check if MLR model is fitted and raise exception otherwise."""
+        x_dummy = np.ones((1, self.features.size), dtype=self._cfg['dtype'])
+        try:
+            self._clf.predict(x_dummy)
+        except NotFittedError:
+            raise NotFittedError(
+                f"{text} not possible, MLR model {self._CLF_TYPE} is not "
+                f"fitted yet, call fit() or grid_search_cv() first")
 
     def _create_pipeline(self):
         """Create pipeline with correct settings."""
-        if not self._clf_is_valid(text='Creating pipeline'):
-            return
         steps = []
         numerical_features_idx = [
             int(np.where(self.features == tag)[0][0])
@@ -1481,9 +1538,9 @@ class MLRModel():
                 logger.debug("Treating '%s' as categorical feature", tag)
                 categorical[tag] = True
             else:
-                logger.warning(
-                    "Cannot treat '%s' as categorical variable, feature not "
-                    "found", tag)
+                raise ValueError(
+                    f"Cannot treat '{tag}' as categorical variable, feature "
+                    f"not found")
 
         # Check if features were found
         if not units:
@@ -1818,15 +1875,11 @@ class MLRModel():
                     # Do not accept errors for categorical features
                     if (var_type == 'prediction_input_error'
                             and tag in self.categorical_features):
-                        logger.warning(
-                            "Specifying prediction input error for "
-                            "categorical feature '%s'%s is not possible, "
-                            "setting it to 0.0", tag, msg)
-                        new_data = np.full(cube.shape,
-                                           0.0,
-                                           dtype=self._cfg['dtype']).ravel()
-                    else:
-                        new_data = self._get_cube_data(cube)
+                        raise ValueError(
+                            f"Specifying prediction input error for "
+                            f"categorical feature '{tag}'{msg} is not "
+                            f"possible")
+                    new_data = self._get_cube_data(cube)
 
             # Load coordinate feature data
             else:
@@ -1871,26 +1924,12 @@ class MLRModel():
                 data_frame.values[:] = transform(data_frame.values)
         return data_frame
 
-    def _is_fitted(self):
-        """Check if the MLR models are fitted."""
-        if self._clf is None:
-            return False
-        x_dummy = np.ones((1, self.features.size), dtype=self._cfg['dtype'])
-        try:
-            self._clf.predict(x_dummy)
-        except NotFittedError:
-            return False
-        return True
-
     def _is_ready_for_plotting(self):
         """Check if the class is ready for plotting."""
-        if not self._is_fitted():
-            logger.warning(
-                "Plotting not possible, MLR model is not fitted yet")
-            return False
+        self._check_fit_status('Plotting')
         if not self._cfg['write_plots']:
-            logger.debug(
-                "Plotting not possible, 'write_plots' was set to 'False' in "
+            logger.warning(
+                "Plotting not possible, 'write_plots' was set to 'False' at "
                 "class initialization")
             return False
         return True
@@ -1987,10 +2026,11 @@ class MLRModel():
         """Load input datasets."""
         input_datasets = deepcopy(input_datasets)
 
-        # Output warning if invalid var_type is given (not considered later)
-        mlr.datasets_have_mlr_attributes(input_datasets,
-                                         log_level='warning',
-                                         mode='only_var_type')
+        # Catch invalid var_types
+        if mlr.datasets_have_mlr_attributes(input_datasets,
+                                            log_level='error',
+                                            mode='only_var_type'):
+            raise ValueError("Data with invalid 'var_type' given")
 
         # Training datasets
         feature_datasets = select_metadata(input_datasets, var_type='feature')
@@ -2179,10 +2219,7 @@ class MLRModel():
             attributes['residual'] = 'true minus predicted values'
             attributes['var_type'] = 'prediction_residual'
         else:
-            logger.warning(
-                "Got unknown prediction type '%s', setting correct attributes "
-                "not possible", pred_type)
-            attributes['var_type'] = 'prediction_output_misc'
+            raise ValueError(f"Got unknown prediction type '{pred_type}'")
         return iris.cube.CubeMetadata(
             standard_name=cube.standard_name,
             long_name=long_name,
@@ -2343,7 +2380,7 @@ class MLRModel():
         cube.attributes = {
             'description': 'MLR model prediction',
             'mlr_model_name': self._cfg['mlr_model_name'],
-            'mlr_model_type': self._MODEL_TYPE,
+            'mlr_model_type': self.mlr_model_type,
             'final_regressor': str(self._CLF_TYPE),
             'prediction_name': self._get_name(pred_name),
             'tag': self.label,
@@ -2363,7 +2400,7 @@ class MLRModel():
         pred_str = f'_{self._get_name(pred_name)}'
         sub_str = ('' if self._cfg['sub_dir'] == '' else
                    f"_for_{self._cfg['sub_dir']}")
-        filename = (f'{self._MODEL_TYPE}_{self.label}_prediction{suffix}'
+        filename = (f'{self.mlr_model_type}_{self.label}_prediction{suffix}'
                     f'{pred_str}{sub_str}.nc')
         new_path = os.path.join(self._cfg['mlr_work_dir'], filename)
         cube.attributes['filename'] = new_path
@@ -2379,8 +2416,9 @@ class MLRModel():
             if step in self._clf.named_steps:
                 new_fit_kwargs[param_name] = param_val
             else:
-                logger.warning("Got invalid parameter for fit function: '%s'",
-                               param_name)
+                raise ValueError(
+                    f"Got invalid pipeline step '{step}' as parameter of "
+                    f"fit() function")
 
         # Add sample weights if possible
         allowed_fit_kwargs = getfullargspec(self._CLF_TYPE.fit).args
@@ -2413,8 +2451,9 @@ class MLRModel():
         try:
             cube.convert_units(new_units)
         except ValueError:
-            logger.warning("Units conversion%s from '%s' to '%s' failed", msg,
-                           cube.units, new_units)
+            raise ValueError(
+                f"Units conversion{msg} from '{cube.units}' to '{new_units}' "
+                f"failed")
 
     @staticmethod
     def _convert_units_in_metadata(datasets):
@@ -2427,12 +2466,10 @@ class MLRModel():
             try:
                 units_from.convert(0.0, units_to)
             except ValueError:
-                logger.warning(
-                    "Cannot convert units of %s '%s' from '%s' to '%s'",
-                    dataset['var_type'], dataset['tag'], units_from, units_to)
-                dataset.pop('convert_units_to')
-            else:
-                dataset['units'] = dataset['convert_units_to']
+                raise ValueError(
+                    f"Cannot convert units of {dataset['var_type']} "
+                    f"'{dataset['tag']}' from '{units_from}' to '{units_to}'")
+            dataset['units'] = dataset['convert_units_to']
 
     @staticmethod
     def _get_coordinate_data(ref_cube, var_type, tag, text=None):
@@ -2455,10 +2492,9 @@ class MLRModel():
             logger.warning(
                 "Coordinate '%s' is scalar, including it as feature does not "
                 "add any information to the model (array is constant)", tag)
-        else:
-            new_axis_pos = np.delete(np.arange(ref_cube.ndim), coord_dims)
-            for idx in new_axis_pos:
-                coord_array = np.expand_dims(coord_array, idx)
+        new_axis_pos = np.delete(np.arange(ref_cube.ndim), coord_dims)
+        for idx in new_axis_pos:
+            coord_array = np.expand_dims(coord_array, idx)
         coord_array = np.broadcast_to(coord_array, ref_cube.shape)
         logger.debug("Added %s coordinate '%s'%s", var_type, tag, msg)
         return coord_array.ravel()
