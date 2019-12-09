@@ -56,9 +56,17 @@ preprocessors:
       operator: mean
 
   lai_var:
-    weighting_landsea_fraction:
+    weighting_landsea_fraction: &weighting_options
       area_type: land
-      strict: false
+      exclude: [
+        'bcc-csm1-1-m',
+        'BNU-ESM',
+        'inmcm4',
+        'JMA-TRANSCOM',
+        'LAI3g',
+        'MTE',
+        'NDP',
+      ]
     mask_landsea:
       mask_out: sea
     extract_region:
@@ -71,8 +79,8 @@ preprocessors:
 
   flux_var:
     weighting_landsea_fraction:
+      <<: *weighting_options
       area_type: land
-      strict: false
     mask_landsea:
       mask_out: sea
     extract_region:

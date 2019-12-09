@@ -55,7 +55,14 @@ preprocessors:
     <<: *regular_var
     weighting_landsea_fraction:
       area_type: land
-      strict: false
+      exclude: [
+        'bcc-csm1-1-m',
+        'BNU-ESM',
+        'inmcm4',
+        'JMA-TRANSCOM',
+        'LAI3g',
+        'MTE',
+      ]
 
 
 diagnostics:
