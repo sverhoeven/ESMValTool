@@ -17,7 +17,7 @@ dependencies:
   # Installation fails when used directly with pip (cython issues)
   - pip
   - pip:
-    - "git+https://github.com/datascienceinc/Skater.git#egg=Skater"
+    - "git+https://github.com/oracle/Skater.git#egg=Skater"
 
   # Multi language support:
   - python>=3.6
