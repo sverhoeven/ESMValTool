@@ -77,8 +77,8 @@ def test_remove_missing_labels(mock_logger, df_in, df_out, logger):
 
 TEST_UNITS_POWER = [
     (Unit('m'), 2.5, TypeError, False),
-    (Unit(''), 1, Unit(''), True),
-    (Unit('no unit'), 1, Unit('no unit'), True),
+    (Unit(''), 1, ValueError, True),
+    (Unit('no unit'), 1, ValueError, True),
     (Unit('2.0 m s-1'), 3, Unit('2.0 m s-1')**3, True),
     (Unit('m')**2, 2, Unit('m')**4, True),
     (Unit('m')**2, 0, Unit('m')**0, True),
@@ -125,7 +125,7 @@ def test_units_power(mock_logger, units_in, power, output, logger):
     """Test exponentiation of :mod:`cf_units.Unit`."""
     if isinstance(output, type):
         with pytest.raises(output):
-            new_units = mlr.units_power(units_in, power)
+            mlr.units_power(units_in, power)
         return
     new_units = mlr.units_power(units_in, power)
     assert new_units == output
@@ -139,45 +139,33 @@ def test_units_power(mock_logger, units_in, power, output, logger):
 DATASET = {
     'dataset': 'TEST',
     'exp': 'iceage',
-    'filename': 'highway/to/hell',
+    'filename': 'path/to/file',
     'project': 'CMIP4',
 }
 TEST_CREATE_ALIAS = [
-    ([], None, None, 'TEST', True),
-    ([], None, 'x', 'TEST', True),
-    ([], 'exp', None, 'iceage', True),
-    ([], 'project', 'x', 'CMIP4', True),
-    (['no'], None, None, 'TEST', True),
-    (['no'], None, 'x', 'TEST', True),
-    (['no'], 'exp', None, 'iceage', True),
-    (['no'], 'project', 'x', 'CMIP4', True),
-    (['dataset'], None, None, 'TEST', False),
-    (['dataset'], None, 'x', 'TEST', False),
-    (['dataset'], 'exp', None, 'TEST', False),
-    (['dataset'], 'project', 'x', 'TEST', False),
-    (['dataset', 'project'], None, None, 'TEST-CMIP4', False),
-    (['dataset', 'project'], None, 'x', 'TESTxCMIP4', False),
-    (['dataset', 'project'], 'exp', None, 'TEST-CMIP4', False),
-    (['dataset', 'project'], 'project', 'x', 'TESTxCMIP4', False),
+    ([], None, ValueError),
+    ([], 'x', ValueError),
+    (['no'], None, AttributeError),
+    (['no'], 'x', AttributeError),
+    (['dataset'], None, 'TEST'),
+    (['dataset'], 'x', 'TEST'),
+    (['dataset', 'project'], None, 'TEST-CMIP4'),
+    (['dataset', 'project'], 'x', 'TESTxCMIP4'),
 ]
 
 
-@pytest.mark.parametrize('attrs,default,delim,output,logger',
-                         TEST_CREATE_ALIAS)
-@mock.patch.object(mlr, 'logger', autospec=True)
-def test_create_alias(mock_logger, attrs, default, delim, output, logger):
+@pytest.mark.parametrize('attrs,delim,output', TEST_CREATE_ALIAS)
+def test_create_alias(attrs, delim, output):
     """Test alias creation."""
     kwargs = {}
-    if default is not None:
-        kwargs['default'] = default
     if delim is not None:
         kwargs['delimiter'] = delim
+    if isinstance(output, type):
+        with pytest.raises(output):
+            mlr.create_alias(DATASET, attrs, **kwargs)
+        return
     alias = mlr.create_alias(DATASET, attrs, **kwargs)
     assert alias == output
-    if logger:
-        mock_logger.warning.assert_called_once()
-    else:
-        mock_logger.warning.assert_not_called()
 
 
 METADATA_IN = [iris.cube.CubeMetadata(*x) for x in [
@@ -277,3 +265,138 @@ def test_has_valid_coords(cube, coords, output):
     """Test check for valid coords."""
     out = mlr._has_valid_coords(cube, coords)
     assert out == output
+
+
+D_1 = {
+    'dataset': 'c',
+    'filename': 'b',
+    'long_name': 'e',
+    'project': 'a',
+    'short_name': 'd',
+    'tag': 'g',
+    'var_name': 'f',
+    'var_type': 'label',
+    'units': 'kg',
+}
+D_2 = D_1.copy()
+D_2.pop('project')
+D_3 = D_1.copy()
+D_3['var_type'] = 'wrong var_type'
+D_4 = D_3.copy()
+D_4.pop('project')
+TEST_MLR_ATTRS = [
+    ([], 'wrong_mode', ValueError),
+    ([], 'full', 0),
+    ([], 'only_missing', 0),
+    ([], 'only_var_type', 0),
+    ([D_1, D_1], 'wrong_mode', ValueError),
+    ([D_1, D_1], 'full', 0),
+    ([D_1, D_1], 'only_missing', 0),
+    ([D_1, D_1], 'only_var_type', 0),
+    ([D_1, D_2], 'wrong_mode', ValueError),
+    ([D_1, D_2], 'full', 1),
+    ([D_1, D_2], 'only_missing', 1),
+    ([D_1, D_2], 'only_var_type', 0),
+    ([D_1, D_3], 'wrong_mode', ValueError),
+    ([D_1, D_3], 'full', 1),
+    ([D_1, D_3], 'only_missing', 0),
+    ([D_1, D_3], 'only_var_type', 1),
+    ([D_1, D_4], 'wrong_mode', ValueError),
+    ([D_1, D_4], 'full', 2),
+    ([D_1, D_4], 'only_missing', 1),
+    ([D_1, D_4], 'only_var_type', 1),
+    ([D_1, D_2, D_3, D_4], 'wrong_mode', ValueError),
+    ([D_1, D_2, D_3, D_4], 'full', 4),
+    ([D_1, D_2, D_3, D_4], 'only_missing', 2),
+    ([D_1, D_2, D_3, D_4], 'only_var_type', 2),
+]
+
+
+@pytest.mark.parametrize('datasets,mode,output', TEST_MLR_ATTRS)
+@mock.patch('esmvaltool.diag_scripts.mlr.logger', autospec=True)
+def test_datasets_have_mlr_attributes(mock_logger, datasets, mode, output):
+    """Test checker of dataset attributes."""
+    for log_level in ('debug', 'info', 'warning', 'error'):
+        if isinstance(output, type):
+            with pytest.raises(output):
+                mlr.datasets_have_mlr_attributes(datasets, log_level=log_level,
+                                                 mode=mode)
+            return
+        out = mlr.datasets_have_mlr_attributes(datasets, log_level=log_level,
+                                               mode=mode)
+        if output == 0:
+            assert out is True
+        else:
+            assert out is False
+            assert getattr(mock_logger, log_level).call_count == output
+
+
+CFG_0 = {'input_data': {}}
+CFG_1 = {'input_data': {'1': D_1, '2': D_1}}
+CFG_2 = {'input_data': {'1': D_1, '2': D_2}}
+CFG_3 = {'input_data': {'1': D_1, '3': D_3}}
+CFG_4 = {'input_data': {'1': D_1, '2': D_2, '3': D_3}}
+TEST_GET_INPUT_DATA = [
+    (CFG_0, [], True, ValueError, 0),
+    (CFG_0, [], False, ValueError, 0),
+    (CFG_0, [D_1], True, [D_1], 0),
+    (CFG_0, [D_1], False, [D_1], 0),
+    (CFG_1, [], True, [D_1, D_1], 0),
+    (CFG_1, [], False, [D_1, D_1], 0),
+    (CFG_1, [D_1], True, [D_1, D_1, D_1], 0),
+    (CFG_1, [D_1], False, [D_1, D_1, D_1], 0),
+    (CFG_2, [], True, ValueError, 1),
+    (CFG_2, [], False, [D_1, D_2], 0),
+    (CFG_2, [D_1], True, ValueError, 1),
+    (CFG_2, [D_1], False, [D_1, D_2, D_1], 0),
+    (CFG_3, [], True, ValueError, 1),
+    (CFG_3, [], False, [D_1, D_3], 0),
+    (CFG_3, [D_1], True, ValueError, 1),
+    (CFG_3, [D_1], False, [D_1, D_3, D_1], 0),
+    (CFG_4, [], True, ValueError, 2),
+    (CFG_4, [], False, [D_1, D_2, D_3], 0),
+    (CFG_4, [D_1], True, ValueError, 2),
+    (CFG_4, [D_1], False, [D_1, D_2, D_3, D_1], 0),
+]
+
+
+@pytest.mark.parametrize('cfg,ancestors,check_mlr_attrs,output,n_logger',
+                         TEST_GET_INPUT_DATA)
+@mock.patch('esmvaltool.diag_scripts.mlr.io.netcdf_to_metadata', autospec=True)
+@mock.patch('esmvaltool.diag_scripts.mlr.logger', autospec=True)
+def test_get_input_data(mock_logger, mock_netcdf_to_metadata, cfg, ancestors,
+                        check_mlr_attrs, output, n_logger):
+    """Test retrieving of input data."""
+    mock_netcdf_to_metadata.return_value = ancestors
+    if isinstance(output, type):
+        with pytest.raises(output):
+            mlr.get_input_data(cfg, check_mlr_attributes=check_mlr_attrs)
+        assert mock_logger.error.call_count == n_logger
+        return
+    input_data = mlr.get_input_data(cfg, check_mlr_attributes=check_mlr_attrs)
+    assert input_data == output
+
+
+TEST_WRITE_CUBE = [
+    (D_1, 0),
+    (D_2, 1),
+    (D_3, 1),
+    (D_4, 2),
+]
+
+
+@pytest.mark.parametrize('attributes,output', TEST_WRITE_CUBE)
+@mock.patch('esmvaltool.diag_scripts.mlr.io.metadata_to_netcdf', autospec=True)
+@mock.patch('esmvaltool.diag_scripts.mlr.logger', autospec=True)
+def test_write_cube(mock_logger, mock_metadata_to_netcdf, attributes, output):
+    """Test writing of MLR-related data."""
+    cube = iris.cube.Cube(0)
+    if output == 0:
+        mlr.write_cube(cube, attributes)
+        mock_logger.error.assert_not_called()
+        mock_metadata_to_netcdf.assert_called_once_with(cube, attributes)
+    else:
+        with pytest.raises(IOError):
+            mlr.write_cube(cube, attributes)
+        assert mock_logger.error.call_count == output
+        mock_metadata_to_netcdf.assert_not_called()

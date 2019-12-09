@@ -172,10 +172,9 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
         return_var = predict_kwargs.pop('return_var', False)
         return_cov = predict_kwargs.pop('return_cov', False)
         if return_var and return_cov:
-            logger.warning(
-                "Cannot return variance and full covariance matrix for "
-                "prediction, returning only variance")
-            return_cov = False
+            raise RuntimeError(
+                "Cannot return variance (return_cov=True) and full "
+                "covariance matrix (return_cov=True) simultaneously")
 
         # Main prediction
         pred = self.regressor_.predict(x_data, **predict_kwargs)
@@ -214,29 +213,30 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
         for (param_name, param_val) in fit_kwargs.items():
             param_split = param_name.split('__', 1)
             if len(param_split) != 2:
-                logger.warning(
-                    "Fit parameters for %s have to be given as 'transformer__"
-                    "{param}' or 'regressor__{param}', got '%s'",
-                    str(self.__class__), param_name)
-                continue
+                raise ValueError(
+                    f"Fit parameters for {self.__class__} have to be given as "
+                    f"'transformer__...' or 'regressor__...', got "
+                    f"'{param_name}'")
             if param_split[0] == 'transformer':
                 transformer_kwargs[param_split[1]] = param_val
             elif param_split[0] == 'regressor':
                 regressor_kwargs[param_split[1]] = param_val
             else:
-                logger.warning(
-                    "Allowed prefixes for fit parameters given to %s are "
-                    "'transformer' and 'regressor', got '%s'",
-                    str(self.__class__), param_split[0])
+                raise ValueError(
+                    f"Allowed prefixes for fit parameters given to "
+                    f"{self.__class__} are 'transformer' and 'regressor', got "
+                    f"'{param_split[0]}' for parameter '{param_name}'")
+
         # FIXME
         if transformer_kwargs:
             logger.warning(
                 "Keyword arguments %s for transformer of %s are not "
-                "supported yet", transformer_kwargs, str(self.__class__))
+                "supported at the moment", transformer_kwargs,
+                str(self.__class__))
         return (transformer_kwargs, regressor_kwargs)
 
 
-def create_alias(dataset, attributes, default='dataset', delimiter='-'):
+def create_alias(dataset, attributes, delimiter='-'):
     """Create alias key of a dataset using a list of attributes.
 
     Parameters
@@ -245,8 +245,6 @@ def create_alias(dataset, attributes, default='dataset', delimiter='-'):
         Metadata dictionary representing a single dataset.
     attributes : list of str
         List of attributes used to create the alias.
-    default : str, optional (default: 'dataset')
-        Default alias ``dataset`` does not contain any of the given attributes.
     delimiter : str, optional (default: '-')
         Delimiter used to separate different attributes in the alias.
 
@@ -255,21 +253,26 @@ def create_alias(dataset, attributes, default='dataset', delimiter='-'):
     str
         Dataset alias.
 
+    Raises
+    ------
+    AttributeError
+        ``dataset`` does not contain one of the ``attributes``.
+
     """
     alias = []
+    if not attributes:
+        raise ValueError(
+            "Expected at least one element for attributes, got empty list")
     for attribute in attributes:
-        if attribute in dataset:
-            alias.append(dataset[attribute])
-    if not alias:
-        alias = [dataset[default]]
-        logger.warning(
-            "Dataset '%s' does not contain any of the desired attributes %s "
-            "for creating an alias, setting it to '%s'", dataset['filename'],
-            attributes, alias)
+        if attribute not in dataset:
+            raise AttributeError(
+                f"Datset {dataset} does not contain attribute '{attribute}' "
+                f"for alias creation")
+        alias.append(dataset[attribute])
     return delimiter.join(alias)
 
 
-def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
+def datasets_have_mlr_attributes(datasets, log_level='debug', mode='full'):
     """Check (MLR) attributes of ``datasets``.
 
     Parameters
@@ -278,18 +281,27 @@ def datasets_have_mlr_attributes(datasets, log_level='debug', mode=None):
         Datasets to check.
     log_level : str, optional (default: 'debug')
         Verbosity level of the logger.
-    mode : str, optional (default: None)
+    mode : str, optional (default: 'full')
         Checking mode. Must be one of ``'only_missing'`` (only check if
         attributes are missing), ``'only_var_type'`` (check only `var_type`) or
-        ``None`` (check both).
+        ``'full'`` (check both).
 
     Returns
     -------
     bool
         ``True`` if all required attributes are available, ``False`` if not.
 
+    Raises
+    ------
+    ValueError
+        Invalid value for argument ``mode`` is given.
+
     """
     output = True
+    accepted_modes = ('full', 'only_missing', 'only_var_type')
+    if mode not in accepted_modes:
+        raise ValueError(
+            f"'mode' must be one of {accepted_modes}, got '{mode}'")
     for dataset in datasets:
         if mode != 'only_var_type':
             for key in NECESSARY_KEYS:
@@ -438,25 +450,25 @@ def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
     list of dict
         List of input datasets.
 
+    Raises
+    ------
+    ValueError
+        No input data found or at least one dataset has invalid attributes.
+
     """
     logger.debug("Extracting input files")
     input_data = list(cfg['input_data'].values())
     input_data.extend(io.netcdf_to_metadata(cfg, pattern=pattern))
     input_data = deepcopy(input_data)
+    if not input_data:
+        raise ValueError("No input data found")
     if check_mlr_attributes:
-        valid_datasets = []
-        for dataset in input_data:
-            if datasets_have_mlr_attributes([dataset], log_level='warning'):
-                valid_datasets.append(dataset)
-            else:
-                logger.warning("Skipping file %s", dataset['filename'])
-    else:
-        valid_datasets = input_data
-    if not valid_datasets:
-        logger.warning("No valid input data found")
+        if not datasets_have_mlr_attributes(input_data, log_level='error'):
+            raise ValueError("At least one input dataset does not have valid "
+                             "MLR attributes")
     logger.debug("Found files:")
-    logger.debug(pformat([d['filename'] for d in valid_datasets]))
-    return valid_datasets
+    logger.debug(pformat([d['filename'] for d in input_data]))
+    return input_data
 
 
 def get_squared_error_cube(ref_cube, error_datasets):
@@ -631,14 +643,22 @@ def units_power(units, power):
     cf_units.Unit
         Input units raised to given power.
 
+    Raises
+    ------
+    TypeError
+        Argument ``power`` is not :obj:`int`-like.
+    ValueError
+        Invalid unit given.
+
     """
     if round(power) != power:
-        raise TypeError(f"Expected integer power for units "
-                        f"exponentiation, got {power}")
+        raise TypeError(
+            f"Expected integer-like power for units exponentiation, got "
+            f"{power}")
+    power = int(power)
     if any([units.is_no_unit(), units.is_unknown()]):
-        logger.warning("Cannot raise units '%s' to power %i", units.name,
-                       power)
-        return units
+        raise ValueError(
+            f"Cannot raise units '{units.name}' to power {power:d}")
     if units.origin is None:
         logger.warning(
             "Symbol-preserving exponentiation of units '%s' is not "
@@ -662,7 +682,7 @@ def units_power(units, power):
     return Unit(new_units)
 
 
-def write_cube(cube, attributes, path):
+def write_cube(cube, attributes):
     """Write cube with all necessary information for MLR models.
 
     Parameters
@@ -671,11 +691,15 @@ def write_cube(cube, attributes, path):
         Cube which should be written.
     attributes : dict
         Attributes for the cube (needed for MLR models).
-    path : str
-        Path to the new file.
+
+    Raises
+    ------
+    IOError
+        File cannot be written due to invalid attributes.
 
     """
-    if not datasets_have_mlr_attributes([attributes], log_level='warning'):
-        logger.warning("Cannot write %s", path)
-        return
+    if not datasets_have_mlr_attributes([attributes], log_level='error'):
+        raise IOError(
+            f"Cannot write cube {cube.summary(shorten=True)} using attributes "
+            f"attributes")
     io.metadata_to_netcdf(cube, attributes)

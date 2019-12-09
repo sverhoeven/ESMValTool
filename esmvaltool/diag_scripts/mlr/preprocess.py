@@ -549,7 +549,7 @@ def main(cfg):
 
         # Normalize and write cubes
         (cube, data) = normalize(cfg, cube, data)
-        mlr.write_cube(cube, data, data['filename'])
+        mlr.write_cube(cube, data)
 
 
 # Run main function when this script is called
