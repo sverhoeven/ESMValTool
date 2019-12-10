@@ -19,9 +19,8 @@ Configuration options in recipe
 -------------------------------
 area_weighted : bool, optional (default: True)
     Calculate weighted averages/sums for area (using grid cell boundaries).
-reference_dataset : dict
-    Metadata describing the reference dataset. Must refer to exactly one
-    dataset.
+ignore : list of dict, optional
+    Ignore specific datasets by specifying multiple :obj:`dict`s of metadata.
 masking_operations : list of dict
     Masking operations which will be applied on the reference dataset to create
     the mask. Keys have to be :mod:`numpy.ma` conversion operations (see
@@ -31,7 +30,10 @@ mean : list of str, optional
     Preprocess reference dataset by calculate the mean over the specified
     coordinates.
 pattern : str, optional
-    Pattern matched against ancestor files.
+    Pattern matched against ancestor file names.
+reference_dataset : dict
+    Metadata describing the reference dataset. Must refer to exactly one
+    dataset.
 sum : list of str, optional
     Preprocess reference dataset by calculating the sum of over the specified
     coordinates.
@@ -86,7 +88,9 @@ def get_ref_mask(cfg, input_data):
 def main(cfg):
     """Run the diagnostic."""
     check_cfg(cfg)
-    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
+    input_data = mlr.get_input_data(cfg,
+                                    pattern=cfg.get('pattern'),
+                                    ignore=cfg.get('ignore'))
     ref_mask = get_ref_mask(cfg, input_data)
 
     # Mask input cubes

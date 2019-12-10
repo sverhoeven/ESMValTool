@@ -31,7 +31,7 @@ bias_plot : dict, optional
 ignore : list of dict, optional
     Ignore specific datasets by specifying multiple :obj:`dict`s of metadata.
 pattern : str, optional
-    Pattern matched against ancestor files.
+    Pattern matched against ancestor file names.
 savefig_kwargs : dict, optional
     Keyword arguments for :func:`matplotlib.pyplot.savefig`.
 seaborn_settings : dict, optional
@@ -54,8 +54,7 @@ import seaborn as sns
 from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
                                             get_plot_filename, group_metadata,
-                                            plot, run_diagnostic,
-                                            select_metadata)
+                                            plot, run_diagnostic)
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -124,24 +123,15 @@ def get_cube_dict(input_data):
 
 def get_input_datasets(cfg):
     """Get grouped datasets (by tag)."""
-    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
+    input_data = mlr.get_input_data(cfg,
+                                    pattern=cfg.get('pattern'),
+                                    ignore=cfg.get('ignore'))
     tags = list(group_metadata(input_data, 'tag').keys())
-    if len(tags) > 1:
-        logger.warning(
-            "Got multiple tags %s, processing only first one ('%s')", tags,
-            tags[0])
-    input_data = select_metadata(input_data, tag=tags[0])
-    valid_data = []
-    ignored_datasets = []
-    logger.debug("Ignoring datasets with\n%s", pformat(cfg.get('ignore', [])))
-    for ignore_metadata in cfg.get('ignore', []):
-        ignored_datasets.extend(select_metadata(input_data, **ignore_metadata))
-    for dataset in input_data:
-        if dataset not in ignored_datasets:
-            valid_data.append(dataset)
-    logger.info("Considering files for plotting:\n%s",
-                pformat([d['filename'] for d in valid_data]))
-    return valid_data
+    if len(tags) != 1:
+        raise ValueError(
+            f"Expected unique 'tag' for all input datasets, got {len(tags):d} "
+            f"different ones ({tags})")
+    return input_data
 
 
 def get_plot_kwargs(cfg, option):

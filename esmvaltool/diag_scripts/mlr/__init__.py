@@ -17,7 +17,7 @@ from sklearn.utils import check_array
 from sklearn.utils.validation import check_is_fitted
 from yellowbrick.regressor import ResidualsPlot
 
-from esmvaltool.diag_scripts.shared import io
+from esmvaltool.diag_scripts.shared import io, select_metadata
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -36,6 +36,19 @@ VAR_TYPES = [
     'prediction_reference',
     'prediction_residual',
 ]
+
+
+def _get_datasets(input_data, **kwargs):
+    """Get datasets according to ``**kwargs``."""
+    datasets = []
+    for dataset in input_data:
+        dataset_copy = deepcopy(dataset)
+        for key in kwargs:
+            if key not in dataset_copy:
+                dataset_copy[key] = None
+        if select_metadata([dataset_copy], **kwargs):
+            datasets.append(dataset)
+    return datasets
 
 
 def _has_valid_coords(cube, coords):
@@ -429,21 +442,24 @@ def get_area_weights(cube, normalize=False):
     return area_weights
 
 
-def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
+def get_input_data(cfg, pattern=None, check_mlr_attributes=True, ignore=None):
     """Get input data and check MLR attributes if desired.
 
-    Use ``input_data`` and ancestors to get all relevant input files. Only
-    accepts files with all necessary MLR attributes if desired.
+    Use ``input_data`` and ancestors to get all relevant input files.
 
     Parameters
     ----------
     cfg : dict
         Recipe configuration.
     pattern : str, optional
-        Pattern matched against ancestor files.
+        Pattern matched against ancestor file names.
     check_mlr_attributes : bool, optional (default: True)
         If ``True``, only returns datasets with valid MLR attributes. If
         ``False``, returns all found datasets.
+    ignore : list of dict, optional
+        Ignore specific datasets by specifying multiple :obj:`dict`s of
+        metadata. By setting an attribute to ``None``, ignore all datasets
+        which do not have that attribute.
 
     Returns
     -------
@@ -466,9 +482,20 @@ def get_input_data(cfg, pattern=None, check_mlr_attributes=True):
         if not datasets_have_mlr_attributes(input_data, log_level='error'):
             raise ValueError("At least one input dataset does not have valid "
                              "MLR attributes")
+    if ignore is not None:
+        valid_data = []
+        ignored_datasets = []
+        logger.info("Ignoring files with %s", ignore)
+        for kwargs in ignore:
+            ignored_datasets.extend(_get_datasets(input_data, **kwargs))
+        for dataset in input_data:
+            if dataset not in ignored_datasets:
+                valid_data.append(dataset)
+    else:
+        valid_data = input_data
     logger.debug("Found files:")
-    logger.debug(pformat([d['filename'] for d in input_data]))
-    return input_data
+    logger.debug(pformat([d['filename'] for d in valid_data]))
+    return valid_data
 
 
 def get_squared_error_cube(ref_cube, error_datasets):

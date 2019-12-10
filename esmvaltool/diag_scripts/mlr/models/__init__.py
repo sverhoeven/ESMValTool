@@ -2027,9 +2027,8 @@ class MLRModel():
         input_datasets = deepcopy(input_datasets)
 
         # Catch invalid var_types
-        if mlr.datasets_have_mlr_attributes(input_datasets,
-                                            log_level='error',
-                                            mode='only_var_type'):
+        if not mlr.datasets_have_mlr_attributes(
+                input_datasets, log_level='error', mode='only_var_type'):
             raise ValueError("Data with invalid 'var_type' given")
 
         # Training datasets
@@ -2452,8 +2451,8 @@ class MLRModel():
             cube.convert_units(new_units)
         except ValueError:
             raise ValueError(
-                f"Units conversion{msg} from '{cube.units}' to '{new_units}' "
-                f"failed")
+                f"Cannot convert units{msg} from '{cube.units}' to "
+                f"'{new_units}'")
 
     @staticmethod
     def _convert_units_in_metadata(datasets):

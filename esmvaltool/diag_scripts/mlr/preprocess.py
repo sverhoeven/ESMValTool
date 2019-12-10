@@ -35,6 +35,8 @@ argsort : dict, optional
     ``descending: true`` is given, use descending order insted of ascending.
 convert_units_to : str, optional
     Convert units of the input data. Can also be given as dataset option.
+ignore : list of dict, optional
+    Ignore specific datasets by specifying multiple :obj:`dict`s of metadata.
 mean : list of str, optional
     Calculate the mean over the specified coordinates.
 normalize_mean : bool, optional (default: false)
@@ -44,7 +46,7 @@ normalize_std : bool, optional (default: false)
     Scale total standard deviation of the dataset in the last (resulting
     standard deviation will be 1.0).
 pattern : str, optional
-    Pattern matched against ancestor files.
+    Pattern matched against ancestor file names.
 return_trend_stderr : bool, optional
     Return standard error of slope in case of trend calculations (as
     ``var_type`` ``prediction_input_error``).
@@ -283,11 +285,11 @@ def add_standard_errors(input_data):
 def aggregate(cfg, cube, data):
     """Aggregate cube over specified coordinate."""
     for (coord_name, aggregator) in cfg.get('aggregate_by', {}).items():
-        iris_op = AGGREGATORS.get(aggregator)
-        if iris_op is None:
-            logger.warning("Unknown aggregation option '%s', skipping",
-                           aggregator)
-            continue
+        if aggregator not in AGGREGATORS:
+            raise ValueError(
+                f"Expected one of {list(AGGREGATORS.keys())} as aggregator "
+                f"option, got '{aggregator}'")
+        iris_op = AGGREGATORS[aggregator]
         logger.debug("Aggregating coordinate %s by calculating %s", coord_name,
                      aggregator)
         try:
@@ -301,9 +303,11 @@ def aggregate(cfg, cube, data):
                 (cube, data) = _apply_aggregator(cfg, cube, data, coord_name,
                                                  iris_op)
             else:
-                logger.warning(
-                    "'%s' is not a coordinate of cube %s and cannot be added "
-                    "via iris.coord_categorisation", coord_name, cube)
+                raise ValueError(
+                    f"Cannot aggregate over coordinate '{coord_name}' using "
+                    f"'{aggregator}', '{coord_name}' is not a coordinate of "
+                    f"cube {cube.summary(shorten=True)} and cannot be added "
+                    f"via iris.coord_categorisation")
     return (cube, data)
 
 
@@ -341,17 +345,12 @@ def calculate_anomalies(cfg, input_data):
             continue
         kwargs = {m: data[m] for m in metadata if m in data}
         ref = select_metadata(ref_data, **kwargs)
-        if not ref:
-            logger.warning(
-                "No reference for dataset %s found, skipping "
-                "anomaly calculation", data)
-            continue
-        if len(ref) > 1:
-            logger.warning(
-                "Reference data for dataset %s is not unique, found %s. "
-                "Consider extending list of metadata for 'anomaly' option "
-                "specified by the 'matched_by' key", data, ref)
-            continue
+        if len(ref) != 1:
+            raise ValueError(
+                f"Expected exactly one reference dataset (with attribute ref "
+                f"== True) for dataset {data}, got {len(ref):d}. Consider "
+                f"extending list of metadata for 'anomaly' option specified "
+                f"by the 'matched_by' key")
         ref = ref[0]
         base = _get_anomaly_base(cfg, ref['cube'])
         data['cube'].data -= base
@@ -440,10 +439,9 @@ def calculate_trend(cfg, cube, data):
         coord_name = cfg['trend']
         logger.debug("Calculating trend along coordinate '%s'", coord_name)
         if coord_name not in [c.name() for c in cube.coords()]:
-            logger.warning(
-                "Cannot calculate trend along '%s', cube does not contain "
-                "coordinate with that name", coord_name)
-            return (cube, data)
+            raise ValueError(
+                f"Cannot calculate trend along '{coord_name}', cube does not "
+                f"contain a coordinate with that name")
         return_stderr = (data.get('var_type') == 'prediction_input'
                          and cfg['return_trend_stderr'])
         (cube, cube_stderr,
@@ -468,10 +466,10 @@ def convert_units(cfg, cube, data):
         try:
             cube.convert_units(units_to)
         except ValueError:
-            logger.warning("Cannot convert units from '%s' to '%s'",
-                           cube.units, units_to)
-        else:
-            data['units'] = units_to
+            raise ValueError(
+                f"Cannot convert units of cube {cube.summary(shorten=True)} "
+                f"from '{cube.units}' to '{units_to}'")
+        data['units'] = units_to
     return (cube, data)
 
 
@@ -504,6 +502,7 @@ def main(cfg):
     """Run the diagnostic."""
     input_data = mlr.get_input_data(cfg,
                                     pattern=cfg.get('pattern'),
+                                    ignore=cfg.get('ignore'),
                                     check_mlr_attributes=False)
 
     # Default options

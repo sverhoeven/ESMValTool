@@ -245,6 +245,8 @@ diagnostics:
         script: mlr/postprocess.py
         ancestors: ['diag_postprocess_mte/monthly_clim']
         convert_units_to: Gt yr-1
+        ignore:
+          - prediction_name: null
         mean: ['month_number']
         sum: ['latitude', 'longitude']
 

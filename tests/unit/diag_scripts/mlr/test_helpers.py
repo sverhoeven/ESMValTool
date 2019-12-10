@@ -280,6 +280,7 @@ D_1 = {
 }
 D_2 = D_1.copy()
 D_2.pop('project')
+D_2['short_name'] = 'xx'
 D_3 = D_1.copy()
 D_3['var_type'] = 'wrong var_type'
 D_4 = D_3.copy()
@@ -331,50 +332,118 @@ def test_datasets_have_mlr_attributes(mock_logger, datasets, mode, output):
             assert getattr(mock_logger, log_level).call_count == output
 
 
+KWARGS_1 = {'dataset': 'c'}
+KWARGS_2 = {'dataset': 'c', 'short_name': 'xx'}
+KWARGS_3 = {'project': None}
+KWARGS_4 = {'project': None, 'var_type': 'wrong var_type'}
+TEST_GET_DATASETS = [
+    ([D_1, D_1], {}, [D_1, D_1]),
+    ([D_1, D_1], KWARGS_1, [D_1, D_1]),
+    ([D_1, D_1], KWARGS_2, []),
+    ([D_1, D_1], KWARGS_3, []),
+    ([D_1, D_1], KWARGS_4, []),
+    ([D_1, D_2], {}, [D_1, D_2]),
+    ([D_1, D_2], KWARGS_1, [D_1, D_2]),
+    ([D_1, D_2], KWARGS_2, [D_2]),
+    ([D_1, D_2], KWARGS_3, [D_2]),
+    ([D_1, D_2], KWARGS_4, []),
+    ([D_3, D_4], {}, [D_3, D_4]),
+    ([D_3, D_4], KWARGS_1, [D_3, D_4]),
+    ([D_3, D_4], KWARGS_2, []),
+    ([D_3, D_4], KWARGS_3, [D_4]),
+    ([D_3, D_4], KWARGS_4, [D_4]),
+    ([D_1, D_2, D_3, D_4], {}, [D_1, D_2, D_3, D_4]),
+    ([D_1, D_2, D_3, D_4], KWARGS_1, [D_1, D_2, D_3, D_4]),
+    ([D_1, D_2, D_3, D_4], KWARGS_2, [D_2]),
+    ([D_1, D_2, D_3, D_4], KWARGS_3, [D_2, D_4]),
+    ([D_1, D_2, D_3, D_4], KWARGS_4, [D_4]),
+]
+
+
+@pytest.mark.parametrize('input_data,kwargs,output', TEST_GET_DATASETS)
+def test_get_datasets(input_data, kwargs, output):
+    """Test dataset retrieving according to ``**kwargs``."""
+    datasets = mlr._get_datasets(input_data, **kwargs)
+    assert datasets == output
+
+
 CFG_0 = {'input_data': {}}
 CFG_1 = {'input_data': {'1': D_1, '2': D_1}}
 CFG_2 = {'input_data': {'1': D_1, '2': D_2}}
 CFG_3 = {'input_data': {'1': D_1, '3': D_3}}
 CFG_4 = {'input_data': {'1': D_1, '2': D_2, '3': D_3}}
+IGNORE = [
+    {'dataset': 'c', 'short_name': 'd', 'var_type': 'label'},
+    {'project': None},
+]
 TEST_GET_INPUT_DATA = [
-    (CFG_0, [], True, ValueError, 0),
-    (CFG_0, [], False, ValueError, 0),
-    (CFG_0, [D_1], True, [D_1], 0),
-    (CFG_0, [D_1], False, [D_1], 0),
-    (CFG_1, [], True, [D_1, D_1], 0),
-    (CFG_1, [], False, [D_1, D_1], 0),
-    (CFG_1, [D_1], True, [D_1, D_1, D_1], 0),
-    (CFG_1, [D_1], False, [D_1, D_1, D_1], 0),
-    (CFG_2, [], True, ValueError, 1),
-    (CFG_2, [], False, [D_1, D_2], 0),
-    (CFG_2, [D_1], True, ValueError, 1),
-    (CFG_2, [D_1], False, [D_1, D_2, D_1], 0),
-    (CFG_3, [], True, ValueError, 1),
-    (CFG_3, [], False, [D_1, D_3], 0),
-    (CFG_3, [D_1], True, ValueError, 1),
-    (CFG_3, [D_1], False, [D_1, D_3, D_1], 0),
-    (CFG_4, [], True, ValueError, 2),
-    (CFG_4, [], False, [D_1, D_2, D_3], 0),
-    (CFG_4, [D_1], True, ValueError, 2),
-    (CFG_4, [D_1], False, [D_1, D_2, D_3, D_1], 0),
+    (CFG_0, [], True, None, ValueError, 0),
+    (CFG_0, [], True, IGNORE, ValueError, 0),
+    (CFG_0, [], False, None, ValueError, 0),
+    (CFG_0, [], False, IGNORE, ValueError, 0),
+    (CFG_0, [D_1], True, None, [D_1], 0),
+    (CFG_0, [D_1], True, IGNORE, [], 0),
+    (CFG_0, [D_1], False, None, [D_1], 0),
+    (CFG_0, [D_1], False, IGNORE, [], 0),
+    (CFG_1, [], True, None, [D_1, D_1], 0),
+    (CFG_1, [], True, IGNORE, [], 0),
+    (CFG_1, [], False, None, [D_1, D_1], 0),
+    (CFG_1, [], False, IGNORE, [], 0),
+    (CFG_1, [D_1], True, None, [D_1, D_1, D_1], 0),
+    (CFG_1, [D_1], True, IGNORE, [], 0),
+    (CFG_1, [D_1], False, None, [D_1, D_1, D_1], 0),
+    (CFG_1, [D_1], False, IGNORE, [], 0),
+    (CFG_2, [], True, None, ValueError, 1),
+    (CFG_2, [], True, IGNORE, ValueError, 1),
+    (CFG_2, [], False, None, [D_1, D_2], 0),
+    (CFG_2, [], False, IGNORE, [], 0),
+    (CFG_2, [D_1], True, None, ValueError, 1),
+    (CFG_2, [D_1], True, IGNORE, ValueError, 1),
+    (CFG_2, [D_1], False, None, [D_1, D_2, D_1], 0),
+    (CFG_2, [D_1], False, IGNORE, [], 0),
+    (CFG_3, [], True, None, ValueError, 1),
+    (CFG_3, [], True, IGNORE, ValueError, 1),
+    (CFG_3, [], False, None, [D_1, D_3], 0),
+    (CFG_3, [], False, IGNORE, [D_3], 0),
+    (CFG_3, [D_1], True, None, ValueError, 1),
+    (CFG_3, [D_1], True, IGNORE, ValueError, 1),
+    (CFG_3, [D_1], False, None, [D_1, D_3, D_1], 0),
+    (CFG_3, [D_1], False, IGNORE, [D_3], 0),
+    (CFG_4, [], True, None, ValueError, 2),
+    (CFG_4, [], True, IGNORE, ValueError, 2),
+    (CFG_4, [], False, None, [D_1, D_2, D_3], 0),
+    (CFG_4, [], False, IGNORE, [D_3], 0),
+    (CFG_4, [D_1], True, None, ValueError, 2),
+    (CFG_4, [D_1], True, IGNORE, ValueError, 2),
+    (CFG_4, [D_1], False, None, [D_1, D_2, D_3, D_1], 0),
+    (CFG_4, [D_1], False, IGNORE, [D_3], 0),
 ]
 
 
-@pytest.mark.parametrize('cfg,ancestors,check_mlr_attrs,output,n_logger',
-                         TEST_GET_INPUT_DATA)
+@pytest.mark.parametrize(
+    'cfg,ancestors,check_mlr_attrs,ignore,output,n_logger',
+    TEST_GET_INPUT_DATA)
 @mock.patch('esmvaltool.diag_scripts.mlr.io.netcdf_to_metadata', autospec=True)
 @mock.patch('esmvaltool.diag_scripts.mlr.logger', autospec=True)
 def test_get_input_data(mock_logger, mock_netcdf_to_metadata, cfg, ancestors,
-                        check_mlr_attrs, output, n_logger):
+                        check_mlr_attrs, ignore, output, n_logger):
     """Test retrieving of input data."""
     mock_netcdf_to_metadata.return_value = ancestors
     if isinstance(output, type):
         with pytest.raises(output):
-            mlr.get_input_data(cfg, check_mlr_attributes=check_mlr_attrs)
+            mlr.get_input_data(cfg,
+                               check_mlr_attributes=check_mlr_attrs,
+                               ignore=ignore)
         assert mock_logger.error.call_count == n_logger
         return
-    input_data = mlr.get_input_data(cfg, check_mlr_attributes=check_mlr_attrs)
+    input_data = mlr.get_input_data(cfg,
+                                    check_mlr_attributes=check_mlr_attrs,
+                                    ignore=ignore)
     assert input_data == output
+    if ignore is not None:
+        mock_logger.info.assert_called_once()
+    else:
+        mock_logger.info.assert_not_called()
 
 
 TEST_WRITE_CUBE = [

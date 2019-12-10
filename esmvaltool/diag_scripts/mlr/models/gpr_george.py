@@ -119,22 +119,20 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
         # Additional runs (chosen from log-uniform intitial theta)
         if self.n_restarts_optimizer > 0:
             if not np.all(np.isfinite(bounds)):
-                logger.warning(
-                    "Multiple optimizer restarts (n_restarts_optimizer > 0) "
-                    "require that all bounds are given and finite, for "
-                    "parameters %s, got", self._gp.get_parameter_names())
-                logger.warning(pformat(bounds))
-            else:
-                for idx in range(self.n_restarts_optimizer):
-                    logger.debug(
-                        "Restarted hyperparameter optimization, "
-                        "iteration %3i/%i", idx + 1, self.n_restarts_optimizer)
-                    theta_initial = self._rng.uniform(bounds[:, 0],
-                                                      bounds[:, 1])
-                    optima.append(
-                        self._constrained_optimization(obj_func, theta_initial,
-                                                       bounds))
-                    logger.debug("Found parameters %s", optima[-1][0])
+                raise ValueError(
+                    f"Multiple optimizer restarts (n_restarts_optimizer > 0) "
+                    f"require that all bounds are given and finite. For "
+                    f"parameters {self._gp.get_parameter_names()}, got "
+                    f"{bounds}")
+            for idx in range(self.n_restarts_optimizer):
+                logger.debug(
+                    "Restarted hyperparameter optimization, "
+                    "iteration %3i/%i", idx + 1, self.n_restarts_optimizer)
+                theta_initial = self._rng.uniform(bounds[:, 0], bounds[:, 1])
+                optima.append(
+                    self._constrained_optimization(obj_func, theta_initial,
+                                                   bounds))
+                logger.debug("Found parameters %s", optima[-1][0])
 
         # Select best run (with lowest negative log-marginal likelihood)
         log_like_vals = [opt[1] for opt in optima]
@@ -178,23 +176,22 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
         # Initialize new GP object and update parameters of this class
         if remaining_params:
-            logger.debug("Updating <%s> with parameters %s",
-                         self.__class__.__name__, remaining_params)
+            logger.debug("Updating %s with parameters %s", self.__class__,
+                         remaining_params)
             super().set_params(**remaining_params)
             self._init_gp()
 
         # Update parameters of GP member
         valid_gp_params = self._gp.get_parameter_names(include_frozen=True)
         for (key, val) in gp_params.items():
-            if key in valid_gp_params:
-                self._gp.set_parameter(key, val)
-                logger.debug("Set parameter '%s' of george GP member to '%s'",
-                             self._str_to_sklearn(key), val)
-            else:
-                logger.warning(
-                    "Parameter '%s' is not a valid parameter of the GP member "
-                    "anymore, it was removed after new initialization with "
-                    "other parameters", self._str_to_sklearn(key))
+            if key not in valid_gp_params:
+                raise ValueError(
+                    f"After updating the GP member with new parameters "
+                    f"{remaining_params}, '{self._str_to_sklearn(key)}' is "
+                    f"not a valid parameter of it anymore")
+            self._gp.set_parameter(key, val)
+            logger.debug("Set parameter '%s' of george GP member to '%s'",
+                         self._str_to_sklearn(key), val)
         return self
 
     def _constrained_optimization(self, obj_func, initial_theta, bounds):
@@ -233,8 +230,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
                       fit_white_noise=self.fit_white_noise,
                       solver=self.solver,
                       **self.kwargs)
-        logger.debug("Initialized george GP member of <%s>",
-                     self.__class__.__name__)
+        logger.debug("Initialized george GP member of %s", self.__class__)
 
     @classmethod
     def _str_to_george(cls, string):
@@ -262,10 +258,7 @@ class GeorgeGPRModel(MLRModel):
 
     def print_kernel_info(self):
         """Print information of the fitted kernel of the GPR model."""
-        if not self._is_fitted():
-            logger.warning("Printing kernel not possible because the model is "
-                           "not fitted yet, call fit() first")
-            return
+        self._check_fit_status('Printing kernel')
         clf = self._clf.steps[-1][1].regressor_
         logger.info("Fitted kernel: %s", clf.kernel)
         logger.info("All fitted log-hyperparameters:")

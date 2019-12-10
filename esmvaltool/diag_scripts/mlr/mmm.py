@@ -21,10 +21,12 @@ collapse_over : str, optional (default: 'dataset')
     Dataset attribute to collapse over.
 convert_units_to : str, optional
     Convert units of the input data. Can also be given as dataset option.
+ignore : list of dict, optional
+    Ignore specific datasets by specifying multiple :obj:`dict`s of metadata.
 mlr_model_name : str, optional
     Human-readable name of the MLR model instance (e.g used for labels).
 pattern : str, optional
-    Pattern matched against ancestor files.
+    Pattern matched against ancestor file names.
 prediction_name : str, optional
     Default ``prediction_name`` of output cubes if no 'prediction_reference'
     dataset is given.
@@ -132,7 +134,9 @@ def get_grouped_data(cfg, input_data=None):
     """Get input files."""
     if input_data is None:
         logger.debug("Loading input data from 'cfg' argument")
-        input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
+        input_data = mlr.get_input_data(cfg,
+                                        pattern=cfg.get('pattern'),
+                                        ignore=cfg.get('ignore'))
     else:
         logger.debug("Loading input data from 'input_data' argument")
         valid_datasets = []

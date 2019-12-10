@@ -33,6 +33,7 @@ def test_has_necessary_attributes(mock_logger, data):
             logger_func.assert_not_called()
         else:
             logger_func.assert_called()
+        assert logger_func.call_count == data['n_logger']
         mock_logger.reset_mock()
 
 
@@ -112,25 +113,23 @@ def test_get_all_ancestor_files(mock_walk, pattern, output):
 
 
 PATTERNS_FOR_SINGLE_ANCESTOR = [
-    ([], None, True),
-    (['I/am/a/cool/file.nc'], 'I/am/a/cool/file.nc', False),
-    (['I/am/a/cool/file.nc', 'oh/no/file_2.nc'], 'I/am/a/cool/file.nc', True),
+    ([], ValueError),
+    (['I/am/a/cool/file.nc'], 'I/am/a/cool/file.nc'),
+    (['I/am/a/cool/file.nc', 'oh/no/file_2.nc'], ValueError),
 ]
 
 
-@pytest.mark.parametrize('files,output,logger', PATTERNS_FOR_SINGLE_ANCESTOR)
+@pytest.mark.parametrize('files,output', PATTERNS_FOR_SINGLE_ANCESTOR)
 @mock.patch.object(io, 'get_all_ancestor_files', autospec=True)
-@mock.patch.object(io, 'logger', autospec=True)
-def test_get_ancestor_file(mock_logger, mock_get_all_ancestors, files, output,
-                           logger):
+def test_get_ancestor_file(mock_get_all_ancestors, files, output):
     """Test retrieving of single ancestor file."""
     mock_get_all_ancestors.return_value = files
+    if isinstance(output, type):
+        with pytest.raises(output):
+            io.get_ancestor_file(CFG, pattern='*')
+        return
     returned_file = io.get_ancestor_file(CFG, pattern='*')
     assert returned_file == output
-    if logger:
-        mock_logger.warning.assert_called()
-    else:
-        mock_logger.warning.assert_not_called()
 
 
 LONG_NAME = 'Loooong name'
@@ -138,89 +137,113 @@ SHORT_NAME = 'var'
 STANDARD_NAME = 'air_temperature'
 UNITS = 'K'
 
+A_1 = {
+    'dataset': 'model',
+    'filename': 'r/a.nc',
+    'project': 'CMIP42',
+}
+V_1 = {
+    'long_name': LONG_NAME,
+    'var_name': SHORT_NAME,
+    'units': UNITS,
+}
+C_1 = iris.cube.Cube(0, **V_1, attributes=A_1)
+A_2 = {
+    'dataset': 'model',
+    'filename': 'r1/b.ps',
+}
+V_2 = {
+    'long_name': LONG_NAME,
+    'var_name': SHORT_NAME,
+    'units': UNITS,
+}
+C_2 = iris.cube.Cube(0, **V_2, attributes=A_2)
+A_3 = {
+    'filename': 'r/a.nc',
+}
+V_3 = {
+    'long_name': LONG_NAME,
+    'var_name': SHORT_NAME,
+    'units': UNITS,
+}
+C_3 = iris.cube.Cube(0, **V_3, attributes=A_3)
+A_4 = {
+    'dataset': 'model',
+    'filename': 'r1/b.nc',
+    'project': 'CMIP42',
+}
+V_4 = {
+    'long_name': LONG_NAME,
+    'var_name': SHORT_NAME,
+    'standard_name': STANDARD_NAME,
+    'units': UNITS,
+}
+C_4 = iris.cube.Cube(0, **V_4, attributes=A_4)
+A_5 = {
+    'dataset': 'model',
+    'filename': 'r/a.nc',
+    'project': 'CMIP42',
+}
+V_5 = {
+    'long_name': LONG_NAME,
+    'var_name': SHORT_NAME,
+    'standard_name': None,
+    'units': UNITS,
+}
+C_5 = iris.cube.Cube(0, **V_5, attributes=A_5)
 
-@pytest.mark.parametrize('root', [None, '*'])
+
+W_1 = [('r', [], ['a.nc'])]
+W_2 = [('r', [], ['a.nc']), ('r1', ['d1'], ['b.nc'])]
+W_2_X = [('r1', [], ['b.nc', 'b.ps'])]
+
+TEST_NETCDF_TO_METADATA = [
+    ([C_1], W_1, None, [{**A_1, **V_1}], 0),
+    ([C_1], W_1, '*', [{**A_1, **V_1}], 0),
+    ([C_1, C_4], W_2, None, [{**A_1, **V_1}, {**A_4, **V_4}], 0),
+    ([C_1, C_4], W_2, '*', [{**A_1, **V_1}, {**A_4, **V_4}], 0),
+    ([C_5, C_4], W_2, None, [{**A_5, **V_5}, {**A_4, **V_4}], 0),
+    ([C_5, C_4], W_2, '*', [{**A_5, **V_5}, {**A_4, **V_4}], 0),
+    ([C_4], W_2_X, None, [{**A_4, **V_4}], 0),
+    ([C_4], W_2_X, '*', [{**A_4, **V_4}], 0),
+    ([C_2], W_1, None, ValueError, 1),
+    ([C_2], W_1, '*', ValueError, 1),
+    ([C_3], W_1, None, ValueError, 2),
+    ([C_3], W_1, '*', ValueError, 2),
+    ([C_2, C_3], W_2, None, ValueError, 3),
+    ([C_2, C_3], W_2, '*', ValueError, 3),
+    ([C_1, C_3], W_2, None, ValueError, 2),
+    ([C_1, C_3], W_2, '*', ValueError, 2),
+]
+
+
+@pytest.mark.parametrize('cubes,walk_out,root,output,n_logger',
+                         TEST_NETCDF_TO_METADATA)
 @mock.patch.object(io, 'get_all_ancestor_files', autospec=True)
 @mock.patch.object(io, 'logger', autospec=True)
 @mock.patch('esmvaltool.diag_scripts.shared.io.iris.load_cube', autospec=True)
 @mock.patch('esmvaltool.diag_scripts.shared.io.os.walk', autospec=True)
 def test_netcdf_to_metadata(mock_walk, mock_load_cube, mock_logger,
-                            mock_get_all_ancestors, root):
+                            mock_get_all_ancestors, cubes, walk_out, root,
+                            output, n_logger):
     """Test cube to metadata."""
-    attrs = [
-        {
-            'dataset': 'model',
-            'filename': 'path/to/model1.nc',
-            'project': 'CMIP42',
-        },
-        {
-            'dataset': 'model',
-            'filename': 'path/to/model1.yml',
-            'project': 'CMIP42',
-        },
-        {
-            'dataset': 'model',
-            'filename': 'path/to/model2.nc',
-        },
-        {
-            'dataset': 'model',
-            'filename': 'path/to/model3.nc',
-            'project': 'CMIP42',
-        },
-        {
-            'dataset': 'model',
-            'filename': 'path/to/model4.nc',
-            'project': 'CMIP42',
-        },
-    ]
-    var_attrs = [
-        {
-            'long_name': LONG_NAME,
-            'var_name': SHORT_NAME,
-            'units': UNITS,
-        },
-        {
-            'long_name': LONG_NAME,
-            'var_name': SHORT_NAME,
-            'units': UNITS,
-        },
-        {
-            'long_name': LONG_NAME,
-            'var_name': SHORT_NAME,
-        },
-        {
-            'long_name': LONG_NAME,
-            'var_name': SHORT_NAME,
-            'standard_name': STANDARD_NAME,
-            'units': UNITS,
-        },
-        {
-            'long_name': LONG_NAME,
-            'var_name': SHORT_NAME,
-            'standard_name': None,
-            'units': UNITS,
-        },
-    ]
-    cubes = [
-        iris.cube.Cube(0, attributes=attrs[0], **var_attrs[0]),
-        iris.cube.Cube(0, attributes=attrs[2], **var_attrs[2]),
-        iris.cube.Cube(0, attributes=attrs[3], **var_attrs[3]),
-        iris.cube.Cube(0, attributes=attrs[4], **var_attrs[4]),
-    ]
-    walk_output = [
-        ('path/to', [], ['model1.nc', 'model1.yml']),
-        ('path/to', ['d'], ['model2.nc', 'model3.nc', 'model4.nc']),
-    ]
-    output = deepcopy([{**attrs[i], **var_attrs[i]} for i in (0, 3, 4)])
-    for out in output:
-        out['short_name'] = out.pop('var_name')
-        out.setdefault('standard_name', None)
-    mock_get_all_ancestors.return_value = [a['filename'] for a in attrs]
-    mock_walk.return_value = walk_output
+    ancestors = []
+    for (files_root, _, files) in walk_out:
+        new_files = [os.path.join(files_root, f) for f in files]
+        ancestors.extend(new_files)
+    mock_get_all_ancestors.return_value = ancestors
+    mock_walk.return_value = walk_out
     mock_load_cube.side_effect = cubes
-    metadata = io.netcdf_to_metadata({}, pattern=root, root=root)
-    assert metadata == output
-    mock_logger.warning.assert_called()
+    if isinstance(output, type):
+        with pytest.raises(output):
+            io.netcdf_to_metadata({}, pattern=root, root=root)
+    else:
+        for dataset in output:
+            dataset['short_name'] = dataset.pop('var_name')
+            dataset.setdefault('standard_name', None)
+        metadata = io.netcdf_to_metadata({}, pattern=root, root=root)
+        assert metadata == output
+    assert mock_logger.error.call_count == n_logger
 
 
 ATTRS_IN = [
@@ -323,7 +346,7 @@ OUTPUT = [
                        **VAR_ATTRS_OUT[idx]
                    }) for idx in range(4)
 ]
-OUTPUT[2] = None
+OUTPUT[2] = ValueError
 METADATA_TO_NETDCF = zip(ATTRS_IN, VAR_ATTRS_IN, CUBES_IN, OUTPUT)
 
 
@@ -338,18 +361,18 @@ def test_metadata_to_netcdf(mock_logger, mock_save, attrs, var_attrs, cube,
     metadata['short_name'] = metadata.pop('var_name')
     if metadata['dataset'] == 'a':
         metadata['standard_name'] = wrong_name
+    if isinstance(output, type):
+        with pytest.raises(output):
+            io.metadata_to_netcdf(cube, metadata)
+        assert not mock_save.called
+        return
     io.metadata_to_netcdf(cube, metadata)
     if metadata.get('standard_name') == wrong_name:
-        mock_logger.debug.assert_called()
-    else:
-        mock_logger.debug.assert_not_called()
-    if output is None:
         mock_logger.warning.assert_called()
-        assert not mock_save.called
     else:
         mock_logger.warning.assert_not_called()
-        save_args = (output, attrs['filename'])
-        assert mock_save.call_args_list == [mock.call(*save_args)]
+    save_args = (output, attrs['filename'])
+    assert mock_save.call_args_list == [mock.call(*save_args)]
 
 
 PATH = 'path/to/super/cube'

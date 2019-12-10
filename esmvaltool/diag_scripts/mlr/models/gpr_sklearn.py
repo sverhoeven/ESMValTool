@@ -24,10 +24,7 @@ class SklearnGPRModel(MLRModel):
 
     def print_kernel_info(self):
         """Print information of the fitted kernel of the GPR model."""
-        if not self._is_fitted():
-            logger.warning("Printing kernel not possible because the model is "
-                           "not fitted yet, call fit() first")
-            return
+        self._check_fit_status('Printing kernel')
         kernel = self._clf.steps[-1][1].regressor_.kernel_
         logger.info("Fitted kernel: %s", kernel)
         logger.info("All fitted log-hyperparameters:")

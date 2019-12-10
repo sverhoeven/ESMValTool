@@ -33,6 +33,8 @@ group_metadata : str, optional
     datasets), an individual MLR model is calculated. Only affects ``feature``
     and ``label`` datasets. Cannot be used together with the option
     ``pseudo_reality``.
+ignore : list of dict, optional
+    Ignore specific datasets by specifying multiple :obj:`dict`s of metadata.
 mlr_model_type : str
     MLR model type. The given model has to be defined in
     :mod:`esmvaltool.diag_scripts.mlr.models`.
@@ -41,7 +43,7 @@ only_predict : bool, optional (default: False)
     :meth:`esmvaltool.diag_scripts.mlr.models.MLRModel.predict` and do not
     create any other output (CSV files, plots, etc.).
 pattern : str, optional
-    Pattern matched against ancestor files.
+    Pattern matched against ancestor file names.
 plot_pairplots : bool, optional (default: False)
     Plot pairplots of input data (computationally expensive).
 plot_partial_dependences : bool, optional (default: False)
@@ -184,7 +186,9 @@ def _get_pseudo_reality_data(cfg, input_data):
 
 def _get_raw_input_data(cfg):
     """Extract all input datasets."""
-    input_data = mlr.get_input_data(cfg, pattern=cfg.get('pattern'))
+    input_data = mlr.get_input_data(cfg,
+                                    pattern=cfg.get('pattern'),
+                                    ignore=cfg.get('ignore'))
     select_kwargs = cfg.get('select_metadata', {})
     if select_kwargs:
         logger.info("Only selecting files matching %s", select_kwargs)
@@ -219,6 +223,9 @@ def _update_mlr_model(mlr_model_type, mlr_model):
 
 def check_cfg(cfg):
     """Check recipe configuration for invalid options."""
+    if 'mlr_model_type' not in cfg:
+        raise ValueError(
+            "Necessary configuration option 'mlr_model_type' not given")
     if cfg.get('group_metadata') and cfg.get('pseudo_reality'):
         raise ValueError(
             "The options 'group_metadata' and 'pseudo_reality' cannot be used "
@@ -305,10 +312,7 @@ def run_mmm_model(cfg, group_attribute, grouped_datasets):
 def main(cfg):
     """Run the diagnostic."""
     check_cfg(cfg)
-    if 'mlr_model_type' not in cfg:
-        raise ValueError(
-            "Necessary configuration option 'mlr_model_type' not given")
-    mlr_model_type = cfg['mlr_model_type']
+    mlr_model_type = cfg.pop('mlr_model_type')
     logger.info("Found MLR model type '%s'", mlr_model_type)
     (group_attr, grouped_datasets) = get_grouped_data(cfg)
     if mlr_model_type == 'mmm':

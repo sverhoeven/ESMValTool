@@ -20,8 +20,10 @@ box_plot : dict, optional
     Specify additional keyword arguments for :func:`seaborn.boxplot` by
     ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
     as functions of :mod:`matplotlib.pyplot`).
+ignore : list of dict, optional
+    Ignore specific datasets by specifying multiple :obj:`dict`s of metadata.
 pattern : str, optional
-    Pattern matched against ancestor files.
+    Pattern matched against ancestor file names.
 residual_plot : dict, optional
     Specify additional keyword arguments for the residual plot function by
     ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
