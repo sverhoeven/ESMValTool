@@ -138,7 +138,8 @@ def _convert_units(cfg, cube):
             cube.convert_units(units_to)
         except ValueError:
             raise ValueError(
-                f"Cannot convert units from '{cube.units}' to '{units_to}'")
+                f"Cannot convert units of cube {cube.summary(shorten=True)} "
+                f"from '{cube.units}' to '{units_to}'")
 
 
 def _collapse_covariance_cube(cfg, cov_cube, ref_cube):
@@ -146,10 +147,10 @@ def _collapse_covariance_cube(cfg, cov_cube, ref_cube):
     (weights, units, coords) = _get_all_weights(cfg, ref_cube)
     if len(coords) < ref_cube.ndim:
         raise ValueError(
-            f"Calculating real error using covariance dataset for covariance "
-            f"structure estimation ('prediction_input') is only possible if "
-            f"all {ref_cube.ndim:d} dimensions of the cube  are collapsed, "
-            f"got only {len(coords):d} ({coords})")
+            f"Calculating real error using covariance dataset "
+            f"('prediction_output_error') is only possible if all "
+            f"{ref_cube.ndim:d} dimensions of the cube are collapsed, got "
+            f"only {len(coords):d} ({coords})")
     weights = weights.ravel()
     weights = weights[~np.ma.getmaskarray(ref_cube.data).ravel()]
     weights = np.outer(weights, weights)
@@ -344,7 +345,7 @@ def _get_covariance_dataset(error_datasets, ref_cube):
     if len(cov_datasets) > 1:
         raise ValueError(
             f"Expected at most one covariance dataset ({explanation}), got "
-            f"{len(cov_datasets):d}")
+            f"{len(cov_datasets):d}:\n{pformat(cov_datasets)}")
 
     # Check shape
     cov_cube = iris.load_cube(cov_datasets[0]['filename'])
@@ -391,8 +392,7 @@ def check_cfg(cfg):
             cfg[operation] = list(set(cfg[operation]))
     for coord in cfg.get('sum', []):
         if coord in cfg.get('mean', []):
-            raise ValueError(
-                f"Coordinate '{coord.name()}' given in 'sum' and 'mean'")
+            raise ValueError(f"Coordinate '{coord}' given in 'sum' and 'mean'")
 
 
 def postprocess_errors(cfg, ref_cube, error_datasets, cov_estim_datasets):
@@ -462,7 +462,8 @@ def split_datasets(datasets, tag, pred_name):
     if len(mean) != 1:
         raise ValueError(
             f"Expected exactly one 'prediction_output' dataset for tag "
-            f"'{tag}' of prediction '{pred_name}', got {len(mean):d}")
+            f"'{tag}' of prediction '{pred_name}', got {len(mean):d}:\n"
+            f"{pformat(mean)}")
     logger.info(
         "Found mean prediction dataset ('prediction_output') for tag '%s' of "
         "prediction '%s': %s (used as reference)", tag, pred_name,
@@ -494,7 +495,7 @@ def split_datasets(datasets, tag, pred_name):
             raise ValueError(
                 f"Expected at most one 'prediction_input' dataset for tag "
                 f"'{tag}' of prediction '{pred_name}', got "
-                f"{len(cov_estimation):d}")
+                f"{len(cov_estimation):d}:\n{pformat(cov_estimation)}")
         else:
             logger.info(
                 "Found 'prediction_input' dataset for covariance structure "

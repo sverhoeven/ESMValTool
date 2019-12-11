@@ -84,7 +84,7 @@ AGGREGATORS = {
     'median': iris.analysis.MEDIAN,
     'std': iris.analysis.STD_DEV,
     'sum': iris.analysis.SUM,
-    'var:': iris.analysis.VARIANCE,
+    'var': iris.analysis.VARIANCE,
     'trend': 'trend',
 }
 
@@ -121,7 +121,7 @@ def _apply_trend_aggregator(cfg, cube, data, coord_name):
         coord_dims = cube.coord_dims(coord_name)
         if len(coord_dims) != 1:
             raise ValueError(
-                f"Trend aggregation along coordinate {coord_name} "
+                f"Trend aggregation along coordinate '{coord_name}' "
                 f"requires 1D coordinate, got {len(coord_dims)}D "
                 f"coordinate")
         dim_coord = cube.coord(dim_coords=True, dimensions=coord_dims[0])
@@ -152,7 +152,7 @@ def _calculate_slope_along_coord(cube, coord_name, return_stderr=False):
     coord_dims = cube.coord_dims(coord_name)
     if len(coord_dims) != 1:
         raise ValueError(
-            f"Trend calculation along coordinate {coord_name} requires "
+            f"Trend calculation along coordinate '{coord_name}' requires "
             f"1D coordinate, got {len(coord_dims)}D coordinate")
 
     # Get slope and error if desired
@@ -371,8 +371,9 @@ def calculate_argsort(cfg, cube, data):
         return (cube, data)
     coord = argsort.get('coord')
     if not coord:
-        raise ValueError("When 'argsort' is given, a valid 'coord' needs to "
-                         "specified as key")
+        raise ValueError(
+            "When 'argsort' is given, a valid 'coord' needs to specified as "
+            "key")
     logger.info("Calculating argsort along coordinate '%s' to get ranking",
                 coord)
     axis = cube.coord_dims(coord)[0]
@@ -439,9 +440,10 @@ def calculate_trend(cfg, cube, data):
         coord_name = cfg['trend']
         logger.debug("Calculating trend along coordinate '%s'", coord_name)
         if coord_name not in [c.name() for c in cube.coords()]:
-            raise ValueError(
-                f"Cannot calculate trend along '{coord_name}', cube does not "
-                f"contain a coordinate with that name")
+            raise iris.exceptions.CoordinateNotFoundError(
+                f"Cannot calculate trend along '{coord_name}', cube "
+                f"{cube.summary(shorten=True)} does not contain a coordinate "
+                f"with that name")
         return_stderr = (data.get('var_type') == 'prediction_input'
                          and cfg['return_trend_stderr'])
         (cube, cube_stderr,
