@@ -2,6 +2,7 @@
 import fnmatch
 import logging
 import os
+from pprint import pformat
 
 import iris
 import numpy as np
@@ -93,7 +94,7 @@ def get_ancestor_file(cfg, pattern):
     if len(files) != 1:
         raise ValueError(
             f"Expected to find exactly one ancestor file for pattern "
-            f"'{pattern}', got {len(files):d}")
+            f"'{pattern}', got {len(files):d}:\n{pformat(files)}")
     return files[0]
 
 
