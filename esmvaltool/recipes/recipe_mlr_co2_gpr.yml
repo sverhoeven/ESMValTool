@@ -303,12 +303,3 @@ diagnostics:
           white_noise: 0.05
         predict_kwargs:
           return_cov: true
-      postprocess:
-        script: mlr/postprocess.py
-        ancestors: [
-          'diag_mlr/multiple_mlr_models',
-          'diag_mlr_input_gpp/monthly_clim',
-        ]
-        mean: ['time']
-        sum: ['latitude', 'longitude']
-        convert_units_to: Gt yr-1

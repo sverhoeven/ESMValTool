@@ -102,12 +102,12 @@
     work_dir: /work/dir/1
     write_plots: false
   logger:
-  - warning
-  - warning
+  - error
+  - error
   output:
     EXCEPTION:
       type: ValueError
-      value: No 'prediction_input' data found
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: true
     coords_as_features:
@@ -330,13 +330,12 @@
     work_dir: /work/dir/1
     write_plots: true
   logger:
-  - warning
-  - warning
+  - error
   - error
   output:
     EXCEPTION:
       type: ValueError
-      value: At least one 'feature' dataset does not have necessary MLR attributes
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: true
     coords_as_features:
@@ -420,52 +419,11 @@
     work_dir: /work/dir/1
     write_plots: true
   logger:
-  - warning
+  - error
   output:
-    feature:
-    - broadcast_from:
-      - 0
-      - 1
-      dataset: dataset_3
-      filename: /path/1
-      group_attribute: dataset_3
-      long_name: long_name_1
-      project: project_1
-      short_name: short_name_3
-      standard_name: std_name_1
-      tag: tag_3
-      units: units_1
-      var_type: feature
-    label:
-    - broadcast_from: 0
-      dataset: dataset_1
-      filename: /path/2
-      group_attribute: dataset_1
-      long_name: long_name_1
-      prediction_name: pred_name_2
-      project: project_3
-      short_name: short_name_2
-      standard_name: std_name_3
-      tag: tag_3
-      units: units_2
-      var_type: label
-    prediction_input:
-      null:
-      - broadcast_from:
-        - 4
-        - 5
-        dataset: dataset_1
-        filename: path/3
-        group_attribute: null
-        long_name: long_name_3
-        project: project_1
-        short_name: short_name_3
-        standard_name: std_name_3
-        tag: tag_1
-        units: units_1
-        var_type: prediction_input
-    prediction_input_error: {}
-    prediction_reference: {}
+    EXCEPTION:
+      type: ValueError
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: false
     grid_search_cv_param_grid:
@@ -568,13 +526,13 @@
     work_dir: /work/dir/1
     write_plots: true
   logger:
-  - warning
-  - warning
-  - warning
+  - error
+  - error
+  - error
   output:
     EXCEPTION:
       type: ValueError
-      value: No 'feature' data found
+      value: Data with invalid 'var_type' given
 - cfg:
     allow_missing_features: true
     coords_as_features:
@@ -645,11 +603,11 @@
     work_dir: /work/dir_2
     write_plots: false
   logger:
-  - warning
+  - error
   output:
     EXCEPTION:
       type: ValueError
-      value: No 'feature' data found
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: false
     allow_missing_features: false
@@ -811,13 +769,13 @@
     work_dir: /work/dir_2
     write_plots: false
   logger:
-  - warning
-  - warning
-  - warning
+  - error
+  - error
+  - error
   output:
     EXCEPTION:
       type: ValueError
-      value: No 'prediction_input' data found
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: true
     grid_search_cv_param_grid:
@@ -938,12 +896,11 @@
     work_dir: /work/dir_2
     write_plots: false
   logger:
-  - warning
   - error
   output:
     EXCEPTION:
       type: ValueError
-      value: At least one 'feature' dataset does not have necessary MLR attributes
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: false
     coords_as_features:
@@ -1043,13 +1000,11 @@
     work_dir: /work/dir_2
     write_plots: false
   logger:
-  - warning
-  - error
   - error
   output:
     EXCEPTION:
       type: ValueError
-      value: At least one 'label' dataset does not have necessary MLR attributes
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: true
     allow_missing_features: true
@@ -1094,11 +1049,11 @@
     work_dir: /work/dir/1
     write_plots: false
   logger:
-  - warning
+  - error
   output:
     EXCEPTION:
       type: ValueError
-      value: No 'feature' data found
+      value: Data with invalid 'var_type' given
 - cfg:
     coords_as_features:
     - latitude
@@ -1212,78 +1167,13 @@
     work_dir: /work/dir_2
     write_plots: true
   logger:
-  - warning
-  - warning
-  - warning
+  - error
+  - error
+  - error
   output:
-    feature:
-    - dataset: dataset_3
-      filename: path/3
-      group_attribute: dataset_3
-      long_name: long_name_1
-      prediction_name: pred_name_1
-      project: project_3
-      short_name: short_name_3
-      standard_name: std_name_1
-      tag: tag_3
-      units: units_2
-      var_type: feature
-    label:
-    - broadcast_from:
-      - 4
-      - 5
-      dataset: dataset_3
-      filename: /path/2
-      group_attribute: dataset_3
-      long_name: long_name_1
-      prediction_name: pred_name_1
-      project: project_2
-      short_name: short_name_2
-      standard_name: std_name_3
-      tag: tag_2
-      units: units_1
-      var_type: label
-    prediction_input:
-      null:
-      - dataset: dataset_3
-        filename: /path/2
-        group_attribute: null
-        long_name: long_name_3
-        project: project_2
-        short_name: short_name_1
-        standard_name: std_name_2
-        tag: tag_3
-        units: units_1
-        var_type: prediction_input
-      pred_name_1:
-      - broadcast_from:
-        - 0
-        dataset: dataset_1
-        filename: /path/2
-        group_attribute: null
-        long_name: long_name_2
-        prediction_name: pred_name_1
-        project: project_3
-        short_name: short_name_3
-        standard_name: std_name_2
-        tag: tag_2
-        units: units_1
-        var_type: prediction_input
-      pred_name_2:
-      - broadcast_from: 0
-        dataset: dataset_1
-        filename: path/3
-        group_attribute: null
-        long_name: long_name_1
-        prediction_name: pred_name_2
-        project: project_2
-        short_name: short_name_3
-        standard_name: std_name_1
-        tag: tag_3
-        units: units_2
-        var_type: prediction_input
-    prediction_input_error: {}
-    prediction_reference: {}
+    EXCEPTION:
+      type: ValueError
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: true
     imputation_strategy: remove
@@ -1352,13 +1242,13 @@
     work_dir: /work/dir_2
     write_plots: true
   logger:
-  - warning
-  - warning
-  - warning
+  - error
+  - error
+  - error
   output:
     EXCEPTION:
       type: ValueError
-      value: No 'feature' data found
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: false
     allow_missing_features: false
@@ -1455,63 +1345,12 @@
     work_dir: /work/dir/1
     write_plots: false
   logger:
-  - warning
-  - warning
+  - error
+  - error
   output:
-    feature:
-    - broadcast_from: 0
-      dataset: dataset_3
-      filename: /path/1
-      group_attribute: dataset_3
-      long_name: long_name_3
-      prediction_name: pred_name_1
-      project: project_1
-      short_name: short_name_2
-      standard_name: std_name_2
-      tag: tag_2
-      units: units_3
-      var_type: feature
-    label:
-    - broadcast_from: 0
-      dataset: dataset_1
-      filename: /path/2
-      group_attribute: dataset_1
-      long_name: long_name_3
-      prediction_name: pred_name_1
-      project: project_3
-      short_name: short_name_3
-      standard_name: std_name_2
-      tag: tag_1
-      units: units_1
-      var_type: label
-    prediction_input:
-      null:
-      - broadcast_from:
-        - 0
-        dataset: dataset_1
-        filename: path/3
-        group_attribute: null
-        long_name: long_name_2
-        project: project_3
-        short_name: short_name_1
-        standard_name: std_name_3
-        tag: tag_1
-        units: units_1
-        var_type: prediction_input
-      pred_name_2:
-      - dataset: dataset_3
-        filename: /path/2
-        group_attribute: null
-        long_name: long_name_1
-        prediction_name: pred_name_2
-        project: project_2
-        short_name: short_name_2
-        standard_name: std_name_3
-        tag: tag_1
-        units: units_3
-        var_type: prediction_input
-    prediction_input_error: {}
-    prediction_reference: {}
+    EXCEPTION:
+      type: ValueError
+      value: Data with invalid 'var_type' given
 - cfg:
     allow_missing_features: false
     group_datasets_by_attributes:
@@ -1655,11 +1494,11 @@
     work_dir: /work/dir_2
     write_plots: true
   logger:
-  - warning
+  - error
   output:
     EXCEPTION:
       type: ValueError
-      value: No 'prediction_input' data found
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: false
     allow_missing_features: true
@@ -1825,13 +1664,11 @@
     work_dir: /work/dir_2
     write_plots: false
   logger:
-  - warning
-  - error
   - error
   output:
     EXCEPTION:
       type: ValueError
-      value: At least one 'prediction_input' dataset does not have necessary MLR attributes
+      value: Data with invalid 'var_type' given
 - cfg:
     accept_only_scalar_data: true
     allow_missing_features: false

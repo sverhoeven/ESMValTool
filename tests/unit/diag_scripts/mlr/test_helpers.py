@@ -465,7 +465,7 @@ def test_write_cube(mock_logger, mock_metadata_to_netcdf, attributes, output):
         mock_logger.error.assert_not_called()
         mock_metadata_to_netcdf.assert_called_once_with(cube, attributes)
     else:
-        with pytest.raises(IOError):
+        with pytest.raises(ValueError):
             mlr.write_cube(cube, attributes)
         assert mock_logger.error.call_count == output
         mock_metadata_to_netcdf.assert_not_called()

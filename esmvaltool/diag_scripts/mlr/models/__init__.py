@@ -308,7 +308,7 @@ class MLRModel():
         x_train = self.get_x_array('train')
         y_train = self.get_y_array('train')
         try:
-            self._check_fit_status('')
+            self._check_fit_status('Calculating features after preprocessing')
         except NotFittedError:
             fit_kwargs = self._cfg['fit_kwargs']
             fit_kwargs = self._update_fit_kwargs(fit_kwargs)
@@ -1949,7 +1949,8 @@ class MLRModel():
         if not np.issubdtype(cube.dtype, np.number):
             raise TypeError(
                 f"Data type of cube loaded from '{dataset['filename']}' is "
-                f"'{cube.dtype}', the moment only numeric data is supported")
+                f"'{cube.dtype}', at the moment only numeric data is "
+                f"supported")
 
         # Convert dtypes
         cube.data = cube.core_data().astype(self._cfg['dtype'],
@@ -2190,7 +2191,6 @@ class MLRModel():
                                                'prediction input estimated by '
                                                'LIME)'),
         }
-
         if pred_type is None:
             attributes['var_type'] = 'prediction_output'
         elif isinstance(pred_type, int):
@@ -2416,8 +2416,8 @@ class MLRModel():
                 new_fit_kwargs[param_name] = param_val
             else:
                 raise ValueError(
-                    f"Got invalid pipeline step '{step}' as parameter of "
-                    f"fit() function")
+                    f"Got invalid pipeline step '{step}' in fit parameter "
+                    f"'{param_name}'")
 
         # Add sample weights if possible
         allowed_fit_kwargs = getfullargspec(self._CLF_TYPE.fit).args

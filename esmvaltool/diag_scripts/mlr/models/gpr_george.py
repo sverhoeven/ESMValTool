@@ -164,30 +164,36 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
     def set_params(self, **params):
         """Set the parameters of this estimator."""
+        logger.debug("Updating %s with parameters %s", self.__class__, params)
         valid_gp_params = self._gp.get_parameter_names(include_frozen=True)
         gp_params = {}
-        remaining_params = {}
+        class_params = {}
         for (key, val) in params.items():
             new_key = self._str_to_george(key)
             if new_key in valid_gp_params:
                 gp_params[new_key] = val
             else:
-                remaining_params[key] = val
+                class_params[key] = val
 
         # Initialize new GP object and update parameters of this class
-        if remaining_params:
-            logger.debug("Updating %s with parameters %s", self.__class__,
-                         remaining_params)
-            super().set_params(**remaining_params)
+        if class_params:
+            logger.debug("Updating %s with new class parameters %s",
+                         self.__class__, class_params)
+            super().set_params(**class_params)
             self._init_gp()
 
         # Update parameters of GP member
         valid_gp_params = self._gp.get_parameter_names(include_frozen=True)
+        logger.debug(
+            "Updating %s with remaining parameters for GP member %s",
+            self.__class__,
+            {self._str_to_sklearn(k): v
+             for (k, v) in gp_params.items()})
         for (key, val) in gp_params.items():
             if key not in valid_gp_params:
                 raise ValueError(
                     f"After updating the GP member with new parameters "
-                    f"{remaining_params}, '{self._str_to_sklearn(key)}' is "
+                    f"{class_params}, '{self._str_to_sklearn(key)}' is "
                     f"not a valid parameter of it anymore")
             self._gp.set_parameter(key, val)
             logger.debug("Set parameter '%s' of george GP member to '%s'",
@@ -217,7 +223,7 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
                                                    initial_theta,
                                                    bounds=bounds)
         else:
-            raise ValueError(f"Unknown optimizer {self.optimizer}")
+            raise ValueError(f"Unknown optimizer '{self.optimizer}'")
         return (theta_opt, func_min)
 
     def _init_gp(self):

@@ -343,9 +343,10 @@ def _get_covariance_dataset(error_datasets, ref_cube):
             "possible", explanation)
         return (None, other_datasets)
     if len(cov_datasets) > 1:
+        filenames = [d['filename'] for d in cov_datasets]
         raise ValueError(
             f"Expected at most one covariance dataset ({explanation}), got "
-            f"{len(cov_datasets):d}:\n{pformat(cov_datasets)}")
+            f"{len(cov_datasets):d}:\n{pformat(filenames)}")
 
     # Check shape
     cov_cube = iris.load_cube(cov_datasets[0]['filename'])
@@ -460,10 +461,11 @@ def split_datasets(datasets, tag, pred_name):
     # Mean/reference dataset
     mean = grouped_data.get('prediction_output', [])
     if len(mean) != 1:
+        filenames = [d['filename'] for d in mean]
         raise ValueError(
             f"Expected exactly one 'prediction_output' dataset for tag "
             f"'{tag}' of prediction '{pred_name}', got {len(mean):d}:\n"
-            f"{pformat(mean)}")
+            f"{pformat(filenames)}")
     logger.info(
         "Found mean prediction dataset ('prediction_output') for tag '%s' of "
         "prediction '%s': %s (used as reference)", tag, pred_name,
@@ -492,10 +494,11 @@ def split_datasets(datasets, tag, pred_name):
                 "'%s' found, real error estimation using estimated covariance "
                 "structure not possible", tag, pred_name)
         elif len(cov_estimation) > 1:
+            filenames = [d['filename'] for d in cov_estimation]
             raise ValueError(
                 f"Expected at most one 'prediction_input' dataset for tag "
                 f"'{tag}' of prediction '{pred_name}', got "
-                f"{len(cov_estimation):d}:\n{pformat(cov_estimation)}")
+                f"{len(cov_estimation):d}:\n{pformat(filenames)}")
         else:
             logger.info(
                 "Found 'prediction_input' dataset for covariance structure "

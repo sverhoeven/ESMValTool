@@ -89,9 +89,11 @@ class AdvancedPipeline(Pipeline):
         """Only perform ``transform`` steps of target regressor."""
         reg = self.steps[-1][1]
         if not hasattr(reg, 'transformer_'):
-            raise ValueError(
-                "Transforming target not possible, final regressor step does "
-                "not have necessary 'transformer_' attribute")
+            raise AttributeError(
+                f"Transforming target not possible, final regressor step does "
+                f"not have necessary 'transformer_' attribute (e.g. final "
+                f"regressor is not a {TransformedTargetRegressor} or is not "
+                f"fitted yet)")
         if y_data.ndim == 1:
             y_data = y_data.reshape(-1, 1)
         y_trans = reg.transformer_.transform(y_data)
@@ -242,10 +244,9 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
 
         # FIXME
         if transformer_kwargs:
-            logger.warning(
-                "Keyword arguments %s for transformer of %s are not "
-                "supported at the moment", transformer_kwargs,
-                str(self.__class__))
+            raise NotImplementedError(
+                f"Keyword arguments {transformer_kwargs} for transformer of "
+                f"{self.__class__} are not supported at the moment")
         return (transformer_kwargs, regressor_kwargs)
 
 
@@ -726,7 +727,7 @@ def write_cube(cube, attributes):
 
     """
     if not datasets_have_mlr_attributes([attributes], log_level='error'):
-        raise IOError(
+        raise ValueError(
             f"Cannot write cube {cube.summary(shorten=True)} using attributes "
-            f"attributes")
+            f"{attributes}")
     io.metadata_to_netcdf(cube, attributes)
