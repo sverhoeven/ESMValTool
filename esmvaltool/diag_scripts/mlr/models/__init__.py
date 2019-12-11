@@ -2396,9 +2396,9 @@ class MLRModel():
 
         # Get new path
         suffix = '' if pred_type is None else f'_{pred_type}'
-        pred_str = f'_{self._get_name(pred_name)}'
+        pred_str = f'_for_prediction_{self._get_name(pred_name)}'
         sub_str = ('' if self._cfg['sub_dir'] == '' else
-                   f"_for_{self._cfg['sub_dir']}")
+                   f"_of_group_{self._cfg['sub_dir']}")
         filename = (f'{self.mlr_model_type}_{self.label}_prediction{suffix}'
                     f'{pred_str}{sub_str}.nc')
         new_path = os.path.join(self._cfg['mlr_work_dir'], filename)

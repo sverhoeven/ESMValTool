@@ -333,12 +333,6 @@ diagnostics:
         pseudo_reality: ['dataset']
         save_mlr_model_error: false
         save_propagated_errors: false
-      postprocess:
-        <<: *postprocess
-        ancestors: [
-          'diag_gbrt_gpp_pseudo_reality/gbrt',
-          'diag_mlr_input_gpp/monthly_clim',
-        ]
 
   diag_gbrt_1d_gpp:
     description: Use GBRT model (with single predictor) to predict GPP.
@@ -361,12 +355,6 @@ diagnostics:
         <<: *gbrt_pr
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
         mlr_model_name: 'GBRT-1D'
-      postprocess:
-        <<: *postprocess
-        ancestors: [
-          'diag_gbrt_1d_gpp_pseudo_reality/gbrt',
-          'diag_mlr_input_gpp/monthly_clim',
-        ]
 
   diag_lasso_gpp:
     description: Use Lasso model to predict GPP.
@@ -404,12 +392,6 @@ diagnostics:
         pseudo_reality: ['dataset']
         save_mlr_model_error: false
         save_propagated_errors: false
-      postprocess:
-        <<: *postprocess
-        ancestors: [
-          'diag_lasso_gpp_pseudo_reality/lasso',
-          'diag_mlr_input_gpp/monthly_clim',
-        ]
 
   diag_lasso_1d_gpp:
     description: Use Lasso model (with single predictor) to predict GPP.
@@ -432,12 +414,6 @@ diagnostics:
         <<: *lasso_pr
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
         mlr_model_name: 'Lasso-1D'
-      postprocess:
-        <<: *postprocess
-        ancestors: [
-          'diag_lasso_1d_gpp_pseudo_reality/lasso',
-          'diag_mlr_input_gpp/monthly_clim',
-        ]
 
   diag_mmm_gpp:
     description: Use simple multi-model mean to predict GPP.
@@ -461,12 +437,6 @@ diagnostics:
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
         mlr_model_name: MMM
         pseudo_reality: ['dataset']
-      postprocess:
-        <<: *postprocess
-        ancestors: [
-          'diag_mmm_gpp_pseudo_reality/mmm',
-          'diag_mlr_input_gpp/monthly_clim',
-        ]
 
   diag_plot_cmip5_gbrt:
     description: Create CMIP5 vs. GBRT plots.

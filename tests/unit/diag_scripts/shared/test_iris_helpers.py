@@ -70,7 +70,7 @@ CUBE_DUP = iris.cube.Cube(
     var_name='a',
     attributes={'1': '2'},
     aux_coords_and_dims=[(DUP_COORD, 0)])
-CUBES_TO_TRANSFORM = [
+TEST_TRANSFORM_COORD_TO_REF = [
     (DIM_COORD_1, [CUBE_1, CUBE_1], [CUBE_2, CUBE_2]),
     (DIM_COORD_1, [CUBE_SMALL, CUBE_1], [CUBE_3, CUBE_2]),
     (DIM_COORD_1, [CUBE_WRONG, CUBE_1], ValueError),
@@ -106,7 +106,7 @@ CUBES_TO_TRANSFORM = [
 ]
 
 
-@pytest.mark.parametrize('ref_coord,cubes,output', CUBES_TO_TRANSFORM)
+@pytest.mark.parametrize('ref_coord,cubes,output', TEST_TRANSFORM_COORD_TO_REF)
 def test_transform_coord_to_ref(ref_coord, cubes, output):
     """Test transforming coordinate to reference."""
     # ValueErrors
@@ -132,7 +132,7 @@ CUBE_7 = iris.cube.Cube(
     np.ma.arange(3.0) - 100.0,
     var_name='a',
     dim_coords_and_dims=[(DIM_COORD_3, 0)])
-CUBES_TO_CHECK_COORD = [
+TEST_CHECK_COORDINATE = [
     ([CUBE_1, CUBE_1, CUBE_1], DIM_COORD_1.points),
     ([CUBE_1], DIM_COORD_1.points),
     ([CUBE_1, CUBE_6], iris.exceptions.CoordinateNotFoundError),
@@ -140,7 +140,7 @@ CUBES_TO_CHECK_COORD = [
 ]
 
 
-@pytest.mark.parametrize('cubes,output', CUBES_TO_CHECK_COORD)
+@pytest.mark.parametrize('cubes,output', TEST_CHECK_COORDINATE)
 def test_check_coordinate(cubes, output):
     """Test checking of coordinates."""
     if isinstance(output, type):
@@ -154,7 +154,7 @@ def test_check_coordinate(cubes, output):
 DICT_1 = {'a': 'b', 'c': 'd'}
 DICT_2 = {'short_name': 'x'}
 DICT_3 = {'var_name': 'x'}
-DICTS_TO_CONVERT = [
+TEST_CONVERT_TO_IRIS = [
     (DICT_1, DICT_1),
     (DICT_2, DICT_3),
     (DICT_3, DICT_3),
@@ -183,25 +183,16 @@ DICTS_TO_CONVERT = [
 ]
 
 
-@pytest.mark.parametrize('dict_in,dict_out', DICTS_TO_CONVERT)
-@mock.patch.object(ih, 'logger', autospec=True)
-def test_convert_to_iris(mock_logger, dict_in, dict_out):
+@pytest.mark.parametrize('dict_in,dict_out', TEST_CONVERT_TO_IRIS)
+def test_convert_to_iris(dict_in, dict_out):
     """Test converting metadata dictionary checking of coordinates."""
+    if 'short_name' in dict_in and 'var_name' in dict_in:
+        with pytest.raises(KeyError):
+            ih.convert_to_iris(dict_in)
+        return
     new_dict = ih.convert_to_iris(dict_in)
     assert new_dict == dict_out
     assert new_dict is not dict_in
-    if 'short_name' in dict_in and 'var_name' in dict_in:
-        mock_logger.warning.assert_called()
-    else:
-        mock_logger.warning.assert_not_called()
-
-
-PROJECT_CONSTRAINTS = [
-    (['ONE'], False, [2.0, 6.0], ['a', 'e']),
-    (['ONE'], True, [3.0, 4.0, 5.0], ['b', 'c', 'd']),
-    (['ONE', 'THREE'], False, [2.0, 4.0, 6.0], ['a', 'c', 'e']),
-    (['ONE', 'THREE'], True, [3.0, 5.0], ['b', 'd']),
-]
 
 
 @mock.patch('esmvaltool.diag_scripts.shared.iris_helpers.iris.load_cube',
@@ -228,31 +219,31 @@ def test_get_mean_cube(mock_load_cube):
     assert result == cube_out
 
 
-@pytest.mark.parametrize('constr,negate,data,points', PROJECT_CONSTRAINTS)
-@mock.patch.object(ih, 'logger', autospec=True)
-def test_iris_project_constraint(mock_logger, constr, negate, data, points):
+TEST_IRIS_PROJECT_CONSTRAINT = [
+    (['ONE'], False, [2.0, 6.0], ['a', 'e']),
+    (['ONE'], True, [3.0, 4.0, 5.0], ['b', 'c', 'd']),
+    (['ONE', 'THREE'], False, [2.0, 4.0, 6.0], ['a', 'c', 'e']),
+    (['ONE', 'THREE'], True, [3.0, 5.0], ['b', 'd']),
+]
+
+
+@pytest.mark.parametrize('constr,negate,data,points',
+                         TEST_IRIS_PROJECT_CONSTRAINT)
+def test_iris_project_constraint(constr, negate, data, points):
     """Test iris constraint for projects."""
-    cfg = {
-        'input_data': {
-            'p1': {
-                'project': 'ONE',
-                'dataset': 'a',
-            },
-            'p2': {
-                'project': 'TWO',
-                'dataset': 'b',
-            },
-            'p3': {
-                'project': 'THREE',
-                'dataset': 'c',
-            },
-            'p4': {
-                'project': 'ONE',
-                'dataset': 'e',
-            },
-        },
-        'does_not_matter': 'oh no',
-    }
+    input_data = [{
+        'project': 'ONE',
+        'dataset': 'a',
+    }, {
+        'project': 'TWO',
+        'dataset': 'b',
+    }, {
+        'project': 'THREE',
+        'dataset': 'c',
+    }, {
+        'project': 'ONE',
+        'dataset': 'e',
+    }]
     dataset_coord = iris.coords.AuxCoord(['a', 'b', 'c', 'd', 'e'],
                                          long_name='dataset')
     cube = iris.cube.Cube(
@@ -261,14 +252,8 @@ def test_iris_project_constraint(mock_logger, constr, negate, data, points):
         data,
         aux_coords_and_dims=[(iris.coords.AuxCoord(
             points, long_name='dataset'), 0)])
-    constraint = ih.iris_project_constraint(constr, cfg, negate=negate)
+    constraint = ih.iris_project_constraint(constr, input_data, negate=negate)
     assert cube.extract(constraint) == new_cube
-    mock_logger.warning.assert_not_called()
-    mock_logger.reset_mock()
-    cfg['input_data']['p5'] = {'project': 'ONE', 'ohhh': 1}
-    constraint = ih.iris_project_constraint(constr, cfg, negate=negate)
-    assert cube.extract(constraint) == new_cube
-    mock_logger.warning.assert_called_once()
 
 
 ATTRS = [
@@ -334,7 +319,7 @@ CUBE_DAT_4 = iris.cube.Cube(
     aux_coords_and_dims=[(DATSET_COORD_4, 0)],
     attributes=ATTRS[1],
     **VAR_ATTRS[1])
-CUBES_TO_INTERSECT = [
+TEST_INTERSECT_DATASET_COORDS = [
     ([CUBE_DAT_1, CUBE_1], iris.exceptions.CoordinateNotFoundError),
     ([CUBE_DAT_1, CUBE_DAT_4], ValueError),
     ([CUBE_DAT_1, CUBE_DAT_3], ValueError),
@@ -345,7 +330,7 @@ CUBES_TO_INTERSECT = [
 ]
 
 
-@pytest.mark.parametrize('cubes,output', CUBES_TO_INTERSECT)
+@pytest.mark.parametrize('cubes,output', TEST_INTERSECT_DATASET_COORDS)
 def test_intersect_dataset_coords(cubes, output):
     """Test intersecting dataset coordinates."""
     # ValueErrors
@@ -389,7 +374,7 @@ CUBE_8.coord(LONG_NAME).points = np.array([100.0, 150.0, 160.0])
 CUBE_8.coord(LONG_NAME).rename('time')
 CUBE_WRONG_COORD = CUBE_WRONG.copy()
 CUBE_WRONG_COORD.coord(LONG_NAME).rename('wrooong')
-CUBES_TO_UNIFY = [
+TEST_UNIFY_1D_CUBES = [
     ([CUBE_1, iris.cube.Cube([[1.0]])], LONG_NAME, ValueError),
     ([CUBE_1, iris.cube.Cube(0.0)], LONG_NAME, ValueError),
     (
@@ -408,7 +393,7 @@ CUBES_TO_UNIFY = [
 ]
 
 
-@pytest.mark.parametrize('cubes,coord_name,output', CUBES_TO_UNIFY)
+@pytest.mark.parametrize('cubes,coord_name,output', TEST_UNIFY_1D_CUBES)
 @mock.patch.object(ih, '_transform_coord_to_ref', autospec=True)
 @mock.patch(
     'esmvaltool.diag_scripts.shared.io.iris.util.unify_time_units',

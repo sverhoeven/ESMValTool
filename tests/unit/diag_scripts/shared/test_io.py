@@ -48,7 +48,7 @@ CFG = {
     'I am not used!',
 }
 ROOT_DIR = '/root/to/something'
-PATTERNS_FOR_ALL_ANCESTORS = [
+TEST_GET_ALL_ANCESTOR_FILES = [
     (None, [
         os.path.join(ROOT_DIR, 'test.nc'),
         os.path.join(ROOT_DIR, 'egg.yml'),
@@ -92,7 +92,7 @@ PATTERNS_FOR_ALL_ANCESTORS = [
 ]
 
 
-@pytest.mark.parametrize('pattern,output', PATTERNS_FOR_ALL_ANCESTORS)
+@pytest.mark.parametrize('pattern,output', TEST_GET_ALL_ANCESTOR_FILES)
 @mock.patch('esmvaltool.diag_scripts.shared.io.os.walk', autospec=True)
 def test_get_all_ancestor_files(mock_walk, pattern, output):
     """Test retrieving of ancestor files."""
@@ -112,14 +112,14 @@ def test_get_all_ancestor_files(mock_walk, pattern, output):
     assert files == output
 
 
-PATTERNS_FOR_SINGLE_ANCESTOR = [
+TEST_GET_ANCESTOR_FILE = [
     ([], ValueError),
     (['I/am/a/cool/file.nc'], 'I/am/a/cool/file.nc'),
     (['I/am/a/cool/file.nc', 'oh/no/file_2.nc'], ValueError),
 ]
 
 
-@pytest.mark.parametrize('files,output', PATTERNS_FOR_SINGLE_ANCESTOR)
+@pytest.mark.parametrize('files,output', TEST_GET_ANCESTOR_FILE)
 @mock.patch.object(io, 'get_all_ancestor_files', autospec=True)
 def test_get_ancestor_file(mock_get_all_ancestors, files, output):
     """Test retrieving of single ancestor file."""
@@ -132,6 +132,7 @@ def test_get_ancestor_file(mock_get_all_ancestors, files, output):
     assert returned_file == output
 
 
+INVALID_STANDARD_NAME = 'I_am_an_invalid_standard_name'
 LONG_NAME = 'Loooong name'
 SHORT_NAME = 'var'
 STANDARD_NAME = 'air_temperature'
@@ -274,17 +275,21 @@ ATTRS_OUT = [
         'filename': 'path/to/model1.nc',
         'project': 'CMIP42',
         'bool': 'True',
+        'invalid_standard_name': INVALID_STANDARD_NAME,
+        'attr': 'test',
     },
     {
         'dataset': 'b',
         'filename': 'path/to/model2.nc',
         'project': 'CMIP42',
+        'attr': 'test',
     },
     {},
     {
         'dataset': 'd',
         'filename': 'path/to/model4.nc',
         'project': 'CMIP42',
+        'attr': 'test',
     },
 ]
 VAR_ATTRS_IN = [
@@ -336,42 +341,35 @@ CUBES_IN = [
     iris.cube.Cube(0, attributes=ADD_ATTRS, **ADD_VAR_ATTRS) for _ in range(4)
 ]
 OUTPUT = [
-    iris.cube.Cube(0,
-                   attributes={
-                       **ADD_ATTRS,
-                       **ATTRS_OUT[idx]
-                   },
-                   **{
-                       **ADD_VAR_ATTRS,
-                       **VAR_ATTRS_OUT[idx]
-                   }) for idx in range(4)
+    iris.cube.Cube(0, attributes=ATTRS_OUT[idx], **VAR_ATTRS_OUT[idx]) for idx
+    in range(4)
 ]
 OUTPUT[2] = ValueError
-METADATA_TO_NETDCF = zip(ATTRS_IN, VAR_ATTRS_IN, CUBES_IN, OUTPUT)
+for var_attr in VAR_ATTRS_IN:
+    var_attr['short_name'] = var_attr.pop('var_name')
+ATTRS_IN[0]['standard_name'] = INVALID_STANDARD_NAME
+METADATA = [{**a, **VAR_ATTRS_IN[idx]} for (idx, a) in enumerate(ATTRS_IN)]
+TEST_METADATA_TO_NETDCF = zip(METADATA, CUBES_IN, OUTPUT)
 
 
-@pytest.mark.parametrize('attrs,var_attrs,cube,output', METADATA_TO_NETDCF)
+@pytest.mark.parametrize('metadata,cube,output', TEST_METADATA_TO_NETDCF)
 @mock.patch.object(io, 'iris_save', autospec=True)
 @mock.patch.object(io, 'logger', autospec=True)
-def test_metadata_to_netcdf(mock_logger, mock_save, attrs, var_attrs, cube,
-                            output):
+def test_metadata_to_netcdf(mock_logger, mock_save, metadata, cube, output):
     """Test metadata to cube."""
-    wrong_name = 'I_am_an_invalid_standard_name'
-    metadata = deepcopy({**attrs, **var_attrs})
-    metadata['short_name'] = metadata.pop('var_name')
-    if metadata['dataset'] == 'a':
-        metadata['standard_name'] = wrong_name
     if isinstance(output, type):
         with pytest.raises(output):
             io.metadata_to_netcdf(cube, metadata)
         assert not mock_save.called
         return
     io.metadata_to_netcdf(cube, metadata)
-    if metadata.get('standard_name') == wrong_name:
+    if metadata.get('standard_name') == INVALID_STANDARD_NAME:
         mock_logger.warning.assert_called()
+        assert 'invalid_standard_name' in output.attributes
     else:
         mock_logger.warning.assert_not_called()
-    save_args = (output, attrs['filename'])
+        assert 'invalid_standard_name' not in output.attributes
+    save_args = (output, metadata['filename'])
     assert mock_save.call_args_list == [mock.call(*save_args)]
 
 
@@ -401,10 +399,10 @@ ATTRS_NEW = [
         'answer': 42,
     },
 ]
-ATTRIBUTES_FOR_1D_CUBE = zip(VAR_ATTRS_NEW, ATTRS_NEW)
+TEST_SAVE_1D_DATA = zip(VAR_ATTRS_NEW, ATTRS_NEW)
 
 
-@pytest.mark.parametrize('var_attrs,attrs', ATTRIBUTES_FOR_1D_CUBE)
+@pytest.mark.parametrize('var_attrs,attrs', TEST_SAVE_1D_DATA)
 @mock.patch.object(io, 'iris_save', autospec=True)
 @mock.patch.object(io, 'logger', autospec=True)
 def test_save_1d_data(mock_logger, mock_save, var_attrs, attrs):
@@ -450,13 +448,20 @@ def test_save_1d_data(mock_logger, mock_save, var_attrs, attrs):
     output_dims = [(dataset_dim, 0), (dim_1, 1)]
 
     # Without cubes
-    io.save_1d_data({}, PATH, coord_name, var_attrs, attrs)
-    mock_logger.warning.assert_called()
+    with pytest.raises(ValueError):
+        io.save_1d_data({}, PATH, coord_name, var_attrs, attrs)
+    mock_logger.error.assert_not_called()
     assert not mock_save.called
     mock_logger.reset_mock()
     mock_save.reset_mock()
 
     # With cubes
+    if 'units' not in var_attrs:
+        with pytest.raises(ValueError):
+            io.save_1d_data(cubes, PATH, coord_name, var_attrs, attrs)
+        mock_logger.error.assert_called_once()
+        assert not mock_save.called
+        return
     io.save_1d_data(cubes, PATH, coord_name, var_attrs, attrs)
     iris_var_attrs = deepcopy(var_attrs)
     iris_var_attrs['var_name'] = iris_var_attrs.pop('short_name')
@@ -464,12 +469,8 @@ def test_save_1d_data(mock_logger, mock_save, var_attrs, attrs):
                               aux_coords_and_dims=output_dims,
                               attributes=attrs,
                               **iris_var_attrs)
-    if 'units' not in var_attrs:
-        mock_logger.warning.assert_called()
-        assert not mock_save.called
-    else:
-        mock_logger.warning.assert_not_called()
-        assert mock_save.call_args_list == [mock.call(new_cube, PATH)]
+    mock_logger.error.assert_not_called()
+    assert mock_save.call_args_list == [mock.call(new_cube, PATH)]
 
 
 CUBELIST = [
@@ -508,11 +509,10 @@ AUX_COORDS = [
     None,
     iris.coords.AuxCoord([2, 3, 5], long_name='Primes!'),
 ]
-ATTRIBUTES_FOR_SCALAR_CUBE = zip(VAR_ATTRS_NEW, ATTRS_NEW, AUX_COORDS)
+TEST_SAVE_SCALAR_DATA = zip(VAR_ATTRS_NEW, ATTRS_NEW, AUX_COORDS)
 
 
-@pytest.mark.parametrize('var_attrs,attrs,aux_coord',
-                         ATTRIBUTES_FOR_SCALAR_CUBE)
+@pytest.mark.parametrize('var_attrs,attrs,aux_coord', TEST_SAVE_SCALAR_DATA)
 @mock.patch.object(io, 'iris_save', autospec=True)
 @mock.patch.object(io, 'logger', autospec=True)
 def test_save_scalar_data(mock_logger, mock_save, var_attrs, attrs, aux_coord):
@@ -526,13 +526,20 @@ def test_save_scalar_data(mock_logger, mock_save, var_attrs, attrs, aux_coord):
     output_data = np.ma.masked_invalid([np.nan, 1.0, 3.14])
 
     # Without data
-    io.save_scalar_data({}, PATH, var_attrs)
-    mock_logger.warning.assert_called()
+    with pytest.raises(ValueError):
+        io.save_scalar_data({}, PATH, var_attrs)
+    mock_logger.error.assert_not_called()
     assert not mock_save.called
     mock_logger.reset_mock()
     mock_save.reset_mock()
 
     # With data
+    if 'units' not in var_attrs:
+        with pytest.raises(ValueError):
+            io.save_scalar_data(data, PATH, var_attrs, aux_coord, attrs)
+        mock_logger.error.assert_called_once()
+        assert not mock_save.called
+        return
     io.save_scalar_data(data, PATH, var_attrs, aux_coord, attrs)
     iris_var_attrs = deepcopy(var_attrs)
     iris_var_attrs['var_name'] = iris_var_attrs.pop('short_name')
@@ -542,9 +549,5 @@ def test_save_scalar_data(mock_logger, mock_save, var_attrs, attrs, aux_coord):
                               **iris_var_attrs)
     if aux_coord is not None:
         new_cube.add_aux_coord(aux_coord, 0)
-    if 'units' not in var_attrs:
-        mock_logger.warning.assert_called()
-        assert not mock_save.called
-    else:
-        mock_logger.warning.assert_not_called()
-        assert mock_save.call_args_list == [mock.call(new_cube, PATH)]
+    mock_logger.error.assert_not_called()
+    assert mock_save.call_args_list == [mock.call(new_cube, PATH)]

@@ -69,7 +69,7 @@ def check_coordinate(cubes, coord_name):
     Raises
     ------
     iris.exceptions.CoordinateNotFoundError
-        Coordinate `coord_name` is not a coordinate of one of the cubes.
+        Coordinate ``coord_name`` is not a coordinate of one of the cubes.
     ValueError
         Given coordinate differs for the input cubes.
 
@@ -94,7 +94,7 @@ def check_coordinate(cubes, coord_name):
 
 
 def convert_to_iris(dict_):
-    """Change all appearances of `short_name` to `var_name`.
+    """Change all appearances of ``short_name`` to ``var_name``.
 
     Parameters
     ----------
@@ -106,13 +106,19 @@ def convert_to_iris(dict_):
     dict
         Converted dictionary.
 
+    Raises
+    ------
+    KeyError
+        :obj:`dict` contains keys``'short_name'`` **and** ``'var_name'``.
+
     """
     dict_ = dict(dict_)
     if 'short_name' in dict_:
         if 'var_name' in dict_:
-            logger.warning(
-                "Dictionary already contains 'var_name', replacing old value "
-                "'%s' by '%s'", dict_['var_name'], dict_['short_name'])
+            raise KeyError(
+                f"Cannot replace 'short_name' by 'var_name', dictionary "
+                f"already contains 'var_name' (short_name = "
+                f"'{dict_['short_name']}', var_name = '{dict_['var_name']}')")
         dict_['var_name'] = dict_.pop('short_name')
     return dict_
 
@@ -123,7 +129,7 @@ def get_mean_cube(datasets):
     Parameters
     ----------
     datasets : list of dict
-        List of datasets (given as metadata `dict`).
+        List of datasets (given as metadata :obj:`dict`).
 
     Returns
     -------
@@ -144,34 +150,31 @@ def get_mean_cube(datasets):
     return mean_cube
 
 
-def iris_project_constraint(projects, cfg, negate=False):
-    """Create `iris.Constraint` to select specific projects from data.
+def iris_project_constraint(projects, input_data, negate=False):
+    """Create :class:`iris.Constraint` to select specific projects from data.
 
     Parameters
     ----------
     projects : list of str
         Projects to be selected.
-    cfg : dict
-        Diagnostic script configuration.
+    input_data : list of dict
+        List of dataset metadata used to extract all relevant datasets
+        belonging to given ``projects``.
     negate : bool, optional (default: False)
-        Negate constraint (`False`: select all elements that fit `projects`,
-        `True`: select all elements that do NOT fit `projects`).
+        Negate constraint (``False``: select all elements that fit
+        ``projects``, `True``: select all elements that do **not** fit
+        ``projects``).
 
     Returns
     -------
     iris.Constraint
-        constraint for coordinate `dataset`.
+        constraint for coordinate ``dataset``.
 
     """
     datasets = []
-    grouped_data = group_metadata(cfg['input_data'].values(), 'project')
+    grouped_data = group_metadata(input_data, 'project')
     for project in projects:
-        for data in grouped_data.get(project, {}):
-            if 'dataset' not in data:
-                logger.warning("Dataset %s does not contain key 'dataset'",
-                               data)
-            else:
-                datasets.append(data['dataset'])
+        datasets.extend([d['dataset'] for d in grouped_data.get(project, [])])
 
     def project_constraint(cell):
         """Constraint function."""
@@ -201,9 +204,9 @@ def intersect_dataset_coordinates(cubes):
     Raises
     ------
     iris.exceptions.CoordinateNotFoundError
-        Coordinate `dataset` is not a coordinate of one of the cubes.
+        Coordinate ``dataset`` is not a coordinate of one of the cubes.
     ValueError
-        At least one of the cubes contains a `dataset` coordinate with
+        At least one of the cubes contains a ``dataset`` coordinate with
         duplicate elements or the cubes do not share common elements.
 
     """
@@ -243,14 +246,14 @@ def intersect_dataset_coordinates(cubes):
 
 
 def preprocess_cube_before_merging(cube, cube_label):
-    """Preprocess single :mod:`iris.cube.Cube` in order to merge it later.
+    """Preprocess single :class:`iris.cube.Cube` in order to merge it later.
 
     Parameters
     ----------
     cube : iris.cube.Cube
         Cube to be pre-processed.
     cube_label : str
-        Label for the new scalar coordinate `cube_label`.
+        Label for the new scalar coordinate ``cube_label``.
 
     """
     cube.attributes = {}
@@ -319,17 +322,17 @@ def unify_1d_cubes(cubes, coord_name):
 
 
 def var_name_constraint(var_name):
-    """:mod:`iris.Constraint` using `var_name` of an :mod:`iris.cube.Cube`.
+    """:class:`iris.Constraint` using ``var_name`` of an :mod:`iris.cube.Cube`.
 
     Parameters
     ----------
     var_name : str
-        Short name (`var_name` in :mod:`iris`) for the constraint.
+        Short name (``var_name`` in :mod:`iris`) for the constraint.
 
     Returns
     -------
     iris.Constraint
-        Constraint to select only cubes with correct `var_name`.
+        Constraint to select only cubes with correct ``var_name``.
 
     """
     return iris.Constraint(cube_func=lambda c: c.var_name == var_name)

@@ -76,6 +76,7 @@ def get_dataset_style(dataset, style_file=None):
     """Retrieve the style information for the given dataset."""
     if style_file is None:
         style_file = 'cmip5.yml'
+        logger.debug("Using default style file {style_file}")
     if not style_file.endswith('.yml'):
         style_file += '.yml'
     base_dir = os.path.dirname(os.path.realpath(__file__))
@@ -87,21 +88,20 @@ def get_dataset_style(dataset, style_file=None):
         with open(filepath, 'r') as infile:
             style = yaml.safe_load(infile)
     else:
-        raise IOError("Invalid input: could not open style file "
-                      "'{}'".format(filepath))
+        raise FileNotFoundError(f"Cannot open style file {filepath}")
     logger.debug("Using style file %s for dataset %s", filepath, dataset)
 
     # Check if file has entry for unknown dataset
     default_dataset = 'default'
     options = ['color', 'dash', 'thick', 'mark', 'avgstd', 'facecolor']
     if default_dataset not in style:
-        raise IOError("Style file '{}' does not contain default information "
-                      "for unknown datasets".format(filepath))
+        raise ValueError(f"Style file {filepath} does not contain section "
+                         f"[{default_dataset}] (used for unknown datasets)")
     for option in options:
         if option not in style[default_dataset]:
-            raise IOError("Style file '{}' does not contain '{}' default "
-                          "information for unknown "
-                          "datasets".format(filepath, option))
+            raise ValueError(
+                f"Style file {filepath} does not contain default information "
+                f"for '{option}' (under section [{default_dataset}])")
 
     # Check if dataset is available
     if not style.get(dataset):
@@ -113,11 +113,12 @@ def get_dataset_style(dataset, style_file=None):
     # Get compulsory information
     for option in options:
         if option not in style[dataset]:
+            default_option = style[default_dataset][option]
             logger.warning(
-                "No style information '%s' found for dataset "
-                "'%s', using default value for unknown datasets", option,
-                dataset)
-            style[dataset].update({option: style[default_dataset][option]})
+                "No style information '%s' found for dataset '%s', using "
+                "default value '%s' for unknown datasets", option, dataset,
+                default_option)
+            style[dataset][option] = default_option
 
     return style[dataset]
 
@@ -151,7 +152,13 @@ def global_contourf(cube,
     Returns
     -------
     matplotlib.contour.QuadContourSet
-        Plot object. If plotting was not successful, returns `None`.
+        Plot object.
+
+    Raises
+    ------
+    iris.exceptions.CoordinateNotFoundError
+        :class:`iris.cube.Cube` does not contain necessary coordinates
+        ``'latitude'`` and ``'longitude'``.
 
     """
     logger.debug("Plotting global filled contour plot for cube %s",
@@ -162,11 +169,10 @@ def global_contourf(cube,
     # Check if cubes has desired coordinates and calculate mean over others
     for coord_name in required_coords:
         if coord_name not in coords:
-            logger.warning(
-                "Cube %s does not contain necessary coordinate '%s' for "
-                "plotting global filled contour plot",
-                cube.summary(shorten=True), coord_name)
-            return None
+            raise iris.exceptions.CoordinateNotFoundError(
+                f"Cube {cube.summary(shorten=True)} does not contain "
+                f"necessary coordinate '{coord_name}' for plotting global "
+                f"filled contour plot")
         coords.remove(coord_name)
     if coords:
         logger.debug("Collapsing coordinates %s by calculating mean", coords)

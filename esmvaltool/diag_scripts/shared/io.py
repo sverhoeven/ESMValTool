@@ -178,7 +178,10 @@ def metadata_to_netcdf(cube, metadata):
         try:
             cube.standard_name = standard_name
         except ValueError:
-            logger.warning("Got invalid standard_name '%s'", standard_name)
+            logger.warning(
+                "Got invalid standard_name '%s', setting it to 'None'",
+                standard_name)
+            cube.attributes['invalid_standard_name'] = standard_name
     for (attr, val) in metadata.items():
         if isinstance(val, bool):
             metadata[attr] = str(val)
@@ -234,15 +237,20 @@ def save_1d_data(cubes, path, coord_name, var_attrs, attributes=None):
     attributes : dict, optional
         Additional attributes for the cube.
 
+    Raises
+    ------
+    ValueError
+        Empty list of cubes given or necessary variable attributes are missing.
+
     """
     var_attrs = dict(var_attrs)
     if not cubes:
-        logger.warning("Cannot save 1D data, no cubes given")
-        return
+        raise ValueError("Cannot save 1D data, no cubes given")
     if not _has_necessary_attributes(
-            [var_attrs], only_var_attrs=True, log_level='warning'):
-        logger.warning("Cannot write file '%s'", path)
-        return
+            [var_attrs], only_var_attrs=True, log_level='error'):
+        raise ValueError(
+            f"Cannot save 1D data to {path} because necessary variable "
+            f"attributes are missing")
     datasets = list(cubes.keys())
     cube_list = iris.cube.CubeList(list(cubes.values()))
     cube_list = unify_1d_cubes(cube_list, coord_name)
@@ -285,15 +293,20 @@ def save_scalar_data(data, path, var_attrs, aux_coord=None, attributes=None):
     attributes : dict, optional
         Additional attributes for the cube.
 
+    Raises
+    ------
+    ValueError
+        No data given or necessary variable attributes are missing.
+
     """
     var_attrs = dict(var_attrs)
     if not data:
-        logger.warning("Cannot save scalar data, no data given")
-        return
+        raise ValueError("Cannot save scalar data, no data given")
     if not _has_necessary_attributes(
-            [var_attrs], only_var_attrs=True, log_level='warning'):
-        logger.warning("Cannot write file '%s'", path)
-        return
+            [var_attrs], only_var_attrs=True, log_level='error'):
+        raise ValueError(
+            f"Cannot save scalar data to {path} because necessary variable "
+            f"attributes are missing")
     dataset_coord = iris.coords.AuxCoord(list(data), long_name='dataset')
     if attributes is None:
         attributes = {}
