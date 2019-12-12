@@ -10,6 +10,17 @@ from esmvaltool.diag_scripts.mlr.models import MLRModel
 logger = logging.getLogger(os.path.basename(__file__))
 
 
+class AdvancedGaussianProcessRegressor(GaussianProcessRegressor):
+    """Expand :class:`sklearn.gaussian_process.GaussianProcessRegressor`."""
+
+    def predict(self, X, return_var=False, return_cov=False):
+        """Expand :meth:`predict` to accept ``return_var``."""
+        pred = super().predict(X, return_std=return_var, return_cov=return_cov)
+        if return_var:
+            return (pred[0], pred[1]**2)
+        return pred
+
+
 @MLRModel.register_mlr_model('gpr_sklearn')
 class SklearnGPRModel(MLRModel):
     """Gaussian Process Regression model (:mod:`sklearn` implementation).
@@ -20,7 +31,7 @@ class SklearnGPRModel(MLRModel):
 
     """
 
-    _CLF_TYPE = GaussianProcessRegressor
+    _CLF_TYPE = AdvancedGaussianProcessRegressor
 
     def print_kernel_info(self):
         """Print information of the fitted kernel of the GPR model."""

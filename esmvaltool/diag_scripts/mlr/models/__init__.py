@@ -157,7 +157,10 @@ class MLRModel():
             Allow missing features in the training data.
         cache_intermediate_results : bool (default: True)
             Cache the intermediate results of the pipeline's transformers.
-        coords_as_features : list
+        categorical_features : list of str
+            Names of features which are interpreted as categorical features
+            (in contrast to numerical features).
+        coords_as_features : list of str
             If given, specify a list of coordinates which should be used as
             features.
         dtype : str (default: 'float64')
@@ -999,10 +1002,7 @@ class MLRModel():
         """
         self._check_fit_status('Prediction')
         logger.info("Started prediction")
-        if 'return_var' in kwargs and 'return_cov' in kwargs:
-            raise RuntimeError(
-                "Cannot return variance (return_cov=True) and full "
-                "covariance matrix (return_cov=True) simultaneously")
+        mlr.check_predict_kwargs(kwargs)
         if kwargs:
             logger.info(
                 "Using additional keyword argument(s) %s for predict() "
@@ -2429,7 +2429,7 @@ class MLRModel():
             new_fit_kwargs[long_kwarg] = sample_weights
             if sample_weights is not None:
                 logger.debug(
-                    "Updated keyword arguments for final regressor's fit() "
+                    "Updated keyword arguments of final regressor's fit() "
                     "function with '%s'", kwarg)
             break
 

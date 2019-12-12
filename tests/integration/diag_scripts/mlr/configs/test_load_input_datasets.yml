@@ -414,7 +414,7 @@
       b: 3.1415
     plot_dir: /plot/dir/2
     predict_kwargs:
-      return_std: true
+      return_var: true
     test_size: 2.5
     work_dir: /work/dir/1
     write_plots: true
@@ -676,7 +676,7 @@
     output_file_type: pdf
     plot_dir: /plot/dir/2
     predict_kwargs:
-      return_std: true
+      return_var: true
     test_size: -1.0
     work_dir: /work/dir/1
     write_plots: false
@@ -996,7 +996,7 @@
       b: 3.1415
     plot_dir: /plot/dir/2
     predict_kwargs:
-      return_std: true
+      return_var: true
     work_dir: /work/dir_2
     write_plots: false
   logger:
@@ -1237,7 +1237,7 @@
       a: 1
     plot_dir: /plot/dir/1
     predict_kwargs:
-      return_std: true
+      return_var: true
     test_size: 0.25
     work_dir: /work/dir_2
     write_plots: true
@@ -1489,7 +1489,7 @@
       b: 3.1415
     plot_dir: /plot/dir/1
     predict_kwargs:
-      return_std: true
+      return_var: true
     test_size: 0.25
     work_dir: /work/dir_2
     write_plots: true
@@ -1522,7 +1522,7 @@
     output_file_type: png
     plot_dir: /plot/dir/1
     predict_kwargs:
-      return_std: true
+      return_var: true
     test_size: -1.0
     work_dir: /work/dir_2
     write_plots: true
@@ -1660,7 +1660,7 @@
       a: 1
     plot_dir: /plot/dir/2
     predict_kwargs:
-      return_std: true
+      return_var: true
     work_dir: /work/dir_2
     write_plots: false
   logger:

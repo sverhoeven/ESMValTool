@@ -12,6 +12,7 @@ from sklearn.exceptions import NotFittedError
 from sklearn.utils import check_random_state
 from sklearn.utils.validation import check_array, check_X_y
 
+from esmvaltool.diag_scripts.mlr import check_predict_kwargs
 from esmvaltool.diag_scripts.mlr.models import MLRModel
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -152,15 +153,18 @@ class GeorgeGaussianProcessRegressor(BaseEstimator, RegressorMixin):
             new_params[f'{prefix}{key}'] = val
         return new_params
 
-    def predict(self, x_pred, return_std=False, return_cov=False):
+    def predict(self, x_pred, return_var=False, return_cov=False):
         """Predict for unknown data."""
         if not self._gp.computed:
-            raise NotFittedError("Prediction not possible, model not fitted")
+            raise NotFittedError(
+                f"{self.__class__} is not fitted yet, call fit() first")
+        kwargs = {'return_var': return_var, 'return_cov': return_cov}
+        check_predict_kwargs(kwargs)
         x_pred = check_array(x_pred)
-        if return_std:
-            pred = self._gp.predict(self._y_train, x_pred, return_var=True)
-            return (pred[0], np.sqrt(pred[1]))
-        return self._gp.predict(self._y_train, x_pred, return_cov=return_cov)
+        return self._gp.predict(self._y_train,
+                                x_pred,
+                                return_var=return_var,
+                                return_cov=return_cov)
 
     def set_params(self, **params):
         """Set the parameters of this estimator."""

@@ -75,6 +75,33 @@ def test_remove_missing_labels(mock_logger, df_in, df_out, logger):
         mock_logger.info.assert_not_called()
 
 
+TEST_CHECK_PREDICT_KWARGS = [
+    ({'a': 1}, True),
+    ({'return_var': False}, True),
+    ({'return_var': False, 'a': 1}, True),
+    ({'return_var': True, 'a': 1}, True),
+    ({'return_cov': False}, True),
+    ({'return_cov': False, 'a': 1}, True),
+    ({'return_cov': True, 'a': 1}, True),
+    ({'return_var': True, 'return_cov': False}, True),
+    ({'return_var': True, 'return_cov': False, 'a': 1}, True),
+    ({'return_var': False, 'return_cov': True}, True),
+    ({'return_var': False, 'return_cov': True, 'a': 1}, True),
+    ({'return_var': True, 'return_cov': True}, RuntimeError),
+    ({'return_var': True, 'return_cov': True, 'a': 1}, RuntimeError),
+]
+
+
+@pytest.mark.parametrize('kwargs,output', TEST_CHECK_PREDICT_KWARGS)
+def test_check_predict_kwargs(kwargs, output):
+    """Test for check of predict kwargs."""
+    if isinstance(output, type):
+        with pytest.raises(output):
+            mlr.check_predict_kwargs(kwargs)
+        return
+    assert mlr.check_predict_kwargs(kwargs) is None
+
+
 TEST_UNITS_POWER = [
     (Unit('m'), 2.5, TypeError, False),
     (Unit(''), 1, ValueError, True),

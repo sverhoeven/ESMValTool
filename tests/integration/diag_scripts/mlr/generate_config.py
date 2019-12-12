@@ -69,7 +69,7 @@ CFG = {
         },
     ],
     'predict_kwargs': [None, None, {
-        'return_std': True
+        'return_var': True
     }],
     'test_size': [None, None, 0.25, -1.0, 2.5],
     'coords_as_features': [
