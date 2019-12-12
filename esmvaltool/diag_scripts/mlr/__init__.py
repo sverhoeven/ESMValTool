@@ -91,10 +91,11 @@ class AdvancedPipeline(Pipeline):
     def _check_final_step(self):
         """Check type of final step of pipeline."""
         final_step = self.steps[-1][1]
-        if not isinstance(final_step, TransformedTargetRegressor):
+        if not isinstance(final_step, AdvancedTransformedTargetRegressor):
             raise TypeError(
-                f"Expected estimator of type {TransformedTargetRegressor} "
-                f"for final step of pipeline, got {type(final_step)}")
+                f"Expected estimator of type "
+                f"{AdvancedTransformedTargetRegressor} for final step of "
+                f"pipeline, got {final_step.__class__}")
 
     def fit_target_transformer_only(self, y_data, **fit_kwargs):
         """Fit only ``transform`` step of of target regressor."""
@@ -210,7 +211,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
                 self.regressor_.predict).args):
             raise NotImplementedError(
                 f"Using keyword argument 'return_std' for final regressor "
-                f"{type(self.regressor_)} is not supported yet, only "
+                f"{self.regressor_.__class__} is not supported yet, only "
                 f"'return_var' is allowed. Expand the regressor to accept "
                 f"'return_var' instead (see 'esmvaltool/diag_scripts/mlr"
                 f"/models/gpr_sklearn.py' for an example)")
@@ -255,8 +256,9 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
         # FIXME
         if fit_params['transformer']:
             raise NotImplementedError(
-                f"Parameters {fit_params['transformer']} for transformer of "
-                f"{self.__class__} are not supported at the moment")
+                f"Fit parameters {fit_params['transformer']} for transformer "
+                f"{self.transformer.__class__} of {self.__class__} are not "
+                f"supported at the moment")
 
         return (fit_params['transformer'], fit_params['regressor'])
 

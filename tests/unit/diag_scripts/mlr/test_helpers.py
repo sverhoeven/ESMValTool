@@ -75,6 +75,31 @@ def test_remove_missing_labels(mock_logger, df_in, df_out, logger):
         mock_logger.info.assert_not_called()
 
 
+STEPS_1 = [('a', 1)]
+STEPS_2 = [('a', 1), ('b', 0)]
+TEST_GET_FIT_PARAMETERS = [
+    ({'a': 1}, STEPS_1, ValueError),
+    ({'a': 1, 'a__b': 1}, STEPS_1, ValueError),
+    ({'a__x': 1}, [], ValueError),
+    ({'a__x': 1}, STEPS_1, {'a': {'x': 1}}),
+    ({'a__x': 1, 'a__y': 2}, STEPS_1, {'a': {'x': 1, 'y': 2}}),
+    ({'a__x': 1, 'a__y__z': 2}, STEPS_1, {'a': {'x': 1, 'y__z': 2}}),
+    ({'a__x': 1, 'b__y': 2}, STEPS_1, ValueError),
+    ({'a__x': 1, 'b__y': 2}, STEPS_2, {'a': {'x': 1}, 'b': {'y': 2}}),
+]
+
+
+@pytest.mark.parametrize('kwargs,steps,output', TEST_GET_FIT_PARAMETERS)
+def test_get_fit_parameters(kwargs, steps, output):
+    """Test retrieving of fit parameters."""
+    if isinstance(output, type):
+        with pytest.raises(output):
+            mlr._get_fit_parameters(kwargs, steps, 'x')
+        return
+    params = mlr._get_fit_parameters(kwargs, steps, 'x')
+    assert params == output
+
+
 TEST_CHECK_PREDICT_KWARGS = [
     ({'a': 1}, True),
     ({'return_var': False}, True),
