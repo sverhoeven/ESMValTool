@@ -674,7 +674,8 @@ class MLRModel():
         logger.info("Plotting LIME")
         if data_type not in self.data:
             raise ValueError(
-                f"Cannot plot LIME, got invalid data type '{data_type}'")
+                f"Cannot plot LIME, got invalid data type '{data_type}', "
+                f"expected one of {list(self.data.keys())}")
         if index >= len(self.data[data_type].index):
             raise IndexError(
                 f"Cannot plot LIME, index {index:d} is out of range for "

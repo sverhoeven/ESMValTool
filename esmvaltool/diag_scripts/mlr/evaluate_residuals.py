@@ -140,7 +140,7 @@ def plot_residuals(cfg, residual_data):
                 raise ValueError(
                     f"Expected exactly one 'prediction_residual' dataset for "
                     f"prediction '{pred_name}' of MLR model '{model_name}', "
-                    f"got {len(datasets):d}")
+                    f"got {len(pred_datasets):d}")
             cube = iris.load_cube(pred_datasets[0]['filename'])
 
             # Create plot
