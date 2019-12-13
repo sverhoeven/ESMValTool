@@ -190,16 +190,16 @@ def global_contourf(cube,
     axes.coastlines()
     axes.set_global()
     colorbar = plt.colorbar(orientation='horizontal', aspect=30)
-    if cbar_range is not None:
+    if cbar_ticks is not None:
+        colorbar.set_ticks(cbar_ticks)
+        colorbar.set_ticklabels([str(tick) for tick in cbar_ticks])
+    elif cbar_range is not None:
         ticks = np.linspace(*cbar_range[:2],
                             10,
                             endpoint=False,
                             dtype=type(cbar_range[0]))
         colorbar.set_ticks(ticks)
         colorbar.set_ticklabels([str(tick) for tick in ticks])
-    elif cbar_ticks is not None:
-        colorbar.set_ticks(cbar_ticks)
-        colorbar.set_ticklabels([str(tick) for tick in cbar_ticks])
     if cbar_label is not None:
         colorbar.set_label(cbar_label)
     return map_plot
