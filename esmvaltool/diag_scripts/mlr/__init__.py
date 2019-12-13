@@ -186,7 +186,7 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
         self._training_dim = y_data.ndim
 
         # Process kwargs
-        (_, regressor_kwargs) = self._get_fit_kwargs(fit_kwargs)
+        (_, regressor_kwargs) = self._get_fit_params(fit_kwargs)
 
         # Transformers are designed to modify X which is 2D, modify y_data
         # FIXME: Transformer does NOT use transformer_kwargs
@@ -199,7 +199,6 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
 
     def predict(self, x_data, always_return_1d=True, **predict_kwargs):
         """Expand :meth:`predict()` to accept kwargs."""
-        predict_kwargs = dict(predict_kwargs)
         check_is_fitted(self)
         if not hasattr(self, 'regressor_'):
             raise NotFittedError(
@@ -230,22 +229,27 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
                 pred.reshape(-1, 1))
         else:
             pred_trans = self.transformer_.inverse_transform(pred)
-        squeeze = pred_trans.ndim == 2 and pred_trans.shape[1] == 1
-        if not always_return_1d:
-            squeeze = squeeze and self._training_dim == 1
-        if squeeze:
+        if self._to_be_squeezed(pred_trans, always_return_1d=always_return_1d):
             pred_trans = pred_trans.squeeze(axis=1)
         if not (return_var or return_cov):
             return pred_trans
 
         # Return scaled variance or covariance if desired
         err = prediction[1]
+        if not hasattr(self.transformer_, 'scale_'):
+            raise NotImplementedError(
+                f"Transforming of additional prediction output (e.g. by "
+                f"'return_var' or 'return_cov') is not supported for "
+                f"transformer {self.transformer_.__class__} yet, the "
+                f"necessary attribute 'scale_' is missing")
         scale = self.transformer_.scale_
         if scale is not None:
             err *= scale**2
+        if self._to_be_squeezed(err, always_return_1d=always_return_1d):
+            err = err.squeeze(axis=1)
         return (pred_trans, err)
 
-    def _get_fit_kwargs(self, fit_kwargs):
+    def _get_fit_params(self, fit_kwargs):
         """Separate ``transformer`` and ``regressor`` kwargs."""
         steps = [
             ('transformer', self.transformer),
@@ -261,6 +265,13 @@ class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
                 f"supported at the moment")
 
         return (fit_params['transformer'], fit_params['regressor'])
+
+    def _to_be_squeezed(self, array, always_return_1d=True):
+        """Check if ``array`` should be squeezed or not."""
+        squeeze = array.ndim == 2 and array.shape[1] == 1
+        if not always_return_1d:
+            squeeze = squeeze and self._training_dim == 1
+        return squeeze
 
 
 def check_predict_kwargs(predict_kwargs):

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from sklearn.base import clone
 from sklearn.compose import TransformedTargetRegressor
+from sklearn.decomposition import PCA
 from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
@@ -11,12 +12,9 @@ from sklearn.preprocessing import StandardScaler
 from esmvaltool.diag_scripts import mlr
 
 
-X_TRAIN = np.array([
-    [3.0],
-    [6.0],
-    [10.0],
-])
+X_TRAIN = np.array([[3.0], [6.0], [10.0]])
 Y_TRAIN = np.array([10.0, 20.0, 30.0])
+np.set_printoptions(precision=10)
 
 
 class StdLinearRegression(LinearRegression):
@@ -26,18 +24,25 @@ class StdLinearRegression(LinearRegression):
         """Expand :meth:`predict`."""
         pred = super().predict(X)
         if return_std:
-            return (pred, np.ones(X.shape[0], dtype=X.dtype))
+            err = np.ones(X.shape[0], dtype=X.dtype)
+            return (pred, err)
         return pred
 
 
 class VarLinearRegression(LinearRegression):
     """Expand :class:`sklearn.linear_model.CoolLinearRegression`."""
 
-    def predict(self, X, return_var=False, return_cov=False):
+    def predict(self, X, return_var=False, return_cov=False, err_2d=False):
         """Expand :meth:`predict`."""
         pred = super().predict(X)
-        if return_var or return_cov:
-            return (pred, np.ones(X.shape[0], dtype=X.dtype))
+        if return_var:
+            err = np.ones(X.shape[0], dtype=X.dtype)
+            if err_2d:
+                err = err.reshape(-1, 1)
+            return (pred, err)
+        if return_cov:
+            err = np.ones((X.shape[0], X.shape[0]), dtype=X.dtype)
+            return (pred, err)
         return pred
 
 
@@ -101,8 +106,13 @@ class TestAdvancedPipeline():
     TEST_FIT_TARGET_TRANSFORMER_ONLY = zip(
         PIPELINES,
         [{}, {}, {}, KW_X3, KW_X4, KW_0, KW_2],
-        [TypeError, TypeError, TypeError, ValueError, ValueError,
-         (20.0, 200.0 / 3.0), NotImplementedError],
+        [TypeError,
+         TypeError,
+         TypeError,
+         ValueError,
+         ValueError,
+         (np.array([20.0]), np.array([200.0 / 3.0])),
+         NotImplementedError],
     )
 
     @pytest.mark.parametrize('pipeline,kwargs,output',
@@ -161,8 +171,8 @@ class TestAdvancedPipeline():
     TEST_TRANSFORM_ONLY = [
         (KW_X0, ValueError),
         (KW_X1, KeyError),
-        ({}, np.array([[-1.162476], [-0.116248], [1.278724]])),
-        (KW_0, np.array([[-3.162476], [-2.116248], [-0.721276]])),
+        ({}, np.array([[-1.1624763874], [-0.1162476387], [1.2787240262]])),
+        (KW_0, np.array([[-3.1624763874], [-2.1162476387], [-0.7212759738]])),
     ]
 
     @pytest.mark.parametrize('kwargs,output', TEST_TRANSFORM_ONLY)
@@ -181,7 +191,7 @@ class TestAdvancedPipeline():
             return
         pipeline.fit(X_TRAIN, Y_TRAIN, **kwargs)
         x_trans = pipeline.transform_only(X_TRAIN)
-        np.testing.assert_allclose(x_trans, output, rtol=1e-5)
+        np.testing.assert_allclose(x_trans, output)
 
     TEST_TRANSFORM_TARGET_ONLY = zip(
         PIPELINES,
@@ -227,7 +237,7 @@ class TestAdvancedTransformedTargetRegressor():
         {'a': 1},
         {'b__a': 1, 't__f': 2.0},
         {'regressor__wrongparam': 1},
-        {'transformer__fails': 1},
+        {'transformer__fails': 1, 'regressor__a': 1, 'regressor__b': 1},
         {},
         {'regressor__sample_weight': np.arange(3.0)},
     ]
@@ -261,3 +271,302 @@ class TestAdvancedTransformedTargetRegressor():
         np.testing.assert_allclose(regressor.coef_, output[2])
         np.testing.assert_allclose(regressor.intercept_, output[3])
         np.testing.assert_allclose(reg.predict(X_TRAIN), output[4])
+
+    Y_2D = np.array([[10.0], [20.0], [30.0]])
+    TEST_FIT_TRANSFORMER_ONLY = zip(
+        FIT_KWARGS,
+        [ValueError,
+         ValueError,
+         (Y_2D, {'wrongparam': 1}, np.array([20.0]), np.array([200.0 / 3.0])),
+         NotImplementedError,
+         (Y_2D, {}, np.array([20.0]), np.array([200.0 / 3.0])),
+         (Y_2D,
+          {'sample_weight': np.arange(3.0)},
+          np.array([20.0]), np.array([200.0 / 3.0]))],
+    )
+
+    @pytest.mark.parametrize('kwargs,output', TEST_FIT_TRANSFORMER_ONLY)
+    def test_fit_transformer_only(self, kwargs, output):
+        """Test fitting of transformer only."""
+        reg = clone(self.AREG)
+        if isinstance(output, type):
+            with pytest.raises(output):
+                reg.fit_transformer_only(Y_TRAIN, **kwargs)
+            return
+        (y_2d, reg_kwargs) = reg.fit_transformer_only(Y_TRAIN, **kwargs)
+        np.testing.assert_allclose(y_2d, output[0])
+        assert isinstance(reg_kwargs, dict)
+        assert reg_kwargs.keys() == output[1].keys()
+        for (key, val) in reg_kwargs.items():
+            np.testing.assert_allclose(val, output[1][key])
+        transformer = reg.transformer_
+        np.testing.assert_allclose(transformer.mean_, output[2])
+        np.testing.assert_allclose(transformer.var_, output[3])
+        assert not hasattr(reg, 'regressor_')
+        with pytest.raises(NotFittedError):
+            reg.predict(X_TRAIN)
+
+    VAR_AREG = mlr.AdvancedTransformedTargetRegressor(
+        transformer=NonStandardScaler(),
+        regressor=VarLinearRegression(),
+    )
+    STD_AREG = mlr.AdvancedTransformedTargetRegressor(
+        transformer=NonStandardScaler(),
+        regressor=StdLinearRegression(),
+    )
+    REGS = [
+        AREG,
+        VAR_AREG,
+        STD_AREG,
+        AREG,
+        VAR_AREG,
+        STD_AREG,
+        AREG,
+        VAR_AREG,
+        STD_AREG,
+        AREG,
+        VAR_AREG,
+        STD_AREG,
+        AREG,
+        VAR_AREG,
+        STD_AREG,
+        AREG,
+        VAR_AREG,
+        STD_AREG,
+        AREG,
+        VAR_AREG,
+        STD_AREG,
+        AREG,
+        VAR_AREG,
+        STD_AREG,
+    ]
+    PREDICT_KWARGS = [
+        {},
+        {},
+        {},
+        {'wrong_kwarg': 1},
+        {'wrong_kwarg': 1},
+        {'wrong_kwarg': 1},
+        {'always_return_1d': False},
+        {'always_return_1d': False},
+        {'always_return_1d': False},
+        {'always_return_1d': False, 'return_std': True},
+        {'always_return_1d': False, 'return_std': True},
+        {'always_return_1d': False, 'return_std': True},
+        {'always_return_1d': False, 'return_var': True},
+        {'always_return_1d': False, 'return_var': True},
+        {'always_return_1d': False, 'return_var': True},
+        {'always_return_1d': False, 'return_var': True, 'err_2d': True},
+        {'always_return_1d': False, 'return_var': True, 'err_2d': True},
+        {'always_return_1d': False, 'return_var': True, 'err_2d': True},
+        {'always_return_1d': False, 'return_cov': True},
+        {'always_return_1d': False, 'return_cov': True},
+        {'always_return_1d': False, 'return_cov': True},
+        {'return_var': True, 'err_2d': True},
+        {'return_var': True, 'err_2d': True},
+        {'return_var': True, 'err_2d': True},
+        {'return_var': True, 'return_cov': True},
+        {'return_var': True, 'return_cov': True},
+        {'return_var': True, 'return_cov': True},
+    ]
+    PREDS_1D = [
+        np.array([10.5405405405, 19.0540540541, 30.4054054054]),
+        np.array([12.5, 20.0, 30.0]),
+    ]
+    ERR = np.full(3, 200.0 / 3.0)
+    COV = np.full((3, 3), 200.0 / 3.0)
+    PRED_OUTPUT_1D = [
+        (PREDS_1D, None),
+        (PREDS_1D, None),
+        (PREDS_1D, None),
+        TypeError,
+        TypeError,
+        TypeError,
+        (PREDS_1D, None),
+        (PREDS_1D, None),
+        (PREDS_1D, None),
+        TypeError,
+        TypeError,
+        NotImplementedError,
+        TypeError,
+        (PREDS_1D, ERR),
+        TypeError,
+        TypeError,
+        (PREDS_1D, ERR),
+        TypeError,
+        TypeError,
+        (PREDS_1D, COV),
+        TypeError,
+        TypeError,
+        (PREDS_1D, ERR),
+        TypeError,
+        RuntimeError,
+        RuntimeError,
+        RuntimeError,
+    ]
+
+    TEST_PREDICT_1D = zip(REGS, PREDICT_KWARGS, PRED_OUTPUT_1D)
+
+    @pytest.mark.parametrize('reg,kwargs,output', TEST_PREDICT_1D)
+    def test_predict_1d(self, reg, kwargs, output):
+        """Test prediction."""
+        for (idx, fit_kwargs) in enumerate(
+                ({}, {'regressor__sample_weight': [0.0, 1.0, 1.0]})):
+            new_reg = clone(reg)
+            with pytest.raises(NotFittedError):
+                new_reg.predict(X_TRAIN)
+            new_reg.fit(X_TRAIN, Y_TRAIN, **fit_kwargs)
+            if isinstance(output, type):
+                with pytest.raises(output):
+                    new_reg.predict(X_TRAIN, **kwargs)
+                return
+            y_pred = new_reg.predict(X_TRAIN, **kwargs)
+            if output[1] is None:
+                assert y_pred.shape == output[0][idx].shape
+                np.testing.assert_allclose(y_pred, output[0][idx])
+            else:
+                assert y_pred[0].shape == output[0][idx].shape
+                assert y_pred[1].shape == output[1].shape
+                np.testing.assert_allclose(y_pred[0], output[0][idx])
+                np.testing.assert_allclose(y_pred[1], output[1])
+
+    VAR_AREG_1 = mlr.AdvancedTransformedTargetRegressor(
+        transformer=NonStandardScaler(with_std=False),
+        regressor=VarLinearRegression(),
+    )
+    PCA_AREG = mlr.AdvancedTransformedTargetRegressor(
+        transformer=PCA(),
+        regressor=VarLinearRegression(),
+    )
+    REGS = [
+        AREG,
+        VAR_AREG_1,
+        PCA_AREG,
+        AREG,
+        VAR_AREG_1,
+        PCA_AREG,
+        AREG,
+        VAR_AREG_1,
+        PCA_AREG,
+        AREG,
+        VAR_AREG_1,
+        PCA_AREG,
+        AREG,
+        VAR_AREG_1,
+        PCA_AREG,
+        AREG,
+        VAR_AREG_1,
+        PCA_AREG,
+        AREG,
+        VAR_AREG_1,
+        PCA_AREG,
+        AREG,
+        VAR_AREG_1,
+        PCA_AREG,
+    ]
+    PREDS_2D = [
+        np.array([[10.5405405405], [19.0540540541], [30.4054054054]]),
+        np.array([[12.5], [20.0], [30.0]]),
+    ]
+    ERR_1D = np.ones(3)
+    ERR_2D = np.ones((3, 1))
+    COV_1 = np.ones((3, 3))
+    PRED_OUTPUT_2D = [
+        (PREDS_1D, None),
+        (PREDS_1D, None),
+        (PREDS_1D, None),
+        TypeError,
+        TypeError,
+        TypeError,
+        (PREDS_2D, None),
+        (PREDS_2D, None),
+        (PREDS_2D, None),
+        TypeError,
+        TypeError,
+        TypeError,
+        TypeError,
+        (PREDS_2D, ERR_1D),
+        NotImplementedError,
+        TypeError,
+        (PREDS_2D, ERR_2D),
+        NotImplementedError,
+        TypeError,
+        (PREDS_2D, COV_1),
+        NotImplementedError,
+        TypeError,
+        (PREDS_1D, ERR_1D),
+        NotImplementedError,
+        RuntimeError,
+        RuntimeError,
+        RuntimeError,
+    ]
+
+    TEST_PREDICT_2D = zip(REGS, PREDICT_KWARGS, PRED_OUTPUT_2D)
+
+    @pytest.mark.parametrize('reg,kwargs,output', TEST_PREDICT_2D)
+    def test_predict_2d(self, reg, kwargs, output):
+        """Test prediction."""
+        y_train = Y_TRAIN.reshape(-1, 1)
+        for (idx, fit_kwargs) in enumerate(
+                ({}, {'regressor__sample_weight': [0.0, 1.0, 1.0]})):
+            new_reg = clone(reg)
+            with pytest.raises(NotFittedError):
+                new_reg.predict(X_TRAIN)
+            new_reg.fit(X_TRAIN, y_train, **fit_kwargs)
+            if isinstance(output, type):
+                with pytest.raises(output):
+                    new_reg.predict(X_TRAIN, **kwargs)
+                return
+            y_pred = new_reg.predict(X_TRAIN, **kwargs)
+            if output[1] is None:
+                assert y_pred.shape == output[0][idx].shape
+                np.testing.assert_allclose(y_pred, output[0][idx])
+            else:
+                assert y_pred[0].shape == output[0][idx].shape
+                assert y_pred[1].shape == output[1].shape
+                np.testing.assert_allclose(y_pred[0], output[0][idx])
+                np.testing.assert_allclose(y_pred[1], output[1])
+
+    TEST_GET_FIT_PARAMS = zip(
+        FIT_KWARGS[:-1] + [{'regressor__a': 1, 'regressor__b': 2}],
+        [ValueError,
+         ValueError,
+         ({}, {'wrongparam': 1}),
+         NotImplementedError,
+         ({}, {}),
+         ({}, {'a': 1, 'b': 2})],
+    )
+
+    @pytest.mark.parametrize('kwargs,output', TEST_GET_FIT_PARAMS)
+    def test_get_fit_params(self, kwargs, output):
+        """Test retrieving of fit kwargs."""
+        if isinstance(output, type):
+            with pytest.raises(output):
+                self.AREG._get_fit_params(kwargs)
+            return
+        fit_params = self.AREG._get_fit_params(kwargs)
+        assert fit_params == output
+
+    TEST_TO_BE_SQUEEZED = [
+        (np.array([0]), True, 1, False),
+        (np.array([0]), True, 2, False),
+        (np.array([0]), False, 1, False),
+        (np.array([0]), False, 2, False),
+        (np.array([[0]]), True, 1, True),
+        (np.array([[0]]), True, 2, True),
+        (np.array([[0]]), False, 1, True),
+        (np.array([[0]]), False, 2, False),
+        (np.array([[0, 0], [0, 0]]), True, 1, False),
+        (np.array([[0, 0], [0, 0]]), True, 2, False),
+        (np.array([[0, 0], [0, 0]]), False, 1, False),
+        (np.array([[0, 0], [0, 0]]), False, 2, False),
+    ]
+
+    @pytest.mark.parametrize('array,always_1d,training_dim,output',
+                             TEST_TO_BE_SQUEEZED)
+    def test_to_be_squeezed(self, array, always_1d, training_dim, output):
+        """Test check if array should be squeezed."""
+        reg = clone(self.AREG)
+        reg._training_dim = training_dim
+        squeezed = reg._to_be_squeezed(array, always_return_1d=always_1d)
+        assert squeezed == output
