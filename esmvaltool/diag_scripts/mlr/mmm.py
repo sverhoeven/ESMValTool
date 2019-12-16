@@ -83,11 +83,7 @@ def convert_units(cfg, cube, data):
         if data_settings:
             units_to = data_settings
         logger.info("Converting units from '%s' to '%s'", cube.units, units_to)
-        try:
-            cube.convert_units(units_to)
-        except ValueError:
-            logger.warning("Cannot convert units from '%s' to '%s'",
-                           cube.units, units_to)
+        cube.convert_units(units_to)
 
 
 def get_error_cube(cfg, datasets):
@@ -139,16 +135,11 @@ def get_grouped_data(cfg, input_data=None):
                                         ignore=cfg.get('ignore'))
     else:
         logger.debug("Loading input data from 'input_data' argument")
-        valid_datasets = []
-        for dataset in input_data:
-            if mlr.datasets_have_mlr_attributes([dataset],
-                                                log_level='warning'):
-                valid_datasets.append(dataset)
-            else:
-                logger.warning("Skipping file %s", dataset['filename'])
-        if not valid_datasets:
-            logger.warning("No valid input data found")
-        input_data = valid_datasets
+        if not mlr.datasets_have_mlr_attributes(input_data, log_level='error'):
+            raise ValueError("At least one input dataset does not have valid "
+                             "MLR attributes")
+    if not input_data:
+        raise ValueError("No input data found")
     paths = [d['filename'] for d in input_data]
     logger.debug("Found files")
     logger.debug(pformat(paths))
@@ -190,25 +181,25 @@ def get_reference_dataset(datasets, tag):
     """Get ``prediction_reference`` dataset."""
     ref_datasets = select_metadata(datasets, var_type='prediction_reference')
     if not ref_datasets:
-        logger.debug(
+        logger.warning(
             "Calculating residuals for '%s' not possible, no "
             "'prediction_reference' dataset given", tag)
         return (None, None)
     if len(ref_datasets) > 1:
-        logger.warning(
-            "Multiple 'prediction_reference' datasets for '%s' given, "
-            "using only first one (%s)", tag, ref_datasets[0]['filename'])
+        filenames = [d['filename'] for d in ref_datasets]
+        raise ValueError(
+            f"Expected at most one 'prediction_reference' dataset for "
+            f"'{tag}', got {len(ref_datasets):d}:\n{pformat(filenames)}")
     return (ref_datasets[0], ref_datasets[0].get('prediction_name'))
 
 
 def get_residual_cube(mm_cube, ref_cube):
     """Calculate residuals."""
     if mm_cube.shape != ref_cube.shape:
-        logger.warning(
-            "Shapes of 'label' and 'prediction_reference' data differs, "
-            "got %s for 'label' and %s for 'prediction_reference'",
-            mm_cube.shape, ref_cube.shape)
-        return None
+        raise ValueError(
+            f"Expected identical shapes for 'label' and "
+            f"'prediction_reference' datasets, got {mm_cube.shape} and "
+            f"{ref_cube.shape}, respectively")
     res_cube = mm_cube.copy()
     res_cube.data -= ref_cube.data
     res_cube.attributes['residuals'] = 'true minus predicted values'
@@ -239,8 +230,8 @@ def main(cfg, input_data=None, description=None):
         logger.info("Calculating multi-model mean")
         mm_cube = get_mm_cube(cfg, datasets)
         add_general_attributes(mm_cube, tag=tag, prediction_name=pred_name)
-        mm_path = get_diagnostic_filename(f'mmm_{tag}_prediction{description}',
-                                          cfg)
+        mm_path = get_diagnostic_filename(
+            f"{cfg['mlr_model_name']}_{tag}_prediction{description}", cfg)
         io.iris_save(mm_cube, mm_path)
 
         # Estimate prediction error using cross-validation

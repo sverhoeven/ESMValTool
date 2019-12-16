@@ -21,17 +21,25 @@ abs_plot : dict, optional
     Specify additional keyword arguments for the absolute plotting function by
     ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
     as functions of :mod:`matplotlib.pyplot`).
+abs_bias_plot : dict, optional
+    Specify additional keyword arguments for the absolute bias plotting
+    function by ``plot_kwargs`` and plot appearance options by
+    ``pyplot_kwargs`` (processed as functions of :mod:`matplotlib.pyplot`).
 alias : dict, optional
     :obj:`str` to :obj:`str` mapping for nicer plot labels (e.g.
     ``{'feature': 'Historical CMIP5 data'}``.
-bias_plot : dict, optional
-    Specify additional keyword arguments for the absolute plotting function by
-    ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
-    as functions of :mod:`matplotlib.pyplot`).
 ignore : list of dict, optional
     Ignore specific datasets by specifying multiple :obj:`dict`s of metadata.
 pattern : str, optional
     Pattern matched against ancestor file names.
+ratio_plot : dict, optional
+    Specify additional keyword arguments for the ratio plotting function by
+    ``plot_kwargs`` and plot appearance options by ``pyplot_kwargs`` (processed
+    as functions of :mod:`matplotlib.pyplot`).
+rel_bias_plot : dict, optional
+    Specify additional keyword arguments for the relative bias plotting
+    function by ``plot_kwargs`` and plot appearance options by
+    ``pyplot_kwargs`` (processed as functions of :mod:`matplotlib.pyplot`).
 savefig_kwargs : dict, optional
     Keyword arguments for :func:`matplotlib.pyplot.savefig`.
 seaborn_settings : dict, optional
@@ -108,6 +116,15 @@ def _get_key(var_type, model_name):
     return f'{var_type}_{model_name}'
 
 
+def _mask_cube(cube):
+    """Mask cube to avoid divisions by zero."""
+    cube = cube.copy()
+    val_range = np.ma.max(cube.data) - np.ma.min(cube.data)
+    threshold = val_range * 1e-3
+    cube.data = np.ma.masked_inside(cube.data, -threshold, threshold)
+    return cube
+
+
 def get_cube_dict(input_data):
     """Get dictionary of mean cubes (values) with ``var_type`` (keys)."""
     cube_dict = {}
@@ -161,7 +178,7 @@ def plot_abs(cfg, cube_dict):
     """Plot absolute values of datasets."""
     logger.info("Creating absolute plots")
     for (key, cube) in cube_dict.items():
-        logger.debug("Plotting absolute plot for '%s'", key)
+        logger.debug("Plotting '%s'", key)
         attrs = cube.attributes
 
         # Plot
@@ -192,11 +209,11 @@ def plot_abs(cfg, cube_dict):
         ALL_CUBES[title] = np.ma.filled(cube.data.ravel(), np.nan)
 
 
-def plot_biases(cfg, cube_dict):
-    """Plot biases of datasets."""
-    logger.info("Creating bias plots")
+def plot_abs_biases(cfg, cube_dict):
+    """Plot absolute biases of datasets."""
+    logger.info("Creating absolute bias plots")
     for (key_1, key_2) in itertools.permutations(cube_dict, 2):
-        logger.debug("Plotting bias plot '%s' - '%s'", key_1, key_2)
+        logger.debug("Plotting absolute bias '%s' - '%s'", key_1, key_2)
         cube_1 = cube_dict[key_1]
         cube_2 = cube_dict[key_2]
         attrs_1 = cube_1.attributes
@@ -205,14 +222,14 @@ def plot_biases(cfg, cube_dict):
         alias_2 = _get_alias(cfg, key_2)
 
         # Plot
-        diff_cube = cube_1.copy()
-        diff_cube.data -= cube_2.data
+        bias_cube = cube_1.copy()
+        bias_cube.data = cube_1.data - cube_2.data
         plot_kwargs = {
-            'cbar_label': f"Δ{attrs_1['tag']} / {diff_cube.units}",
+            'cbar_label': f"Δ{attrs_1['tag']} / {bias_cube.units}",
             'cmap': 'bwr',
         }
-        plot_kwargs.update(get_plot_kwargs(cfg, 'bias_plot'))
-        plot.global_contourf(diff_cube, **plot_kwargs)
+        plot_kwargs.update(get_plot_kwargs(cfg, 'abs_bias_plot'))
+        plot.global_contourf(bias_cube, **plot_kwargs)
 
         # Plot appearance
         if (attrs_1['start_year'] == attrs_2['start_year']
@@ -224,20 +241,125 @@ def plot_biases(cfg, cube_dict):
                      f"{attrs_1['end_year']}) - {alias_2} ("
                      f"{attrs_2['start_year']}-{attrs_2['end_year']})")
         plt.title(title)
-        process_pyplot_kwargs(cfg, 'bias_plot')
+        process_pyplot_kwargs(cfg, 'abs_bias_plot')
 
         # Write minimum and maximum
-        logger.debug("Minimum of '%s': %.2f", title, diff_cube.data.min())
-        logger.debug("Maximum of '%s': %.2f", title, diff_cube.data.max())
+        logger.debug("Minimum of '%s': %.2f", title, bias_cube.data.min())
+        logger.debug("Maximum of '%s': %.2f", title, bias_cube.data.max())
 
         # Save plot
-        plot_path = get_plot_filename(f'bias_{key_1}-{key_2}', cfg)
+        plot_path = get_plot_filename(f'abs_bias_{key_1}-{key_2}', cfg)
         plt.savefig(plot_path, **get_savefig_kwargs(cfg))
         logger.info("Wrote %s", plot_path)
         plt.close()
 
         # Add to global DataFrame
-        ALL_CUBES[title] = np.ma.filled(diff_cube.data.ravel(), np.nan)
+        ALL_CUBES[title] = np.ma.filled(bias_cube.data.ravel(), np.nan)
+
+
+def plot_ratios(cfg, cube_dict):
+    """Plot ratios of datasets."""
+    logger.info("Creating ratio plots")
+    for (key_1, key_2) in itertools.permutations(cube_dict, 2):
+        logger.debug("Plotting ratio '%s' / '%s'", key_1, key_2)
+        cube_1 = cube_dict[key_1]
+        cube_2 = cube_dict[key_2]
+        attrs_1 = cube_1.attributes
+        attrs_2 = cube_2.attributes
+        alias_1 = _get_alias(cfg, key_1)
+        alias_2 = _get_alias(cfg, key_2)
+
+        # Mask cube to avoid division by zero
+        cube_2 = _mask_cube(cube_2)
+
+        # Plot
+        ratio_cube = cube_1.copy()
+        ratio_cube.data = cube_1.data / cube_2.data
+        plot_kwargs = {
+            'cbar_label': f"{attrs_1['tag']} ratio / 1",
+            'cmap': 'bwr',
+        }
+        plot_kwargs.update(get_plot_kwargs(cfg, 'ratio_plot'))
+        plot.global_contourf(ratio_cube, **plot_kwargs)
+
+        # Plot appearance
+        if (attrs_1['start_year'] == attrs_2['start_year']
+                and attrs_1['end_year'] == attrs_2['end_year']):
+            title = (f"{alias_1} / {alias_2} ({attrs_1['start_year']}-"
+                     f"{attrs_1['end_year']})")
+        else:
+            title = (f"{alias_1} ({attrs_1['start_year']}-"
+                     f"{attrs_1['end_year']}) / {alias_2} ("
+                     f"{attrs_2['start_year']}-{attrs_2['end_year']})")
+        plt.title(title)
+        process_pyplot_kwargs(cfg, 'ratio_plot')
+
+        # Write minimum and maximum
+        logger.debug("Minimum of '%s': %.2f", title, ratio_cube.data.min())
+        logger.debug("Maximum of '%s': %.2f", title, ratio_cube.data.max())
+
+        # Save plot
+        plot_path = get_plot_filename(f'ratio_{key_1}-{key_2}', cfg)
+        plt.savefig(plot_path, **get_savefig_kwargs(cfg))
+        logger.info("Wrote %s", plot_path)
+        plt.close()
+
+        # Add to global DataFrame
+        ALL_CUBES[title] = np.ma.filled(ratio_cube.data.ravel(), np.nan)
+
+
+def plot_rel_biases(cfg, cube_dict):
+    """Plot relative biases of datasets."""
+    logger.info("Creating relative bias plots")
+    for (key_1, key_2) in itertools.permutations(cube_dict, 2):
+        logger.debug("Plotting relative bias ('%s' - '%s') / '%s'", key_1,
+                     key_2, key_2)
+        cube_1 = cube_dict[key_1]
+        cube_2 = cube_dict[key_2]
+        attrs_1 = cube_1.attributes
+        attrs_2 = cube_2.attributes
+        alias_1 = _get_alias(cfg, key_1)
+        alias_2 = _get_alias(cfg, key_2)
+
+        # Mask cube to avoid division by zero
+        cube_2 = _mask_cube(cube_2)
+
+        # Plot
+        bias_cube = cube_1.copy()
+        bias_cube.data = (cube_1.data - cube_2.data) / cube_2.data
+        plot_kwargs = {
+            'cbar_label': f"relative change in {attrs_1['tag']} / 1",
+            'cmap': 'bwr',
+        }
+        plot_kwargs.update(get_plot_kwargs(cfg, 'rel_bias_plot'))
+        plot.global_contourf(bias_cube, **plot_kwargs)
+
+        # Plot appearance
+        if (attrs_1['start_year'] == attrs_2['start_year']
+                and attrs_1['end_year'] == attrs_2['end_year']):
+            title = (f"({alias_1} - {alias_2}) / {alias_2} "
+                     f"({attrs_1['start_year']}-{attrs_1['end_year']})")
+        else:
+            title = (f"({alias_1} ({attrs_1['start_year']}-"
+                     f"{attrs_1['end_year']}) - {alias_2} ("
+                     f"{attrs_2['start_year']}-{attrs_2['end_year']})) / "
+                     f"{alias_2} ({attrs_2['start_year']}-"
+                     f"{attrs_2['end_year']})")
+        plt.title(title)
+        process_pyplot_kwargs(cfg, 'rel_bias_plot')
+
+        # Write minimum and maximum
+        logger.debug("Minimum of '%s': %.2f", title, bias_cube.data.min())
+        logger.debug("Maximum of '%s': %.2f", title, bias_cube.data.max())
+
+        # Save plot
+        plot_path = get_plot_filename(f'rel_bias_{key_1}-{key_2}', cfg)
+        plt.savefig(plot_path, **get_savefig_kwargs(cfg))
+        logger.info("Wrote %s", plot_path)
+        plt.close()
+
+        # Add to global DataFrame
+        ALL_CUBES[title] = np.ma.filled(bias_cube.data.ravel(), np.nan)
 
 
 def main(cfg):
@@ -248,7 +370,9 @@ def main(cfg):
 
     # Plots
     plot_abs(cfg, cube_dict)
-    plot_biases(cfg, cube_dict)
+    plot_abs_biases(cfg, cube_dict)
+    plot_rel_biases(cfg, cube_dict)
+    plot_ratios(cfg, cube_dict)
 
     # Print and save correlations between figures
     corr = ALL_CUBES.corr()

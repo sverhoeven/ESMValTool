@@ -821,9 +821,9 @@ class MLRModel():
         for (data_type, plot_kwargs) in data_to_plot:
             logger.debug("Plotting prediction error of '%s' data", data_type)
             x_data = self.data[data_type].x
-            y_true = self.get_y_array(data_type)
             y_pred = self._clf.predict(x_data)
-            axes.scatter(y_true, y_pred, **plot_kwargs)
+            y_true = self.get_y_array(data_type)
+            axes.scatter(y_pred, y_true, **plot_kwargs)
 
         # Plot appearance
         lims = [
@@ -835,8 +835,8 @@ class MLRModel():
         axes.set_xlim(lims)
         axes.set_ylim(lims)
         axes.set_title(f"Prediction errors ({self._cfg['mlr_model_name']})")
-        axes.set_xlabel(f'True {self._get_plot_label()}')
-        axes.set_ylabel(f'Predicted {self._get_plot_label()}')
+        axes.set_xlabel(f'Predicted {self._get_plot_label()}')
+        axes.set_ylabel(f'True {self._get_plot_label()}')
         manual_legend(axes, [d[1]['label'] for d in data_to_plot],
                       [d[1]['color'] for d in data_to_plot],
                       loc='upper left',
@@ -891,6 +891,11 @@ class MLRModel():
         visualizer.ax.set_aspect('equal')
         visualizer.ax.set_xlabel(f'Predicted {self._get_plot_label()}')
         visualizer.ax.set_ylabel(f'Residuals of {self._get_plot_label()}')
+        ticks = visualizer.ax.get_xticks()
+        right_lim = ticks[-1] + 0.8 * (ticks[-1] - ticks[-2])
+        visualizer.ax.set_xlim(right=right_lim)
+        visualizer.ax.set_xticks(ticks)
+        visualizer.hax.set_xlabel('Frequency')
 
         # Save plot
         plot_path = os.path.join(
