@@ -26,7 +26,6 @@ from sklearn.impute import SimpleImputer
 from sklearn.inspection import plot_partial_dependence
 from sklearn.model_selection import GridSearchCV, LeaveOneOut, train_test_split
 from sklearn.preprocessing import StandardScaler
-from yellowbrick.draw import manual_legend
 
 from esmvaltool.diag_scripts import mlr
 from esmvaltool.diag_scripts.shared import group_metadata, io, select_metadata
@@ -809,21 +808,19 @@ class MLRModel():
         (_, axes) = plt.subplots()
 
         # Get available datasets
-        opts = {'marker': 'o', 's': 6, 'alpha': 0.5}
-        data_to_plot = [('train', {**opts, 'color': 'b', 'label': 'Train'})]
+        data_to_plot = ['train']
         if 'test' in self.data:
-            data_to_plot.append(('test', {
-                **opts, 'color': 'g',
-                'label': 'Test'
-            }))
+            data_to_plot.append('test')
 
         # Create plot
-        for (data_type, plot_kwargs) in data_to_plot:
+        for data_type in data_to_plot:
             logger.debug("Plotting prediction error of '%s' data", data_type)
             x_data = self.data[data_type].x
             y_pred = self._clf.predict(x_data)
             y_true = self.get_y_array(data_type)
-            axes.scatter(y_pred, y_true, **plot_kwargs)
+            axes.scatter(
+                y_pred, y_true,
+                **self._get_plot_kwargs(data_type, plot_type='scatter'))
 
         # Plot appearance
         lims = [
@@ -837,10 +834,7 @@ class MLRModel():
         axes.set_title(f"Prediction errors ({self._cfg['mlr_model_name']})")
         axes.set_xlabel(f'Predicted {self._get_plot_label()}')
         axes.set_ylabel(f'True {self._get_plot_label()}')
-        manual_legend(axes, [d[1]['label'] for d in data_to_plot],
-                      [d[1]['color'] for d in data_to_plot],
-                      loc='upper left',
-                      frameon=True)
+        axes.legend(loc='upper left')
 
         # Save plot
         plot_path = os.path.join(
@@ -870,7 +864,7 @@ class MLRModel():
         logger.info("Plotting residuals")
         if filename is None:
             filename = 'residuals'
-        visualizer = mlr.AdvancedResidualsPlot(self._clf)
+        (_, axes) = plt.subplots()
 
         # Get available datasets
         data_to_plot = ['train']
@@ -881,21 +875,126 @@ class MLRModel():
         for data_type in data_to_plot:
             logger.debug("Plotting residuals of '%s' data", data_type)
             x_data = self.data[data_type].x
+            y_pred = self._clf.predict(x_data)
             y_true = self.get_y_array(data_type)
-            is_train_data = data_type == 'train'
-            visualizer.score(x_data, y_true, train=is_train_data)
+            res = self._get_residuals(y_true, y_pred)
+            axes.scatter(
+                y_pred, res,
+                **self._get_plot_kwargs(data_type, plot_type='scatter'))
 
         # Plot appearance
-        visualizer.finalize()
-        visualizer.set_title(f"Residuals ({self._cfg['mlr_model_name']})")
-        visualizer.ax.set_aspect('equal')
-        visualizer.ax.set_xlabel(f'Predicted {self._get_plot_label()}')
-        visualizer.ax.set_ylabel(f'Residuals of {self._get_plot_label()}')
-        ticks = visualizer.ax.get_xticks()
-        right_lim = ticks[-1] + 0.8 * (ticks[-1] - ticks[-2])
-        visualizer.ax.set_xlim(right=right_lim)
-        visualizer.ax.set_xticks(ticks)
-        visualizer.hax.set_xlabel('Frequency')
+        axes.axhline(0.0, linestyle='--', color='k', alpha=0.75)
+        axes.set_aspect('equal')
+        axes.set_title(f"Residuals ({self._cfg['mlr_model_name']})")
+        axes.set_xlabel(f'Predicted {self._get_plot_label()}')
+        axes.set_ylabel(f'Residuals of {self._get_plot_label()}')
+        axes.legend(loc='best')
+
+        # Save plot
+        plot_path = os.path.join(
+            self._cfg['mlr_plot_dir'],
+            filename + '.' + self._cfg['output_file_type'],
+        )
+        plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
+        logger.info("Wrote %s", plot_path)
+        plt.close()
+
+    def plot_residuals_boxplot(self, filename=None):
+        """Plot boxplot of residuals of training and test data.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'residuals_boxplot')
+            Name of the plot file.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
+
+        """
+        if not self._is_ready_for_plotting():
+            return
+        logger.info("Plotting residuals boxplot")
+        if filename is None:
+            filename = 'residuals_boxplot'
+        (_, axes) = plt.subplots()
+
+        # Get available datasets
+        data_to_plot = ['train']
+        if 'test' in self.data:
+            data_to_plot.append('test')
+
+        # Create plot
+        data_frame = pd.DataFrame()
+        for data_type in data_to_plot:
+            logger.debug("Plotting residuals boxplot of '%s' data", data_type)
+            x_data = self.data[data_type].x
+            y_pred = self._clf.predict(x_data)
+            (hist, bins) = np.histogram(y_pred)
+            bin_edges = np.histogram_bin_edges(y_pred)
+            y_true = self.get_y_array(data_type)
+            res = self._get_residuals(y_true, y_pred)
+
+        # Plot appearance
+        axes.axvline(0.0, linestyle='--', color='k', alpha=0.75)
+        axes.set_title(f"Residuals boxplot ({self._cfg['mlr_model_name']})")
+        axes.set_xlabel(f'Predicted {self._get_plot_label()}')
+        axes.set_ylabel(f'Residuals of {self._get_plot_label()}')
+        axes.legend(loc='best')
+
+        # Save plot
+        plot_path = os.path.join(
+            self._cfg['mlr_plot_dir'],
+            filename + '.' + self._cfg['output_file_type'],
+        )
+        plt.savefig(plot_path, **self._cfg['savefig_kwargs'])
+        logger.info("Wrote %s", plot_path)
+        plt.close()
+
+    def plot_residuals_histogram(self, filename=None):
+        """Plot histogram of residuals of training and test data.
+
+        Parameters
+        ----------
+        filename : str, optional (default: 'residuals_histogram')
+            Name of the plot file.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            MLR model is not fitted.
+
+        """
+        if not self._is_ready_for_plotting():
+            return
+        logger.info("Plotting residuals histogram")
+        if filename is None:
+            filename = 'residuals_histogram'
+        (_, axes) = plt.subplots()
+
+        # Get available datasets
+        data_to_plot = ['train']
+        if 'test' in self.data:
+            data_to_plot.append('test')
+
+        # Create plot (centralize bins around the zero)
+        for data_type in data_to_plot:
+            logger.debug("Plotting residuals histogram of '%s' data",
+                         data_type)
+            x_data = self.data[data_type].x
+            y_pred = self._clf.predict(x_data)
+            y_true = self.get_y_array(data_type)
+            res = self._get_residuals(y_true, y_pred)
+            bins = self._get_centralized_bins(res, n_bins=20)
+            axes.hist(res, bins=bins, **self._get_plot_kwargs(data_type))
+
+        # Plot appearance
+        axes.axvline(0.0, linestyle='--', color='k', alpha=0.75)
+        axes.set_title(f"Residuals histogram ({self._cfg['mlr_model_name']})")
+        axes.set_xlabel(f'Residuals of {self._get_plot_label()}')
+        axes.set_ylabel('Frequency')
+        axes.legend(loc='best')
 
         # Save plot
         plot_path = os.path.join(
@@ -2477,6 +2576,21 @@ class MLRModel():
             dataset['units'] = dataset['convert_units_to']
 
     @staticmethod
+    def _get_centralized_bins(array, n_bins=None, ref=0.0):
+        """Get bins for array centralized around a reference value."""
+        diff = max([ref - array.min(), array.max() - ref])
+        if n_bins is None:
+            auto_bins = np.histogram_bin_edges(array)
+            if len(auto_bins) < 2:
+                raise ValueError(
+                    f"Expected at least 2 bins, got {len(auto_bins):d}")
+            delta = auto_bins[1] - auto_bins[0]
+            n_bins = 2.0 * diff / delta
+        if n_bins % 2:
+            n_bins += 1
+        return np.linspace(ref - diff, ref + diff, n_bins + 1, endpoint=True)
+
+    @staticmethod
     def _get_coordinate_data(ref_cube, var_type, tag, text=None):
         """Get coordinate variable ``ref_cube`` which can be used as x data."""
         msg = '' if text is None else text
@@ -2514,6 +2628,33 @@ class MLRModel():
     def _get_name(string):
         """Convert ``None`` to :obj:`str` if necessary."""
         return 'unnamed' if string is None else string
+
+    @staticmethod
+    def _get_plot_kwargs(data_type, plot_type=None):
+        """Get plot kwargs for a data type."""
+        plot_kwargs = {
+            'all': {
+                'color': 'r',
+                'label': 'All data',
+            },
+            'train': {
+                'color': 'b',
+                'label': 'Train data',
+            },
+            'test': {
+                'color': 'g',
+                'label': 'Test data',
+            },
+        }
+        allowed_data_types = list(plot_kwargs.keys())
+        if data_type not in allowed_data_types:
+            raise NotImplementedError(
+                f"Plot kwargs for data type '{data_type}' not implemented "
+                f"yet, only {allowed_data_types} are supported yet")
+        kwargs = deepcopy(plot_kwargs[data_type])
+        if plot_type == 'scatter':
+            kwargs.update({'alpha': 0.5, 'marker': 'o', 's': 6})
+        return kwargs
 
     @staticmethod
     def _get_residuals(y_true, y_pred):

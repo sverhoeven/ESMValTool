@@ -50,7 +50,6 @@ REQUIREMENTS = {
         'xgboost',
         'xlrd',
         'xlsxwriter',
-        'yellowbrick',
     ],
     # Test dependencies
     # Execute 'python setup.py test' to run tests

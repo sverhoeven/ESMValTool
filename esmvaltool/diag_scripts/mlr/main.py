@@ -285,6 +285,8 @@ def run_mlr_model(cfg, mlr_model_type, group_attribute, grouped_datasets):
 
         # Plots
         mlr_model.plot_residuals()
+        mlr_model.plot_residuals_boxplot()
+        mlr_model.plot_residuals_histogram()
         mlr_model.plot_prediction_errors()
         if cfg.get('plot_pairplots'):
             mlr_model.plot_pairplots()

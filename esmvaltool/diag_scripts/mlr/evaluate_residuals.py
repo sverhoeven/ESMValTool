@@ -92,13 +92,13 @@ def plot_boxplot(cfg, residual_data):
             'marker': 'x',
             'markeredgecolor': 'k',
             'markerfacecolor': 'k',
-            'markersize': 10,
+            'markersize': 8,
         },
         'whis': 'range',
     }
     boxplot_kwargs.update(mlr_plot.get_plot_kwargs(cfg, 'box_plot'))
     sns.boxplot(**boxplot_kwargs)
-    sns.swarmplot(data=boxplot_data, color='k', alpha='0.6')
+    sns.swarmplot(data=boxplot_data, color='k', alpha=0.6)
 
     # Plot appearance
     plt.title('RMSE for different statistical models')

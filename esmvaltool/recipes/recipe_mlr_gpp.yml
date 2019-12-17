@@ -128,33 +128,6 @@ diagnostics:
         tag: PR
         convert_units_to: kg m-2 day-1
 
-  diag_mlr_input_et:
-    variables:
-      features:
-        <<: *variable_settings_features
-        short_name: et
-        mip: Lmon
-        derive: true
-      prediction_input:
-        <<: *variable_settings_prediction_input
-        short_name: et
-        mip: Lmon
-        derive: true
-        additional_datasets:
-          - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
-      prediction_input_error:
-        <<: *variable_settings_prediction_input
-        short_name: etStderr
-        mip: Lmon
-        var_type: prediction_input_error
-        additional_datasets:
-          - {dataset: LandFlux-EVAL, project: OBS, type: reanaly, version: Oct13, tier: 3}
-    scripts:
-      monthly_clim:
-        <<: *monthly_clim
-        tag: ET
-        convert_units_to: mm day-1
-
   diag_mlr_input_gpp:
     variables:
       features:

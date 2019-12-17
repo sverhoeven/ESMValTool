@@ -17,7 +17,6 @@ from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from sklearn.utils import check_array
 from sklearn.utils.validation import check_is_fitted
-from yellowbrick.regressor import ResidualsPlot
 
 from esmvaltool.diag_scripts.shared import io, select_metadata
 
@@ -133,24 +132,6 @@ class AdvancedPipeline(Pipeline):
         if y_trans.ndim == 2 and y_trans.shape[1] == 1:
             y_trans = y_trans.squeeze(axis=1)
         return y_trans
-
-
-class AdvancedResidualsPlot(ResidualsPlot):
-    """Expand :class:`yellowbrick.regressor.ResidualsPlot`."""
-
-    def score(self, X, y=None, train=False, **kwargs):
-        """Change sign convention of residuals."""
-        score = self.estimator.score(X, y, **kwargs)
-        if train:
-            self.train_score_ = score
-        else:
-            self.test_score_ = score
-
-        y_pred = self.predict(X)
-        residuals = y - y_pred
-        self.draw(y_pred, residuals, train=train)
-
-        return score
 
 
 class AdvancedTransformedTargetRegressor(TransformedTargetRegressor):
