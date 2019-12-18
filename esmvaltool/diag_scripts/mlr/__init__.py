@@ -736,26 +736,3 @@ def units_power(units, power):
                 new_units_list.append(f'{elem}{power}')
     new_units = ' '.join(new_units_list)
     return Unit(new_units)
-
-
-def write_cube(cube, attributes):
-    """Write cube with all necessary information for MLR models.
-
-    Parameters
-    ----------
-    cube : iris.cube.Cube
-        Cube which should be written.
-    attributes : dict
-        Attributes for the cube (needed for MLR models).
-
-    Raises
-    ------
-    IOError
-        File cannot be written due to invalid attributes.
-
-    """
-    if not datasets_have_mlr_attributes([attributes], log_level='error'):
-        raise ValueError(
-            f"Cannot write cube {cube.summary(shorten=True)} using attributes "
-            f"{attributes}")
-    io.metadata_to_netcdf(cube, attributes)

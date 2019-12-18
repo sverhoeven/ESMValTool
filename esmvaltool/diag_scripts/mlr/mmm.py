@@ -230,8 +230,8 @@ def main(cfg, input_data=None, description=None):
         logger.info("Calculating multi-model mean")
         mm_cube = get_mm_cube(cfg, datasets)
         add_general_attributes(mm_cube, tag=tag, prediction_name=pred_name)
-        mm_path = get_diagnostic_filename(
-            f"{cfg['mlr_model_name']}_{tag}_prediction{description}", cfg)
+        mm_path = get_diagnostic_filename(f"mmm_{tag}_prediction{description}",
+                                          cfg)
         io.iris_save(mm_cube, mm_path)
 
         # Estimate prediction error using cross-validation

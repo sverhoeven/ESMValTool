@@ -63,6 +63,7 @@ trend : str, optional
 
 """
 
+import datetime
 import logging
 import os
 from copy import deepcopy
@@ -74,7 +75,7 @@ from cf_units import Unit
 from scipy import stats
 
 from esmvaltool.diag_scripts import mlr
-from esmvaltool.diag_scripts.shared import (get_diagnostic_filename,
+from esmvaltool.diag_scripts.shared import (get_diagnostic_filename, io,
                                             run_diagnostic, select_metadata)
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -500,6 +501,19 @@ def normalize(cfg, cube, data):
     return (cube, data)
 
 
+def write_cube(cube, data):
+    """Write cube (check for MLR attributes and existing files first."""
+    if not mlr.datasets_have_mlr_attributes([data], log_level='error'):
+        raise ValueError(
+            f"Cannot write cube {cube.summary(shorten=True)} using metadata "
+            f"{data}")
+    new_path = data['filename']
+    if os.path.exists(new_path):
+        now = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S%f")
+        data['filename'] = new_path.replace('.nc', f'_{now}.nc')
+    io.metadata_to_netcdf(cube, data)
+
+
 def main(cfg):
     """Run the diagnostic."""
     input_data = mlr.get_input_data(cfg,
@@ -550,7 +564,7 @@ def main(cfg):
 
         # Normalize and write cubes
         (cube, data) = normalize(cfg, cube, data)
-        mlr.write_cube(cube, data)
+        write_cube(cube, data)
 
 
 # Run main function when this script is called

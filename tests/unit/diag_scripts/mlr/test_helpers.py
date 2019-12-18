@@ -496,28 +496,3 @@ def test_get_input_data(mock_logger, mock_netcdf_to_metadata, cfg, ancestors,
         mock_logger.info.assert_called_once()
     else:
         mock_logger.info.assert_not_called()
-
-
-TEST_WRITE_CUBE = [
-    (D_1, 0),
-    (D_2, 1),
-    (D_3, 1),
-    (D_4, 2),
-]
-
-
-@pytest.mark.parametrize('attributes,output', TEST_WRITE_CUBE)
-@mock.patch('esmvaltool.diag_scripts.mlr.io.metadata_to_netcdf', autospec=True)
-@mock.patch('esmvaltool.diag_scripts.mlr.logger', autospec=True)
-def test_write_cube(mock_logger, mock_metadata_to_netcdf, attributes, output):
-    """Test writing of MLR-related data."""
-    cube = iris.cube.Cube(0)
-    if output == 0:
-        mlr.write_cube(cube, attributes)
-        mock_logger.error.assert_not_called()
-        mock_metadata_to_netcdf.assert_called_once_with(cube, attributes)
-    else:
-        with pytest.raises(ValueError):
-            mlr.write_cube(cube, attributes)
-        assert mock_logger.error.call_count == output
-        mock_metadata_to_netcdf.assert_not_called()
