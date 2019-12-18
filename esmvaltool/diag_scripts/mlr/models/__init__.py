@@ -2586,9 +2586,9 @@ class MLRModel():
                     f"Expected at least 2 bins, got {len(auto_bins):d}")
             delta = auto_bins[1] - auto_bins[0]
             n_bins = 2.0 * diff / delta
-        if n_bins % 2:
+        if not n_bins % 2:
             n_bins += 1
-        return np.linspace(ref - diff, ref + diff, n_bins + 1, endpoint=True)
+        return np.linspace(ref - diff, ref + diff, n_bins + 1)
 
     @staticmethod
     def _get_coordinate_data(ref_cube, var_type, tag, text=None):
