@@ -330,7 +330,7 @@ diagnostics:
         mlr_model_name: 'GBRT-1D'
 
   diag_lasso_gpp:
-    description: Use Lasso model to predict GPP.
+    description: Use LASSO model to predict GPP.
     scripts:
       lasso: &lasso
         script: mlr/main.py
@@ -338,7 +338,7 @@ diagnostics:
         group_datasets_by_attributes: ['dataset']
         imputation_strategy: constant
         mlr_model_type: lasso_cv
-        mlr_model_name: Lasso
+        mlr_model_name: LASSO
         n_jobs: 24
         only_predict: true
         parameters_final_regressor:
@@ -356,7 +356,7 @@ diagnostics:
         ]
 
   diag_lasso_gpp_pseudo_reality:
-    description: Validate Lasso model using pseudo-reality approach.
+    description: Validate LASSO model using pseudo-reality approach.
     scripts:
       lasso: &lasso_pr
         <<: *lasso
@@ -367,12 +367,12 @@ diagnostics:
         save_propagated_errors: false
 
   diag_lasso_1d_gpp:
-    description: Use Lasso model (with single predictor) to predict GPP.
+    description: Use LASSO model (with single predictor) to predict GPP.
     scripts:
       lasso:
         <<: *lasso
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
-        mlr_model_name: 'Lasso-1D'
+        mlr_model_name: 'LASSO-1D'
       postprocess:
         <<: *postprocess
         ancestors: [
@@ -381,12 +381,12 @@ diagnostics:
         ]
 
   diag_lasso_1d_gpp_pseudo_reality:
-    description: Validate Lasso model (with single predictor) using pseudo-reality approach.
+    description: Validate LASSO model (with single predictor) using pseudo-reality approach.
     scripts:
       lasso:
         <<: *lasso_pr
         ancestors: ['diag_mlr_input_gpp/monthly_clim']
-        mlr_model_name: 'Lasso-1D'
+        mlr_model_name: 'LASSO-1D'
 
   diag_mmm_gpp:
     description: Use simple multi-model mean to predict GPP.
@@ -440,15 +440,15 @@ diagnostics:
           prediction_output: MTE
           prediction_output_GBRT: GBRT
           prediction_output_GBRT-1D: GBRT-1D
-          prediction_output_Lasso: Lasso
-          prediction_output_Lasso-1D: Lasso-1D
+          prediction_output_LASSO: LASSO
+          prediction_output_LASSO-1D: LASSO-1D
           prediction_output_MMM: CMIP5
           prediction_output_MMM_hist: CMIP5
           prediction_output_error: MTE
           prediction_output_error_GBRT: GBRT
           prediction_output_error_GBRT-1D: GBRT-1D
-          prediction_output_error_Lasso: Lasso
-          prediction_output_error_Lasso-1D: Lasso-1D
+          prediction_output_error_LASSO: LASSO
+          prediction_output_error_LASSO-1D: LASSO-1D
           prediction_output_error_MMM: CMIP5
           prediction_output_error_MMM_hist: CMIP5
         ignore:
