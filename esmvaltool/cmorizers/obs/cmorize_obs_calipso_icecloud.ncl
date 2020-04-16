@@ -43,7 +43,7 @@ begin
 
   ; Period
   YEAR1 = 2007
-  YEAR2 = 2016
+  YEAR2 = 2007;2016
 
   ; Selected variable (standard name)
   VAR = (/"cli"/)
@@ -74,22 +74,6 @@ end
 
 begin
 
-; https://www-calipso.larc.nasa.gov/resources/calipso_users_guide/qs/cal_lid_l3_ice_cloud_v1-00.php
-
-;Longitude_Midpoint
-;Latitude_Midpoint
-;Altitude_Midpoint (Pressure_Mean)
-;Ice_Water_Content_Bin_Boundaries
-;Ice_Water_Content_Histogram
-;Cloud_Free_Samples
-;Cloud_Samples
-
-; There are 3 granules available:
-;   day:   CAL_LID_L3_Ice_Cloud-Standard-V1-00.yyyy-mmD.hdf
-;   night: CAL_LID_L3_Ice_Cloud-Standard-V1-00.yyyy-mmN.hdf
-;   both:  CAL_LID_L3_Ice_Cloud-Standard-V1-00.yyyy-mmA.hdf
-; Here, we only use the granule "A" (= day + night).
-
   vv = 0
   log_info("Processing " + VAR(vv) + " (" + MIP(vv) + ")")
 
@@ -106,7 +90,14 @@ begin
 
       print(syear + "-" + smonth)
 
-      ; Read file
+      ; Read data
+
+      ; There are 3 granules available:
+      ;   day:   CAL_LID_L3_Ice_Cloud-Standard-V1-00.yyyy-mmD.hdf
+      ;   night: CAL_LID_L3_Ice_Cloud-Standard-V1-00.yyyy-mmN.hdf
+      ;   both:  CAL_LID_L3_Ice_Cloud-Standard-V1-00.yyyy-mmA.hdf
+      ; Here, we only use the granule "A" (= day + night).
+
       fname = input_dir_path + "CAL_LID_L3_Ice_Cloud-Standard-V1-00." + \
         syear + "-" + smonth + "A.hdf"
 
@@ -123,9 +114,6 @@ begin
       iwc_bnds = f->Ice_Water_Content_Bin_Boundaries
       cldfree_samp = f->Cloud_Free_Samples
       cld_samp = f->Cloud_Samples
-
-;      cldfree_samp@_FillValue = cldfree_samp@fillvalue
-;      cld_samp@_FillValue = cld_samp@fillvalue
 
       ; Create output array
       if (.not.isdefined("output")) then
@@ -165,7 +153,7 @@ begin
       ;       2) ice water content is only calculated for clouds with
       ;       1.0e-5 <= iwc <= 1.0 g/m3.
 
-      ; find first bin with iwc >= 10⁻5 g/m3 (first bin with valid data)
+      ; find first bin with iwc >= 1e-5 g/m3 (first bin with valid data)
 
       tmp = ind(iwc_bnds(:, 0) .ge. 1.0e-5)  ; min bound
       if (all(ismissing(tmp))) then
@@ -188,11 +176,18 @@ begin
       samples = where(samples.gt.0., samples, samples@_FillValue)
       iwc_avg = dim_sum(iwc(:, :, :, i0:i1)) / samples
 
-      output(ind(toint(yy * 100 + mm).eq.date), :, :, :) = iwc_avg()
+      iwc_avg!0 = "lat"
+      iwc_avg!1 = "lon"
+      iwc_avg!2 = "alt"
+
+      output(ind(toint(yy * 100 + mm).eq.date), :, :, :) = \
+        iwc_avg(alt|:, lat|:, lon|:)
 
       delete(fname)
       delete(f)
       delete(iwc_avg)
+      delete(iwc)
+      delete(samples)
     end do
   end do
 
