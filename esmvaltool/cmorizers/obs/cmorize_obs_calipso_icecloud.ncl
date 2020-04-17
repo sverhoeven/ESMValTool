@@ -56,7 +56,7 @@ begin
 
   ; CMOR table
   CMOR_TABLE = getenv("cmor_tables") + \
-    (/"/cmip5/Tables/CMIP5_cfMon"/)
+    (/"/cmip5/Tables/CMIP5_Amon"/)
 
   ; Type
   TYPE = "sat"
@@ -74,8 +74,31 @@ end
 
 begin
 
+  R_gas = 8.3145       ; gas constant (J/mol/K)
+  mw_air = 28.9647e-3  ; molecular weight of dry air (kg/mol)
+  R_air = R_gas / mw_air
+
+  ; CMIP6 "plev27" pressure levels (Pa)
+
+  plev27 = (/100000., 97500., 95000., 92500., 90000., 87500., 85000., \
+             82500., 80000., 77500., 75000., 70000., 65000., 60000., \
+             55000., 50000., 45000., 40000., 35000., 30000., 25000., \
+             22500., 20000., 17500., 15000., 12500., 10000./)
+
   vv = 0
   log_info("Processing " + VAR(vv) + " (" + MIP(vv) + ")")
+
+  ; calculate level bounds
+
+  plev27_bnds = new(dimsizes(plev27) + 1, float)
+  do i = 1, dimsizes(plev27) - 1
+    plev27_bnds(i) = 0.5 * (plev27(i - 1) + plev27(i))
+  end do
+  plev27_bnds(0) = plev27(0) + 0.5 * (plev27(0) - plev27(1))
+  n = dimsizes(plev27)
+  plev27_bnds(n) = plev27(n - 1) - 0.5 * (plev27(n - 2) - plev27(n - 1))
+
+  ; initialize time
 
   time = create_timec(YEAR1, YEAR2)
   date = cd_calendar(time, 1)
@@ -114,6 +137,8 @@ begin
       iwc_bnds = f->Ice_Water_Content_Bin_Boundaries
       cldfree_samp = f->Cloud_Free_Samples
       cld_samp = f->Cloud_Samples
+      pres = f->Pressure_Mean     ; in hPa
+      temp = f->Temperature_Mean  ; in deg C
 
       ; Create output array
       if (.not.isdefined("output")) then
@@ -180,8 +205,20 @@ begin
       iwc_avg!1 = "lon"
       iwc_avg!2 = "alt"
 
+      ; convert units from g/m3 to kg/kg
+
+      ; 1. calculate density of air (kg/m3)
+      rho_air = pres * 100.0 / (R_air * (temp + 273.15))
+      ; 2. convert from g/m3 to kg/kg
+      iwc_avg = 1.0e-3 * iwc_avg / rho_air
+
+;      fname = "debug.nc"
+;      system("rm " + fname)
+;      debugfile = addfile(fname, "c")
+;      debugfile->rho = rho_air
+
       output(ind(toint(yy * 100 + mm).eq.date), :, :, :) = \
-        iwc_avg(alt|:, lat|:, lon|:)
+        (/iwc_avg(alt|:, lat|:, lon|:)/)
 
       delete(fname)
       delete(f)
