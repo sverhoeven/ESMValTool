@@ -49,14 +49,14 @@ begin
   VAR = (/"cli"/)
 
   ; MIP
-  MIP = (/"AMon"/)
+  MIP = (/"Amon"/)
 
   ; Frequency
   FREQ = (/"mon"/)
 
   ; CMOR table
   CMOR_TABLE = getenv("cmor_tables") + \
-    (/"/cmip5/Tables/CMIP5_Amon"/)
+    (/"/cmip5/Tables/CMIP5_" + MIP/)
 
   ; Type
   TYPE = "sat"
