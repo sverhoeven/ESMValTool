@@ -41,9 +41,9 @@ begin
   ; Tier
   TIER = 2
 
-  ; Period
+  ; Period (complete years only)
   YEAR1 = 2007
-  YEAR2 = 2007;2016
+  YEAR2 = 2015
 
   ; Selected variable (standard name)
   VAR = (/"cli"/)
@@ -137,28 +137,34 @@ begin
       iwc_bnds = f->Ice_Water_Content_Bin_Boundaries
       cldfree_samp = f->Cloud_Free_Samples
       cld_samp = f->Cloud_Samples
-      pres = f->Pressure_Mean     ; in hPa
-      temp = f->Temperature_Mean  ; in deg C
+      pres = f->Pressure_Mean * 100.0      ; hPa --> Pa
+      temp = f->Temperature_Mean + 273.15  ; deg C --> K
 
       ; Create output array
       if (.not.isdefined("output")) then
-        alt = round(f->Altitude_Midpoint * 1000.0, 0)  ; km, round to 1 m
+;        alt = round(f->Altitude_Midpoint * 1000.0, 0)  ; km, round to 1 m
         lat = f->Latitude_Midpoint
         lon = f->Longitude_Midpoint
         ndims = new(4, integer)
         ndims(0) = dimsizes(time)
-        ndims(1) = dimsizes(alt)
+        ndims(1) = dimsizes(plev27)
         ndims(2) = dimsizes(lat)
         ndims(3) = dimsizes(lon)
         output = new(ndims, float)
         output!0 = "time"
         output&time = time
-        output!1 = "alt"
-        output&alt = alt
+        output!1 = "plev"
+        output&plev = plev27
         output!2 = "lat"
         output&lat = lat
         output!3 = "lon"
         output&lon = lon
+
+        ; dimensions = lat, lon, plev
+        iwc_avg_plev27 = new((/ndims(2), ndims(3), ndims(1)/), float)
+        iwc_avg_plev27!0 = "lat"
+        iwc_avg_plev27!1 = "lon"
+        iwc_avg_plev27!2 = "plev"
       end if
 
       ; Calculate grid-box average ice water content from ice water content
@@ -201,14 +207,10 @@ begin
       samples = where(samples.gt.0., samples, samples@_FillValue)
       iwc_avg = dim_sum(iwc(:, :, :, i0:i1)) / samples
 
-      iwc_avg!0 = "lat"
-      iwc_avg!1 = "lon"
-      iwc_avg!2 = "alt"
-
-      ; convert units from g/m3 to kg/kg
+      ; *** convert units from g/m3 to kg/kg
 
       ; 1. calculate density of air (kg/m3)
-      rho_air = pres * 100.0 / (R_air * (temp + 273.15))
+      rho_air = pres / (R_air * temp)
       ; 2. convert from g/m3 to kg/kg
       iwc_avg = 1.0e-3 * iwc_avg / rho_air
 
@@ -217,14 +219,51 @@ begin
 ;      debugfile = addfile(fname, "c")
 ;      debugfile->rho = rho_air
 
+      ; *** aggregate CALIPSO levels to plev27 vertical levels
+
+      pres1d = ndtooned(pres)  ; convert to 1D array
+
+      do l = 0, dimsizes(plev27) - 1
+        ; all levels not within plev27_bnds(l) - plev27_bnds(l+1) are masked
+        ; as missing values, which are then ignored when calculating
+        ; averages with function dim_avg
+        mapind = ind((pres1d .gt. plev27_bnds(l)) .or. \
+                     (pres1d .lt. plev27_bnds(l + 1)))
+        iwc1d = ndtooned(iwc_avg)
+        iwc1d@_FillValue = -999.
+        if (.not.all(ismissing(mapind))) then
+          iwc1d(mapind) = iwc1d@_FillValue
+        end if
+        delete(mapind)
+        iwc_select = onedtond(iwc1d, dimsizes(iwc_avg))
+        delete(iwc1d)
+        ; the layers of the CALIPSO data quite thin, so we do not bother
+        ; calculating weights for each vertical level but simply
+        ; calculate arithmetic averages when mapping the CALIPSO data to
+        ; the plev27 vertical levels
+        iwc_avg_plev27(:, :, l) = dim_avg(iwc_select)  ; ignores missing values
+        delete(iwc_select)
+      end do
+
+      delete(pres1d)
+
+      ; *** map gridbox average ice water content to output array
+
       output(ind(toint(yy * 100 + mm).eq.date), :, :, :) = \
-        (/iwc_avg(alt|:, lat|:, lon|:)/)
+        (/iwc_avg_plev27(plev|:, lat|:, lon|:)/)
+
+      ; *** clean up
 
       delete(fname)
       delete(f)
       delete(iwc_avg)
       delete(iwc)
       delete(samples)
+      delete(pres)
+      delete(temp)
+      delete(rho_air)
+      delete(cldfree_samp)
+      delete(cld_samp)
     end do
   end do
 
@@ -232,10 +271,6 @@ begin
   output = where(output.eq.-999, output@_FillValue, output)
 
   ; Format coordinates
-  output!0 = "time"
-  output!1 = "alt"
-  output!2 = "lat"
-  output!3 = "lon"
   format_coords(output, YEAR1 + "0101", YEAR2 + "1231", FREQ(vv))
 
   ; Set variable attributes
