@@ -81,9 +81,9 @@ begin
   ; CMIP6 "plev27" pressure levels (Pa)
 
   plev27 = (/100000., 97500., 95000., 92500., 90000., 87500., 85000., \
-             82500., 80000., 77500., 75000., 70000., 65000., 60000., \
-             55000., 50000., 45000., 40000., 35000., 30000., 25000., \
-             22500., 20000., 17500., 15000., 12500., 10000./)
+            82500., 80000., 77500., 75000., 70000., 65000., 60000., \
+            55000., 50000., 45000., 40000., 35000., 30000., 25000., \
+            22500., 20000., 17500., 15000., 12500., 10000./)
 
   vv = 0
   log_info("Processing " + VAR(vv) + " (" + MIP(vv) + ")")
@@ -127,7 +127,7 @@ begin
       ; No input file found
       if (ismissing(fname)) then
         error_msg("f", DIAG_SCRIPT, "main", "input file for " + syear + \
-          "-" + smonth + " not found")
+                  "-" + smonth + " not found")
       end if
 
       ; Extract data
@@ -223,12 +223,12 @@ begin
 
       pres1d = ndtooned(pres)  ; convert to 1D array
 
-      do l = 0, dimsizes(plev27) - 1
-        ; all levels not within plev27_bnds(l) - plev27_bnds(l+1) are masked
-        ; as missing values, which are then ignored when calculating
+      do ilev = 0, dimsizes(plev27) - 1
+        ; all levels not within plev27_bnds(ilev) - plev27_bnds(ilev+1) are
+        ; masked as missing values, which are then ignored when calculating
         ; averages with function dim_avg
-        mapind = ind((pres1d .gt. plev27_bnds(l)) .or. \
-                     (pres1d .lt. plev27_bnds(l + 1)))
+        mapind = ind((pres1d .gt. plev27_bnds(ilev)) .or. \
+                     (pres1d .lt. plev27_bnds(ilev + 1)))
         iwc1d = ndtooned(iwc_avg)
         iwc1d@_FillValue = -999.
         if (.not.all(ismissing(mapind))) then
@@ -241,7 +241,8 @@ begin
         ; calculating weights for each vertical level but simply
         ; calculate arithmetic averages when mapping the CALIPSO data to
         ; the plev27 vertical levels
-        iwc_avg_plev27(:, :, l) = dim_avg(iwc_select)  ; ignores missing values
+        ; note: dim_avg ignores missing values
+        iwc_avg_plev27(:, :, ilev) = dim_avg(iwc_select)
         delete(iwc_select)
       end do
 
