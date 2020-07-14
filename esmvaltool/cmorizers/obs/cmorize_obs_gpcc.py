@@ -58,6 +58,10 @@ def _extract_variable(short_name, var, version, cfg, filepath, out_dir):
     cube.convert_units(cmor_info.units)
     utils.convert_timeunits(cube, 1950)
 
+    # redo the bounds
+    cube.coord('latitude').bounds = None
+    cube.coord('latitude').guess_bounds()
+
     # Fix coordinates
     utils.fix_coords(cube)
 
