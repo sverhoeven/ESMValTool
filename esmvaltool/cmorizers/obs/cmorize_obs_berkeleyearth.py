@@ -55,6 +55,7 @@ def reinit_broken_time(cube_anom, cube_clim, climstart, climend):
                                      'days since {}-01-01 00:00:00'.format(
                                          start_year),
                                      calendar=cf_units.CALENDAR_STANDARD))
+    times.guess_bounds()
 
     # init a dummy cube to enable coord_categorisation
     dummycube = iris.cube.Cube(np.zeros(int(n_days), np.int),
