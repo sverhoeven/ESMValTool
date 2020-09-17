@@ -4,7 +4,7 @@
 documentation:
   description: |
     Example recipe that runs a Python example diagnostic with a more object
-    oriented interface.
+    oriented interface. Bot test
 
   authors:
     - schlund_manuel
